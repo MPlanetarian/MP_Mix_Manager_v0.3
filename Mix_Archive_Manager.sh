@@ -6610,11 +6610,58 @@ show_mix_drive_space() {
         all_arch_dirs=("${MIX_ARCHIVE_DIR:-$SCRIPT_DIR/MIX_ARCHIVE}")
     fi
 
+    # Precompute audio sizes with Python (fast single pass across all directories)
+    local folder_audio_bytes=()
+    local folder_audio_gbs=()
+    local total_audio_bytes=0
+
+    while IFS=$'\t' read -r d_path d_bytes d_gb; do
+        folder_audio_bytes+=("$d_bytes")
+        folder_audio_gbs+=("$d_gb")
+        total_audio_bytes=$(python3 -c "print($total_audio_bytes + $d_bytes)" 2>/dev/null || awk "BEGIN {printf \"%.0f\", $total_audio_bytes + $d_bytes}")
+    done < <(python3 -c "
+import os, sys
+dirs = sys.argv[1:]
+audio_exts = {'.flac', '.wav'}
+for d in dirs:
+    total = 0
+    if os.path.exists(d):
+        for root, subdirs, files in os.walk(d):
+            depth = 0 if root == d else os.path.relpath(root, d).count(os.sep) + 1
+            if depth > 1 and 'mp3_converted_outputs' not in root.lower():
+                continue
+            for f in files:
+                ext = os.path.splitext(f)[1].lower()
+                if ext in audio_exts:
+                    try: total += os.path.getsize(os.path.join(root, f))
+                    except OSError: pass
+                elif ext == '.mp3':
+                    if depth == 0 or 'mp3_converted_outputs' in root.lower():
+                        try: total += os.path.getsize(os.path.join(root, f))
+                        except OSError: pass
+    gb = total / (1024 ** 3)
+    print(f'{d}\t{total}\t{gb:.2f}')
+" "${all_arch_dirs[@]}")
+
     local loc_num=1
     local total_flacs_all=0
     local total_wavs_all=0
     local total_mp3s_all=0
-    for mix_target in "${all_arch_dirs[@]}"; do
+    local total_free_kb=0
+    local seen_mounts=""
+
+    local folder_fs=()
+    local folder_mounts=()
+    local folder_totals=()
+    local folder_used=()
+    local folder_free=()
+    local folder_pcts=()
+    local folder_flacs=()
+    local folder_wavs=()
+    local folder_mp3s=()
+
+    for idx in "${!all_arch_dirs[@]}"; do
+        local mix_target="${all_arch_dirs[$idx]}"
         echo -e "${BOLD}${CYAN}──────────────────────────────────────────────────────────────────────${NC}"
         local label="Primary Archive"
         [ "$loc_num" -gt 1 ] && label="Additional Storage Location #${loc_num}"
@@ -6623,23 +6670,41 @@ show_mix_drive_space() {
 
         if [ ! -d "$mix_target" ]; then
             echo -e "  ${YELLOW}⚠️  Directory is currently unmounted or not accessible.${NC}\n"
+            folder_fs+=("N/A")
+            folder_mounts+=("Unmounted")
+            folder_totals+=("N/A")
+            folder_used+=("N/A")
+            folder_free+=("N/A")
+            folder_pcts+=("N/A")
+            folder_flacs+=(0)
+            folder_wavs+=(0)
+            folder_mp3s+=(0)
             ((loc_num++))
             continue
+        fi
+
+        local fs total_kb used_kb avail_kb cap_pct mount_pt
+        read -r fs total_kb used_kb avail_kb cap_pct mount_pt <<< $(df -k -P "$mix_target" 2>/dev/null | tail -n 1 | awk '{fs=$1; t=$2; u=$3; a=$4; c=$5; $1=$2=$3=$4=$5=""; sub(/^[ \t]+/, ""); print fs, t, u, a, c, $0}')
+        if [ -n "$mount_pt" ]; then
+            if [[ "$seen_mounts" != *"|${mount_pt}|"* ]]; then
+                seen_mounts+="|${mount_pt}|"
+                total_free_kb=$((total_free_kb + avail_kb))
+            fi
         fi
 
         local df_output
         df_output=$(df -h -T "$mix_target" 2>/dev/null || df -h "$mix_target" 2>/dev/null)
         local line
         line=$(echo "$df_output" | tail -n 1)
-        local fs type total used avail pct mount
+        local fs_dev type total used avail pct mount
         if [ "$(echo "$df_output" | head -n 1 | awk '{print NF}')" -ge 7 ]; then
-            read -r fs type total used avail pct mount <<< "$line"
+            read -r fs_dev type total used avail pct mount <<< "$line"
         else
-            read -r fs total used avail pct mount <<< "$line"
+            read -r fs_dev total used avail pct mount <<< "$line"
             type="filesystem"
         fi
 
-        echo -e "  • ${BOLD}Device Filesystem:${NC}   ${CYAN}${fs}${NC} (${type})"
+        echo -e "  • ${BOLD}Device Filesystem:${NC}   ${CYAN}${fs_dev}${NC} (${type})"
         echo -e "  • ${BOLD}Mount Point:${NC}         ${GREEN}${mount}${NC}"
         echo -e "  • ${BOLD}Total Capacity:${NC}      ${total}"
         echo -e "  • ${BOLD}Space Used:${NC}          ${YELLOW}${used}${NC} (${pct})"
@@ -6674,14 +6739,67 @@ show_mix_drive_space() {
         total_flacs_all=$((total_flacs_all + flac_count))
         total_wavs_all=$((total_wavs_all + wav_count))
         total_mp3s_all=$((total_mp3s_all + mp3_count))
+
+        folder_fs+=("$fs_dev")
+        folder_mounts+=("$mount")
+        folder_totals+=("$total")
+        folder_used+=("$used")
+        folder_free+=("$avail")
+        folder_pcts+=("$pct")
+        folder_flacs+=("$flac_count")
+        folder_wavs+=("$wav_count")
+        folder_mp3s+=("$mp3_count")
+
+        local f_gb="${folder_audio_gbs[$idx]:-0.00}"
+        echo -e "  • ${BOLD}Audio Consumed:${NC}      ${CYAN}${f_gb} GB${NC}"
         echo -e "  • ${BOLD}Audio Files Hosted:${NC}  ${GREEN}${flac_count}${NC} FLACs | ${CYAN}${wav_count}${NC} WAVs | ${YELLOW}${mp3_count}${NC} MP3s\n"
         ((loc_num++))
     done
+
+    local total_master_mixes=$((total_flacs_all + total_wavs_all + total_mp3s_all))
+    local total_folders_configured=${#all_arch_dirs[@]}
+    local total_consumed_gb
+    total_consumed_gb=$(python3 -c "print(f'{$total_audio_bytes / (1024**3):.2f}')" 2>/dev/null || awk "BEGIN {printf \"%.2f\", $total_audio_bytes / 1073741824}")
+    local total_free_gb
+    total_free_gb=$(python3 -c "print(f'{$total_free_kb / (1024*1024):.2f}')" 2>/dev/null || awk "BEGIN {printf \"%.2f\", $total_free_kb / 1048576}")
 
     echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
     echo -e "  Total FLAC Master Mixes Across All Drives: ${BOLD}${GREEN}${total_flacs_all}${NC}"
     echo -e "  Total WAV Master Mixes Across All Drives:  ${BOLD}${CYAN}${total_wavs_all}${NC}"
     echo -e "  Total MP3 Master Mixes Across All Drives:  ${BOLD}${YELLOW}${total_mp3s_all}${NC}"
+    echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
+    echo -e "  Total Master Mixes:                          ${BOLD}${WHITE}${total_master_mixes}${NC}"
+    echo -e "  Total Mix Archive Storage Folders Configured: ${BOLD}${GREEN}${total_folders_configured}${NC}"
+    echo -e "  Total Space Consumed:                        ${BOLD}${CYAN}${total_consumed_gb} GB${NC}"
+    echo -e "  Total Space Free:                            ${BOLD}${GREEN}${total_free_gb} GB${NC}"
+    echo -e "${BOLD}${MAGENTA}======================================================================${NC}\n"
+
+    echo -e "${BOLD}${CYAN}──────────────────────────────────────────────────────────────────────${NC}"
+    echo -e "  ${BOLD}${WHITE}Configured Mix Archive Storage Folders Breakdown${NC}"
+    echo -e "${BOLD}${CYAN}──────────────────────────────────────────────────────────────────────${NC}"
+    for ((idx=0; idx<${#all_arch_dirs[@]}; idx++)); do
+        local f_num=$((idx + 1))
+        local f_path="${all_arch_dirs[$idx]}"
+        local f_fs="${folder_fs[$idx]}"
+        local f_mount="${folder_mounts[$idx]}"
+        local f_total="${folder_totals[$idx]}"
+        local f_used="${folder_used[$idx]}"
+        local f_free="${folder_free[$idx]}"
+        local f_pct="${folder_pcts[$idx]}"
+        local f_flac="${folder_flacs[$idx]}"
+        local f_wav="${folder_wavs[$idx]}"
+        local f_mp3="${folder_mp3s[$idx]}"
+        local f_audio_gb="${folder_audio_gbs[$idx]:-0.00}"
+        local f_mix_total=$((f_flac + f_wav + f_mp3))
+
+        echo -e "  📁 ${BOLD}${YELLOW}[Folder #${f_num}]${NC} ${BOLD}${WHITE}${f_path}${NC}"
+        echo -e "     • ${BOLD}Drive Mount:${NC}    ${GREEN}${f_mount}${NC} (${CYAN}${f_fs}${NC})"
+        echo -e "     • ${BOLD}Space Free:${NC}     ${BOLD}${GREEN}${f_free}${NC} free"
+        echo -e "     • ${BOLD}Space Used:${NC}     ${YELLOW}${f_used}${NC} (${f_pct} of ${f_total} capacity)"
+        echo -e "     • ${BOLD}Audio Consumed:${NC} ${CYAN}${f_audio_gb} GB${NC}"
+        echo -e "     • ${BOLD}Mixes Tally:${NC}    ${GREEN}${f_flac}${NC} FLACs | ${CYAN}${f_wav}${NC} WAVs | ${YELLOW}${f_mp3}${NC} MP3s (Total: ${BOLD}${WHITE}${f_mix_total}${NC} mixes)"
+        echo ""
+    done
     echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
     press_enter
 }
