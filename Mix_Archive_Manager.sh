@@ -7345,6 +7345,94 @@ manage_audio_conversion() {
     done
 }
 
+detect_active_music_player() {
+    DETECTED_PLAYER_NAME=""
+    DETECTED_TRACK_PATH=""
+    DETECTED_TRACK_TITLE=""
+    DETECTED_PLAYER_LABEL=""
+
+    # 1. Check Strawberry (priority if running or playing)
+    if get_strawberry_track_info 2>/dev/null && [ "$STRAWBERRY_STATE" = "playing" ]; then
+        DETECTED_PLAYER_NAME="Strawberry"
+        DETECTED_TRACK_PATH="$STRAWBERRY_RESOLVED_PATH"
+        DETECTED_TRACK_TITLE="$STRAWBERRY_TITLE"
+    elif get_cliamp_track_info 2>/dev/null && [ "$CLIAMP_STATE" = "playing" ]; then
+        DETECTED_PLAYER_NAME="cliamp"
+        DETECTED_TRACK_PATH="$CLIAMP_RESOLVED_PATH"
+        DETECTED_TRACK_TITLE="$CLIAMP_TITLE"
+    elif get_strawberry_track_info 2>/dev/null && [ -n "$STRAWBERRY_TITLE" ]; then
+        DETECTED_PLAYER_NAME="Strawberry"
+        DETECTED_TRACK_PATH="$STRAWBERRY_RESOLVED_PATH"
+        DETECTED_TRACK_TITLE="$STRAWBERRY_TITLE"
+    elif get_cliamp_track_info 2>/dev/null && [ -n "$CLIAMP_TITLE" ]; then
+        DETECTED_PLAYER_NAME="cliamp"
+        DETECTED_TRACK_PATH="$CLIAMP_RESOLVED_PATH"
+        DETECTED_TRACK_TITLE="$CLIAMP_TITLE"
+    elif pgrep -i -f strawberry >/dev/null 2>&1; then
+        DETECTED_PLAYER_NAME="Strawberry"
+        get_strawberry_track_info 2>/dev/null || true
+        DETECTED_TRACK_PATH="$STRAWBERRY_RESOLVED_PATH"
+        DETECTED_TRACK_TITLE="$STRAWBERRY_TITLE"
+    elif pgrep -x cliamp >/dev/null 2>&1 || pgrep -i -f cliamp >/dev/null 2>&1; then
+        DETECTED_PLAYER_NAME="cliamp"
+        get_cliamp_track_info 2>/dev/null || true
+        DETECTED_TRACK_PATH="$CLIAMP_RESOLVED_PATH"
+        DETECTED_TRACK_TITLE="$CLIAMP_TITLE"
+    elif pgrep -i -f vlc >/dev/null 2>&1; then
+        DETECTED_PLAYER_NAME="VLC"
+    elif pgrep -i -f audacity >/dev/null 2>&1; then
+        DETECTED_PLAYER_NAME="Audacity"
+    elif pgrep -i -f haruna >/dev/null 2>&1; then
+        DETECTED_PLAYER_NAME="Haruna"
+    elif pgrep -x mpv >/dev/null 2>&1; then
+        DETECTED_PLAYER_NAME="mpv"
+    elif pgrep -i -f kodi >/dev/null 2>&1; then
+        DETECTED_PLAYER_NAME="Kodi"
+    elif command -v playerctl >/dev/null 2>&1 && [ -n "$(playerctl -l 2>/dev/null)" ]; then
+        local raw_p
+        raw_p=$(playerctl -l 2>/dev/null | head -1 | sed 's/\..*//')
+        case "${raw_p,,}" in
+            strawberry*) DETECTED_PLAYER_NAME="Strawberry" ;;
+            vlc*) DETECTED_PLAYER_NAME="VLC" ;;
+            haruna*) DETECTED_PLAYER_NAME="Haruna" ;;
+            mpv*) DETECTED_PLAYER_NAME="mpv" ;;
+            audacity*) DETECTED_PLAYER_NAME="Audacity" ;;
+            kodi*) DETECTED_PLAYER_NAME="Kodi" ;;
+            *) DETECTED_PLAYER_NAME="${raw_p:-Music Player}" ;;
+        esac
+    fi
+
+    # Fallback to detect_currently_playing_mix if track path not yet resolved
+    if [ -n "$DETECTED_PLAYER_NAME" ] && [ -z "$DETECTED_TRACK_PATH" ]; then
+        if command -v playerctl >/dev/null 2>&1; then
+            local u
+            u=$(playerctl metadata xesam:url 2>/dev/null || true)
+            if [[ "$u" == file://* ]]; then
+                local p="${u#file://}"
+                DETECTED_TRACK_PATH=$(printf '%b' "${p//%/\\x}")
+            fi
+            if [ -z "$DETECTED_TRACK_TITLE" ]; then
+                DETECTED_TRACK_TITLE=$(playerctl metadata xesam:title 2>/dev/null || true)
+            fi
+        fi
+        if [ -z "$DETECTED_TRACK_PATH" ]; then
+            local dp
+            dp=$(detect_currently_playing_mix 2>/dev/null || true)
+            if [ -n "$dp" ] && [ -f "$dp" ]; then
+                DETECTED_TRACK_PATH="$dp"
+            fi
+        fi
+    fi
+
+    if [ -n "$DETECTED_PLAYER_NAME" ]; then
+        DETECTED_PLAYER_LABEL="${GREEN}${DETECTED_PLAYER_NAME}${NC}"
+        return 0
+    else
+        DETECTED_PLAYER_LABEL="${RED}No Player Detected${NC}"
+        return 1
+    fi
+}
+
 manage_tracklists() {
     local doc_script=""
     for s in "$SCRIPT_DIR/generate_tracklist_docs.py" "$SCRIPT_DIR/scripts/generate_tracklist_docs.py" "./generate_tracklist_docs.py"; do
@@ -7352,13 +7440,14 @@ manage_tracklists() {
     done
 
     while true; do
+        detect_active_music_player
         clear
         echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
         echo -e "${BOLD}${MAGENTA}                   TRACKLIST & METADATA MANAGEMENT                    ${NC}"
         echo -e "${BOLD}${MAGENTA}======================================================================${NC}\n"
         echo -e "  ${BOLD}${CYAN}1)${NC} Browse & View Tracklists (Select from Archive List)"
         echo -e "  ${BOLD}${CYAN}2)${NC} Search Tracklist by Title, Episode or Keyword"
-        echo -e "  ${BOLD}${CYAN}3)${NC} View Tracklist of Currently Playing Track (cliamp)"
+        echo -e "  ${BOLD}${CYAN}3)${NC} View Tracklist of Currently Playing Track (Current Music Player: ${DETECTED_PLAYER_LABEL})"
         echo -e "  ${BOLD}${CYAN}4)${NC} Export Tracklist to Styled HTML Document"
         echo -e "  ${BOLD}${CYAN}5)${NC} Export Tracklist to Printable PDF Document"
         echo -e "  ${BOLD}${CYAN}6)${NC} Batch Export All Archive Tracklists to HTML & PDF"
@@ -7437,25 +7526,84 @@ manage_tracklists() {
                 fi
                 ;;
             3)
-                if get_cliamp_track_info 2>/dev/null; then
-                    local bname_no_ext
-                    bname_no_ext=$(basename "$CLIAMP_RESOLVED_PATH")
-                    bname_no_ext="${bname_no_ext%.*}"
-                    shopt -s nullglob nocaseglob
-                    local tl_matches=("${OUTPUT_DIR}/${bname_no_ext}.txt" "${bname_no_ext}.txt" "${OUTPUT_DIR}/*${CLIAMP_TITLE}*.txt")
-                    shopt -u nullglob nocaseglob
-                    local found_tl=""
-                    for tm in "${tl_matches[@]}"; do
-                        if [ -f "$tm" ]; then found_tl="$tm"; break; fi
-                    done
-                    if [ -n "$found_tl" ]; then
-                        echo -e "\n${BOLD}${CYAN}=== CURRENT TRACKLIST: $(basename "$found_tl") ===${NC}\n"
-                        cat "$found_tl"
-                    else
-                        echo -e "\n${YELLOW}No tracklist found for current track '${CLIAMP_TITLE}'.${NC}"
+                detect_active_music_player
+                if [ -z "$DETECTED_PLAYER_NAME" ]; then
+                    echo -e "\n${RED}No music player is currently running.${NC}"
+                    press_enter
+                    continue
+                fi
+
+                # If no track path is found yet, try detect_currently_playing_mix
+                if [ -z "$DETECTED_TRACK_PATH" ] || [ ! -f "$DETECTED_TRACK_PATH" ]; then
+                    local fallback_path
+                    fallback_path=$(detect_currently_playing_mix 2>/dev/null || true)
+                    if [ -n "$fallback_path" ] && [ -f "$fallback_path" ]; then
+                        DETECTED_TRACK_PATH="$fallback_path"
                     fi
+                fi
+
+                if [ -z "$DETECTED_TRACK_PATH" ] && [ -z "$DETECTED_TRACK_TITLE" ]; then
+                    echo -e "\n${YELLOW}${DETECTED_PLAYER_NAME} is currently running, but has no track loaded or playing.${NC}"
+                    press_enter
+                    continue
+                fi
+
+                local found_tl=""
+                if [ -n "$DETECTED_TRACK_PATH" ] && [ -f "$DETECTED_TRACK_PATH" ]; then
+                    found_tl=$(find_mix_tracklist "$DETECTED_TRACK_PATH" 2>/dev/null || true)
+                fi
+
+                if [ -z "$found_tl" ] && [ -n "$DETECTED_TRACK_TITLE" ]; then
+                    found_tl=$(find_mix_tracklist "$DETECTED_TRACK_TITLE" 2>/dev/null || true)
+                fi
+
+                # Additional comprehensive scan across all mix archive directories
+                if [ -z "$found_tl" ]; then
+                    local search_term="${DETECTED_TRACK_TITLE:-$(basename "$DETECTED_TRACK_PATH")}"
+                    search_term="${search_term%.*}"
+                    local ep=""
+                    if [[ "$search_term" =~ [_\ -]([0-9]{2,3})([_\ -]|$) ]]; then
+                        ep="${BASH_REMATCH[1]}"
+                    elif [[ "$search_term" =~ ([0-9]{2,3}) ]]; then
+                        ep="${BASH_REMATCH[1]}"
+                    fi
+                    local search_dirs=("$OUTPUT_DIR" "$PWD" "${MIX_ARCHIVE_DIR:-}")
+                    if command -v get_all_flac_output_dirs >/dev/null 2>&1; then
+                        while IFS= read -r f_dir; do
+                            [ -n "$f_dir" ] && search_dirs+=("$f_dir")
+                        done < <(get_all_flac_output_dirs)
+                    fi
+                    shopt -s nullglob nocaseglob
+                    for sd in "${search_dirs[@]}"; do
+                        [ -z "$sd" ] || [ ! -d "$sd" ] && continue
+                        if [ -n "$ep" ]; then
+                            for tm in "$sd"/*"$ep"*.txt; do
+                                if [ -f "$tm" ] && [[ "$(basename "$tm")" != "requirements.txt" && "$(basename "$tm")" != "checksums"* ]]; then
+                                    found_tl="$tm"
+                                    break 2
+                                fi
+                            done
+                        fi
+                        for tm in "$sd"/*"${search_term}"*.txt; do
+                            if [ -f "$tm" ] && [[ "$(basename "$tm")" != "requirements.txt" && "$(basename "$tm")" != "checksums"* ]]; then
+                                found_tl="$tm"
+                                break 2
+                            fi
+                        done
+                    done
+                    shopt -u nullglob nocaseglob
+                fi
+
+                if [ -n "$found_tl" ] && [ -f "$found_tl" ]; then
+                    echo -e "\n${BOLD}${MAGENTA}======================================================================${NC}"
+                    echo -e "  ${BOLD}${CYAN}CURRENT TRACKLIST:${NC} ${GREEN}$(basename "$found_tl")${NC}"
+                    echo -e "  ${BOLD}${CYAN}MUSIC PLAYER:${NC}      ${YELLOW}${DETECTED_PLAYER_NAME}${NC}"
+                    [ -n "$DETECTED_TRACK_TITLE" ] && echo -e "  ${BOLD}${CYAN}CURRENT TRACK:${NC}     ${WHITE}${DETECTED_TRACK_TITLE}${NC}"
+                    [ -n "$DETECTED_TRACK_PATH" ] && echo -e "  ${BOLD}${CYAN}AUDIO FILE:${NC}        ${DIM}$(basename "$DETECTED_TRACK_PATH")${NC}"
+                    echo -e "${BOLD}${MAGENTA}======================================================================${NC}\n"
+                    cat "$found_tl"
                 else
-                    echo -e "\n${YELLOW}cliamp is not currently running or has no track loaded.${NC}"
+                    echo -e "\n${YELLOW}No tracklist found for current track '${DETECTED_TRACK_TITLE:-$(basename "$DETECTED_TRACK_PATH")}' playing in ${DETECTED_PLAYER_NAME}.${NC}"
                 fi
                 press_enter
                 ;;
