@@ -54,6 +54,13 @@ elif [ "${1:-}" = "version" ] || [ "${1:-}" = "--version" ] || [ "${1:-}" = "-v"
     elif [ -x "$CODEBASE_DIR/update_manager.sh" ]; then
         exec bash "$CODEBASE_DIR/update_manager.sh" --version "$@"
     fi
+elif [ "${1:-}" = "help" ] || [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+    shift
+    if [ -x "$CODEBASE_DIR/scripts/show_help.sh" ]; then
+        exec bash "$CODEBASE_DIR/scripts/show_help.sh" "$@"
+    elif [ -x "$CODEBASE_DIR/show_help.sh" ]; then
+        exec bash "$CODEBASE_DIR/show_help.sh" "$@"
+    fi
 fi
 
 # If an external drive was specified in config, wait briefly for mount

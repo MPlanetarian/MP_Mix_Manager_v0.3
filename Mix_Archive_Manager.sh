@@ -1551,7 +1551,33 @@ elif [ "$1" = "--cliamp-info" ]; then
         echo "Error: cliamp is not running or no track playing." >&2
         exit 1
     fi
+elif [ "$1" = "--help" ] || [ "$1" = "-h" ] || [ "$1" = "help" ]; then
+    shift
+    if [ -x "$SCRIPT_DIR/scripts/show_help.sh" ]; then
+        exec bash "$SCRIPT_DIR/scripts/show_help.sh" "$@"
+    elif [ -x "$SCRIPT_DIR/show_help.sh" ]; then
+        exec bash "$SCRIPT_DIR/show_help.sh" "$@"
+    fi
+    exit 0
+elif [ "$1" = "--version" ] || [ "$1" = "-v" ] || [ "$1" = "version" ]; then
+    shift
+    if [ -x "$SCRIPT_DIR/scripts/update_manager.sh" ]; then
+        exec bash "$SCRIPT_DIR/scripts/update_manager.sh" --version "$@"
+    elif [ -x "$SCRIPT_DIR/update_manager.sh" ]; then
+        exec bash "$SCRIPT_DIR/update_manager.sh" --version "$@"
+    fi
+    exit 0
+elif [ "$1" = "update" ] || [ "$1" = "--update" ]; then
+    shift
+    if [ -x "$SCRIPT_DIR/scripts/update_manager.sh" ]; then
+        exec bash "$SCRIPT_DIR/scripts/update_manager.sh" "$@"
+    elif [ -x "$SCRIPT_DIR/update_manager.sh" ]; then
+        exec bash "$SCRIPT_DIR/update_manager.sh" "$@"
+    fi
+    exit 0
 fi
+
+CLI_INITIAL_ACTION="${1:-}"
 
 show_stats() {
     echo -e "${BOLD}${BLUE}=== CURRENT STATUS & STATISTICS ===${NC}"
@@ -9732,7 +9758,12 @@ while true; do
     get_manager_uptime
     echo -e "  ${BOLD}${CYAN}31)${NC} Exit Manager ${DIM}(or 0 / q)${NC}"
     echo ""
-    read -r -p "Enter choice [1-31, or q to exit]: " choice
+    if [ -n "$CLI_INITIAL_ACTION" ]; then
+        choice="$CLI_INITIAL_ACTION"
+        CLI_INITIAL_ACTION=""
+    else
+        read -r -p "Enter choice [1-31, or q to exit]: " choice
+    fi
     
     case $choice in
         1)

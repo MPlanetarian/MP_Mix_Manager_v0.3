@@ -76,6 +76,7 @@ if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ] || [ "${1:-}" = "help" ]; then
     echo -e "  mix-archive-manager update --check   Check for available updates without installing"
     echo -e "  mix-archive-manager update --force   Force re-pull/update from remote"
     echo -e "  mix-archive-manager --version        Display current installed version"
+    echo -e "  mix-archive-manager --help           Display help usage and list all options"
     exit 0
 fi
 
