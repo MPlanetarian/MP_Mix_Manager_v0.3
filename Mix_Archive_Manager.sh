@@ -6612,6 +6612,8 @@ show_mix_drive_space() {
 
     local loc_num=1
     local total_flacs_all=0
+    local total_wavs_all=0
+    local total_mp3s_all=0
     for mix_target in "${all_arch_dirs[@]}"; do
         echo -e "${BOLD}${CYAN}──────────────────────────────────────────────────────────────────────${NC}"
         local label="Primary Archive"
@@ -6660,16 +6662,26 @@ show_mix_drive_space() {
 
         # File counts
         local flac_count wav_count mp3_count
-        flac_count=$(find "$mix_target" -maxdepth 2 -type f -name "*.flac" 2>/dev/null | wc -l)
-        wav_count=$(find "$mix_target" -maxdepth 2 -type f -name "*.wav" 2>/dev/null | wc -l)
-        mp3_count=$(find "$mix_target" -maxdepth 2 -type f -name "*.mp3" 2>/dev/null | wc -l)
+        flac_count=$(find "$mix_target" -maxdepth 2 -type f \( -name "*.flac" -o -name "*.FLAC" \) 2>/dev/null | wc -l)
+        wav_count=$(find "$mix_target" -maxdepth 2 -type f \( -name "*.wav" -o -name "*.WAV" \) 2>/dev/null | wc -l)
+        if [ -d "$mix_target/MP3_CONVERTED_OUTPUTS" ]; then
+            mp3_count=$(find "$mix_target/MP3_CONVERTED_OUTPUTS" -maxdepth 1 -type f \( -name "*.mp3" -o -name "*.MP3" \) 2>/dev/null | wc -l)
+        elif [[ "$mix_target" =~ MP3_CONVERTED_OUTPUTS/?$ ]]; then
+            mp3_count=$(find "$mix_target" -maxdepth 1 -type f \( -name "*.mp3" -o -name "*.MP3" \) 2>/dev/null | wc -l)
+        else
+            mp3_count=$(find "$mix_target" -maxdepth 1 -type f \( -name "*.mp3" -o -name "*.MP3" \) 2>/dev/null | wc -l)
+        fi
         total_flacs_all=$((total_flacs_all + flac_count))
+        total_wavs_all=$((total_wavs_all + wav_count))
+        total_mp3s_all=$((total_mp3s_all + mp3_count))
         echo -e "  • ${BOLD}Audio Files Hosted:${NC}  ${GREEN}${flac_count}${NC} FLACs | ${CYAN}${wav_count}${NC} WAVs | ${YELLOW}${mp3_count}${NC} MP3s\n"
         ((loc_num++))
     done
 
     echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
     echo -e "  Total FLAC Master Mixes Across All Drives: ${BOLD}${GREEN}${total_flacs_all}${NC}"
+    echo -e "  Total WAV Master Mixes Across All Drives:  ${BOLD}${CYAN}${total_wavs_all}${NC}"
+    echo -e "  Total MP3 Master Mixes Across All Drives:  ${BOLD}${YELLOW}${total_mp3s_all}${NC}"
     echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
     press_enter
 }
