@@ -8778,7 +8778,7 @@ manage_publishing_schedule() {
 }
 
 manage_playlists_menu() {
-    echo -e "\n${BOLD}${BLUE}=== CUSTOM MIX PLAYLISTS SUITE (.M3U8 / .XSPF) ===${NC}\n"
+    echo -e "\n${BOLD}${BLUE}=== CUSTOM MIX PLAYLISTS SUITE (.M3U / .M3U8 / .XSPF) ===${NC}\n"
     if [ -x "$SCRIPT_DIR/manage_playlists.sh" ]; then
         "$SCRIPT_DIR/manage_playlists.sh"
     elif [ -x "./manage_playlists.sh" ]; then
@@ -9245,8 +9245,8 @@ manage_playlists_and_history() {
         echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
         echo ""
         echo -e "${BOLD}Select an operation:${NC}"
-        echo -e "  ${BOLD}${CYAN}1)${NC} Custom Mix Playlists Suite (${GREEN}.m3u8 / .xspf - Create, Edit & Launch${NC})"
-        echo -e "  ${BOLD}${CYAN}2)${NC} Generate Mix Archive Folder Playlists (${GREEN}From Configured Storage Folders ➔ PLAYLISTS_GENERATED${NC})"
+        echo -e "  ${BOLD}${CYAN}1)${NC} Custom Mix Playlists Suite (${GREEN}.m3u / .m3u8 / .xspf - Create, Edit & Launch${NC})"
+        echo -e "  ${BOLD}${CYAN}2)${NC} Generate Mix Archive Folder Playlists (${GREEN}.m3u / .m3u8 / .xspf ➔ PLAYLISTS_GENERATED${NC})"
         local t_ver
         t_ver="$(get_traktor_version_mac 2>/dev/null | tr -d '\r\n')"
         t_ver="${t_ver:-3}"
@@ -9708,7 +9708,7 @@ while true; do
     echo -e "  ${BOLD}${CYAN}11)${NC} Tracklist Management, Scanning & Metadata Suite (${GREEN}Browse, Search, Picard, HTML Index${NC})"
     echo -e "  ${BOLD}${CYAN}12)${NC} Audio Players & Retro Playback Suite (${GREEN}cliamp, Strawberry, VLC, Audacity, Haruna, Winamp...${NC})"
     echo -e "  ${BOLD}${CYAN}13)${NC} Configure Mix Archive Storage Locations (${GREEN}Option 13: Primary & Multiple Archives${NC})"
-    echo -e "  ${BOLD}${CYAN}14)${NC} Custom Mix Playlists & Traktor History Suite (${GREEN}.m3u8, .xspf, Traktor 3 Playlists${NC})"
+    echo -e "  ${BOLD}${CYAN}14)${NC} Custom Mix Playlists & Traktor History Suite (${GREEN}.m3u, .m3u8, .xspf, Traktor 3 Playlists${NC})"
     echo -e "  ${BOLD}${CYAN}15)${NC} Digital Audio Workstations (DAWs) & Mix Dispatch (${GREEN}Reaper, Logic, FL Studio, Ardour, Traktor${NC})"
     echo -e "  ${BOLD}${CYAN}16)${NC} Studio Hardware, Audio Interfaces & Master Volume Control (${GREEN}PipeWire, ALSA, MIDI, Mute${NC})"
     echo -e "  ${BOLD}${CYAN}17)${NC} Spectrogram Generation & Audio Frequency Analysis (${GREEN}Single & Multiple Spek, SoX, Praat${NC})"

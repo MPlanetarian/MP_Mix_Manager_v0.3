@@ -243,43 +243,53 @@ def generate_all_playlists():
         })
 
         if mixes:
-            # 1. Per-folder All Mixes .m3u8 and .xspf
-            f_m3u = app_gen_dir / f"Mix_Archive_{slug}.m3u8"
+            # 1. Per-folder All Mixes .m3u, .m3u8 and .xspf
+            f_m3u = app_gen_dir / f"Mix_Archive_{slug}.m3u"
+            f_m3u8 = app_gen_dir / f"Mix_Archive_{slug}.m3u8"
             f_xspf = app_gen_dir / f"Mix_Archive_{slug}.xspf"
             write_m3u(f_m3u, mixes)
+            write_m3u(f_m3u8, mixes)
             write_xspf(f_xspf, f"Mix Archive - {slug}", mixes)
-            created_files.extend([f_m3u, f_xspf])
+            created_files.extend([f_m3u, f_m3u8, f_xspf])
 
             # If folder has both FLAC and WAV, also create format playlists
             flacs = [m for m in mixes if m["ext"] == ".flac"]
             wavs = [m for m in mixes if m["ext"] == ".wav"]
             if flacs and wavs:
-                flac_m3u = app_gen_dir / f"Mix_Archive_{slug}_FLAC.m3u8"
-                wav_m3u = app_gen_dir / f"Mix_Archive_{slug}_WAV.m3u8"
+                flac_m3u = app_gen_dir / f"Mix_Archive_{slug}_FLAC.m3u"
+                flac_m3u8 = app_gen_dir / f"Mix_Archive_{slug}_FLAC.m3u8"
+                wav_m3u = app_gen_dir / f"Mix_Archive_{slug}_WAV.m3u"
+                wav_m3u8 = app_gen_dir / f"Mix_Archive_{slug}_WAV.m3u8"
                 write_m3u(flac_m3u, flacs)
+                write_m3u(flac_m3u8, flacs)
                 write_m3u(wav_m3u, wavs)
-                created_files.extend([flac_m3u, wav_m3u])
+                write_m3u(wav_m3u8, wavs)
+                created_files.extend([flac_m3u, flac_m3u8, wav_m3u, wav_m3u8])
 
             for m in mixes:
                 if m["path"] not in seen_paths:
                     seen_paths.add(m["path"])
                     all_mixes_master.append(m)
 
-    # 2. Combined Master Archive .m3u8 and .xspf across ALL storage locations
+    # 2. Combined Master Archive .m3u, .m3u8 and .xspf across ALL storage locations
     if all_mixes_master:
         all_mixes_master.sort(key=lambda x: x["filename"].lower())
-        master_m3u = app_gen_dir / "Complete_Mix_Archive_Master_Mixes.m3u8"
+        master_m3u = app_gen_dir / "Complete_Mix_Archive_Master_Mixes.m3u"
+        master_m3u8 = app_gen_dir / "Complete_Mix_Archive_Master_Mixes.m3u8"
         master_xspf = app_gen_dir / "Complete_Mix_Archive_Master_Mixes.xspf"
         write_m3u(master_m3u, all_mixes_master)
+        write_m3u(master_m3u8, all_mixes_master)
         write_xspf(master_xspf, "Complete Mix Archive - All Storage Locations", all_mixes_master)
-        created_files.extend([master_m3u, master_xspf])
+        created_files.extend([master_m3u, master_m3u8, master_xspf])
 
         # FLAC master combined
         all_flacs = [m for m in all_mixes_master if m["ext"] == ".flac"]
         if all_flacs:
-            flac_all_m3u = app_gen_dir / "Complete_Mix_Archive_FLAC_Mixes.m3u8"
+            flac_all_m3u = app_gen_dir / "Complete_Mix_Archive_FLAC_Mixes.m3u"
+            flac_all_m3u8 = app_gen_dir / "Complete_Mix_Archive_FLAC_Mixes.m3u8"
             write_m3u(flac_all_m3u, all_flacs)
-            created_files.append(flac_all_m3u)
+            write_m3u(flac_all_m3u8, all_flacs)
+            created_files.extend([flac_all_m3u, flac_all_m3u8])
 
     # 3. Sync all generated playlists to all target PLAYLISTS_GENERATED locations
     sync_playlists_to_targets(created_files, target_dirs)
@@ -319,9 +329,9 @@ def interactive_menu():
             print("")
 
         print(f"{BOLD}Generation & Playback Options:{NC}")
-        print(f"  {BOLD}{CYAN} 1){NC} {BOLD}{GREEN}Generate Playlists for ALL Configured Storage Locations (Recommended){NC}")
-        print(f"  {BOLD}{CYAN} 2){NC} Select a Specific Storage Folder to Generate Playlists")
-        print(f"  {BOLD}{CYAN} 3){NC} Generate Combined Complete Master Archive Playlist Only")
+        print(f"  {BOLD}{CYAN} 1){NC} {BOLD}{GREEN}Generate Playlists for ALL Configured Storage Locations (.m3u, .m3u8, .xspf){NC}")
+        print(f"  {BOLD}{CYAN} 2){NC} Select a Specific Storage Folder to Generate Playlists (.m3u, .m3u8, .xspf)")
+        print(f"  {BOLD}{CYAN} 3){NC} Generate Combined Complete Master Archive Playlist Only (.m3u, .m3u8, .xspf)")
         print(f"  {BOLD}{CYAN} 4){NC} Launch a Generated Playlist in Player (cliamp, Strawberry, VLC, etc.)")
         print(f"  {BOLD}{CYAN} 5){NC} View Destination PLAYLISTS_GENERATED Folders & Sync Status")
         print(f"\n  {BOLD}{CYAN} 0){NC} Return to Main Menu {DIM}(or 'q'){NC}")
@@ -332,9 +342,9 @@ def interactive_menu():
             break
 
         if choice == '1':
-            print(f"\n{BOLD}{YELLOW}Generating playlists for all configured Mix Archive storage folders...{NC}")
+            print(f"\n{BOLD}{YELLOW}Generating playlists (.m3u, .m3u8, .xspf) for all configured Mix Archive storage folders...{NC}")
             created, stats, targets, total_master = generate_all_playlists()
-            print(f"\n{BOLD}{GREEN}✓ Successfully generated {len(created)} playlist files across {len(targets)} target directories!{NC}")
+            print(f"\n{BOLD}{GREEN}✓ Successfully generated {len(created)} playlist files (.m3u, .m3u8, .xspf) across {len(targets)} target directories!{NC}")
             print(f"{BOLD}{BLUE}──────────────────────────────────────────────────────────────────────{NC}")
             print(f"  • {BOLD}Total Master Mixes Tally:{NC} {BOLD}{WHITE}{total_master}{NC} tracks indexed")
             for st in stats:
@@ -357,16 +367,18 @@ def interactive_menu():
                     print(f"{YELLOW}No mixes found in {target_dir}.{NC}")
                     time.sleep(1.5)
                     continue
-                f_m3u = app_gen_dir / f"Mix_Archive_{slug}.m3u8"
+                f_m3u = app_gen_dir / f"Mix_Archive_{slug}.m3u"
+                f_m3u8 = app_gen_dir / f"Mix_Archive_{slug}.m3u8"
                 f_xspf = app_gen_dir / f"Mix_Archive_{slug}.xspf"
                 write_m3u(f_m3u, mixes)
+                write_m3u(f_m3u8, mixes)
                 write_xspf(f_xspf, f"Mix Archive - {slug}", mixes)
-                sync_playlists_to_targets([f_m3u, f_xspf], target_dirs)
-                print(f"\n{GREEN}✓ Generated {f_m3u.name} and {f_xspf.name} ({len(mixes)} tracks)!{NC}")
+                sync_playlists_to_targets([f_m3u, f_m3u8, f_xspf], target_dirs)
+                print(f"\n{GREEN}✓ Generated {f_m3u.name}, {f_m3u8.name} and {f_xspf.name} ({len(mixes)} tracks)!{NC}")
                 input("Press Enter to continue...")
 
         elif choice == '3':
-            print(f"\n{BOLD}{YELLOW}Generating Complete Master Archive Playlists...{NC}")
+            print(f"\n{BOLD}{YELLOW}Generating Complete Master Archive Playlists (.m3u, .m3u8, .xspf)...{NC}")
             all_mixes = []
             seen = set()
             for d in configured:
@@ -375,12 +387,14 @@ def interactive_menu():
                         seen.add(m["path"])
                         all_mixes.append(m)
             all_mixes.sort(key=lambda x: x["filename"].lower())
-            f_m3u = app_gen_dir / "Complete_Mix_Archive_Master_Mixes.m3u8"
+            f_m3u = app_gen_dir / "Complete_Mix_Archive_Master_Mixes.m3u"
+            f_m3u8 = app_gen_dir / "Complete_Mix_Archive_Master_Mixes.m3u8"
             f_xspf = app_gen_dir / "Complete_Mix_Archive_Master_Mixes.xspf"
             write_m3u(f_m3u, all_mixes)
+            write_m3u(f_m3u8, all_mixes)
             write_xspf(f_xspf, "Complete Mix Archive - All Storage Locations", all_mixes)
-            sync_playlists_to_targets([f_m3u, f_xspf], target_dirs)
-            print(f"\n{GREEN}✓ Generated Complete Master Archive Playlists ({len(all_mixes)} total mixes)!{NC}")
+            sync_playlists_to_targets([f_m3u, f_m3u8, f_xspf], target_dirs)
+            print(f"\n{GREEN}✓ Generated Complete Master Archive Playlists ({f_m3u.name}, {f_m3u8.name}, {f_xspf.name} - {len(all_mixes)} total mixes)!{NC}")
             input("Press Enter to continue...")
 
         elif choice == '4':

@@ -315,7 +315,9 @@ def create_playlist_wizard():
         elif cmd.lower() == 'save':
             if selected_paths:
                 write_m3u(p_file, selected_paths)
-                print(f"\n{GREEN}✓ Playlist successfully created with {len(selected_paths)} tracks:{NC} {p_file}")
+                alt_file = p_file.with_suffix('.m3u8') if p_file.suffix.lower() == '.m3u' else p_file.with_suffix('.m3u')
+                write_m3u(alt_file, selected_paths)
+                print(f"\n{GREEN}✓ Playlist successfully created with {len(selected_paths)} tracks (.m3u & .m3u8):{NC} {p_file.name}, {alt_file.name}")
                 input("Press Enter to continue...")
             return
         elif cmd.startswith('/'):
@@ -351,7 +353,10 @@ def edit_playlist_wizard(p_file):
             return
         elif cmd == 'save':
             write_m3u(p_file, tracks)
-            print(f"{GREEN}✓ Playlist updated.{NC}")
+            alt_file = p_file.with_suffix('.m3u8') if p_file.suffix.lower() == '.m3u' else p_file.with_suffix('.m3u')
+            if alt_file.is_file():
+                write_m3u(alt_file, tracks)
+            print(f"{GREEN}✓ Playlist updated (.m3u / .m3u8).{NC}")
             time.sleep(1)
             return
         elif cmd.startswith('r '):
