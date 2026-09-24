@@ -6768,7 +6768,7 @@ for d in dirs:
     echo -e "  Total WAV Master Mixes Across All Drives:  ${BOLD}${CYAN}${total_wavs_all}${NC}"
     echo -e "  Total MP3 Master Mixes Across All Drives:  ${BOLD}${YELLOW}${total_mp3s_all}${NC}"
     echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
-    echo -e "  Total Master Mixes:                          ${BOLD}${WHITE}${total_master_mixes}${NC}"
+    echo -e "  Total Mix Archive Master Mixes:              ${BOLD}${WHITE}${total_master_mixes}${NC}"
     echo -e "  Total Mix Archive Storage Folders Configured: ${BOLD}${GREEN}${total_folders_configured}${NC}"
     echo -e "  Total Space Consumed:                        ${BOLD}${CYAN}${total_consumed_gb} GB${NC}"
     echo -e "  Total Space Free:                            ${BOLD}${GREEN}${total_free_gb} GB${NC}"
