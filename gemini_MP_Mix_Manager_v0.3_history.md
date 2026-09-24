@@ -423,13 +423,36 @@ What began on September 13, 2026, as a collection of scattered shell utilities a
      - Synchronized standalone scripts to external drive `/run/media/mplanetarian/WD BLACK B/MIX_ARCHIVE/`.
      - Synchronized local mirror `/var/home/mplanetarian/Documents/BASH_SCRIPTS/`.
 
+#### Session 5: Multi-Cloud Backup Suite for iCloud, Dropbox & Google Drive (Option 9)
+- **Primary Request**:
+  - Add support for backing up Mix Archive Folders to Apple iCloud and Dropbox (expanding beyond existing Google Drive).
+  - Enable backup of ALL Mix Archive Folders across all drives or a Custom Selection (1 or more mixes) to a specified destination folder.
+- **Engineering Accomplished**:
+  1. **New Unified Multi-Cloud Backup Suite (`scripts/backup_mix_archive.sh` / `backup_mix_archive.sh`)**:
+     - Full cross-platform support across Linux (Bazzite/Fedora/Ubuntu), macOS (Bash 3.2+), and Windows.
+     - Dual transfer engine: native `rsync`/`cp` for local sync directories (native macOS iCloud Drive at `~/Library/Mobile Documents/com~apple~CloudDocs/MIX_ARCHIVE`, local Dropbox folder, or custom folders) and `rclone` for cloud remotes (`gdrive:`, `dropbox:`).
+     - Full Mix Archive multi-drive discovery across all configured storage locations.
+     - Interactive multi-mix picker supporting single mix numbers, comma-separated lists (`1, 4, 7`), ranges (`1-10`), and search keyword filters (`/137`, `f Trance`).
+     - Automatic discovery and sync of accompanying companion files: tracklists (`.txt`, `.html`, `.pdf`), cover art (`.png`, `.jpg`), and Spek spectrograms (`.png`).
+     - Real-time transfer progress, bandwidth limit throttling (`--bwlimit`), and session audit logs in `BACKUP_LOGS/`.
+  2. **Manager UI & Workflow Integration (`Mix_Archive_Manager.sh`)**:
+     - Modernized Option 9 from single Google Drive trigger to `Cloud & Remote Backup Suite (Google Drive, iCloud, Dropbox, Custom Folder)`.
+     - Added `--backup` and `--cloud-backup` CLI flags for automated background runs and crons.
+     - Upgraded background task inspector to monitor `backup_mix_archive.sh` and cloud transfers.
+     - Maintained backwards-compatible `backup_to_gdrive.sh` wrapper.
+  3. **Configuration & Documentation**:
+     - Added `ICLOUD_PATH`, `DROPBOX_PATH`, and `CLOUD_BACKUP_DEST` to `config.env` and `config.env.example`.
+     - Updated `README.md` file trees and operations directory.
+
 ---
 
 ## 📜 Complete Git Commit Ledger
 
 | Commit Hash | Timestamp (BST) | Author | Commit Subject / Scope |
 | :--- | :--- | :--- | :--- |
-| `[PENDING]` | 2026-09-24 23:10:00 | MPlanetarian | `feat: support multiple mix archive storage locations across manager suite (Option 13)` |
+| `[PENDING]` | 2026-09-24 23:25:00 | MPlanetarian | `feat: add iCloud, Dropbox & custom folder multi-cloud backup suite (Option 9)` |
+| `fd0d13a` | 2026-09-24 23:18:22 | MPlanetarian | `feat(ui): add Total WAV and Total MP3 tallies to Option 13 Option 7 disk space report` |
+| `66399bf` | 2026-09-24 23:09:22 | MPlanetarian | `feat: support multiple mix archive storage locations across manager suite (Option 13)` |
 | `7e44dbe` | 2026-09-24 03:51:07 | MPlanetarian | `fix(bin): convert KDE Connect launchers to relative symlinks` |
 | `c45e16c` | 2026-09-24 03:49:42 | MPlanetarian | `feat(v0.3.0): release MP_Mix_Manager_v0.3 with dedicated output directories, media routing, and condensed menus` |
 | `fc76922` | 2026-09-24 03:27:45 | MPlanetarian | `fix(youtube): display latest mixes first when generating YouTube videos` |

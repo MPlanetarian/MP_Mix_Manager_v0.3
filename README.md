@@ -209,7 +209,8 @@ MP_Mix_Manager_v0.3/
 ├── MOVE_NOT_CONVERTED_WAVS.sh   # Unconverted WAV retrieval engine
 ├── SOF_Live_Tracker.sh          # Live tracklist monitor (Strawberry / cliamp)
 ├── SOF_Archive_Stats.sh         # Archive statistics and duration accumulator
-├── backup_to_gdrive.sh          # Rclone Google Drive backup
+├── backup_mix_archive.sh        # Multi-cloud backup suite (Google Drive, iCloud, Dropbox, Custom)
+├── backup_to_gdrive.sh          # Google Drive backup wrapper
 ├── Verify_FLAC_Files.sh         # Multi-threaded FLAC bitstream corruption scanner
 ├── import_new_mixes.sh          # Automated SMB network mix ingest
 ├── import_new_mixes.py          # Network archive deduplicator
@@ -286,7 +287,8 @@ MP_Mix_Manager_v0.3/
 │   ├── MOVE_NOT_CONVERTED_WAVS.sh # Unconverted WAV retrieval engine
 │   ├── SOF_Live_Tracker.sh      # Live tracklist monitor (Strawberry / cliamp)
 │   ├── SOF_Archive_Stats.sh     # Archive statistics and duration accumulator
-│   ├── backup_to_gdrive.sh      # Rclone Google Drive backup
+│   ├── backup_mix_archive.sh    # Multi-cloud backup suite (Google Drive, iCloud, Dropbox, Custom)
+│   ├── backup_to_gdrive.sh      # Google Drive backup wrapper
 │   ├── Verify_FLAC_Files.sh     # Multi-threaded FLAC bitstream corruption scanner
 │   ├── import_new_mixes.sh      # Automated SMB network mix ingest
 │   ├── import_new_mixes.py      # Network archive deduplicator
@@ -351,7 +353,7 @@ MP_Mix_Manager_v0.3/
 | **7** | **Export / Copy Mixes to Specified Path** | Copies complete mix packages (FLAC + Covers + Tracklists TXT/HTML/PDF + Spek) or filtered assets to USB drives or external paths. |
 | **8** | **Manage Audio Integrity Checksums** | Generates and verifies SHA-256 integrity manifests (`checksums.sha256`) to ensure mixes are never corrupted or damaged (`manage_checksums.sh`). |
 | **9** | **Verify FLAC Files for Integrity** | Multi-threaded decode pass across CPU cores; isolates corrupt FLAC bitstreams to quarantine (`Verify_FLAC_Files.sh`). |
-| **10**| **Back up FLAC Outputs to Google Drive** | Automated `rclone` sync to cloud storage with bandwidth throttle and timestamped logging (`backup_to_gdrive.sh`). |
+| **10**| **Cloud & Remote Backup Suite** | Automated multi-cloud and storage backup engine supporting Google Drive, iCloud, Dropbox, and Specified Folders (`backup_mix_archive.sh`). Supports full archive or custom mix selections with companion assets. |
 | **11**| **Show Mix Storage Drive Space Remaining** | Displays detailed filesystem capacity, mount point, free space progress bar, and hosted audio file counts for **only the mix storage disk**. |
 | **12**| **Refresh Archive Status & File Counts** | Clears cache and performs a full recount of pending WAVs, converted WAVs, FLACs, and missing tracklists. |
 | **13**| **Configure Default Mix Archive Storage Folder** | Configures user's primary mix storage path override (defaults to `/run/media/$USER/WD BLACK B/MIX_ARCHIVE/` or root `MIX_ARCHIVE/`). Displays warning on boot if unconfigured. |

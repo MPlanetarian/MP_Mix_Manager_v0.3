@@ -1799,8 +1799,8 @@ view_tasks() {
         echo -e "  [${YELLOW}RUNNING${NC}] FLAC Verification Scan (Verify_FLAC_Files.sh)"
         ((tasks_found++))
     fi
-    if pgrep -f "backup_to_gdrive.sh" > /dev/null || pgrep -x "rclone" > /dev/null; then
-        echo -e "  [${YELLOW}RUNNING${NC}] Google Drive Backup / Active Rclone Transfer (backup_to_gdrive.sh / rclone)"
+    if pgrep -f "backup_to_gdrive.sh" > /dev/null || pgrep -f "backup_mix_archive.sh" > /dev/null || pgrep -x "rclone" > /dev/null; then
+        echo -e "  [${YELLOW}RUNNING${NC}] Cloud Backup / Active Transfer (backup_mix_archive.sh / rclone)"
         ((tasks_found++))
     fi
     if pgrep -f "import_new_mixes.sh" > /dev/null; then
@@ -8943,7 +8943,15 @@ elif [ "$1" = "--dsh-status" ] || { [ "$1" = "59" ] && [ "$2" = "status" ]; }; t
 elif [ "$1" = "--dsh-menu" ] || { [ "$1" = "59" ] && [ -z "$2" ]; }; then
     manage_dsh_mobile
     exit 0
+elif [ "$1" = "--backup" ] || [ "$1" = "--cloud-backup" ] || { [ "$1" = "9" ] && [ -z "${2:-}" ]; }; then
+    shift || true
+    run_sub_script "backup_mix_archive.sh" "$@"
+    exit 0
 fi
+
+manage_cloud_backup_suite() {
+    run_sub_script "backup_mix_archive.sh"
+}
 
 manage_integrity_and_verification() {
     while true; do
@@ -9536,7 +9544,7 @@ while true; do
     echo -e "  ${BOLD}${CYAN} 6)${NC} Find & Remove Duplicate Audio Files / Mixes (${GREEN}Exact Content & Episode Match${NC})"
     echo -e "  ${BOLD}${CYAN} 7)${NC} Export / Copy Mixes to Specified Path (${GREEN}Audio, Covers, Tracklists, Spek${NC})"
     echo -e "  ${BOLD}${CYAN} 8)${NC} Audio Integrity Checksums & FLAC Verification Suite (${GREEN}SHA-256 Manifest & Verification${NC})"
-    echo -e "  ${BOLD}${CYAN} 9)${NC} Back up FLAC Outputs to Google Drive (${GREEN}backup_to_gdrive.sh${NC})"
+    echo -e "  ${BOLD}${CYAN} 9)${NC} Cloud & Remote Backup Suite (${GREEN}Google Drive, iCloud, Dropbox, Custom Folder${NC})"
     echo -e "  ${BOLD}${CYAN}10)${NC} Storage Management & Multiple Mix Archives Setup (${GREEN}Drive Space, Rescan, Configure Archives${NC})"
     
     echo -e "\n  ${BOLD}${BLUE}─── [ SECTION 2: STUDIO AUDIO, PLAYBACK, METADATA & VIDEO ] ──${NC}"
@@ -9599,10 +9607,8 @@ while true; do
         8)
             manage_integrity_and_verification
             ;;
-        9)
-            echo -e "\n${BOLD}${YELLOW}Starting Google Drive Backup...${NC}\n"
-            run_sub_script "backup_to_gdrive.sh"
-            press_enter
+        9|backup|cloud-backup)
+            manage_cloud_backup_suite
             ;;
         10)
             manage_storage_and_archive_config
