@@ -97,22 +97,45 @@ def list_archive_mixes():
     mixes.sort(key=lambda x: x["filename"].lower())
     return mixes
 
+def get_generated_playlists_dir():
+    g_dir = get_base_dir() / "PLAYLISTS_GENERATED"
+    g_dir.mkdir(parents=True, exist_ok=True)
+    return g_dir
+
 def list_playlists():
     p_dir = get_playlists_dir()
+    g_dir = get_generated_playlists_dir()
     playlists = []
-    for f in sorted(p_dir.iterdir()):
-        if f.is_file() and f.suffix.lower() in ('.m3u', '.m3u8', '.xspf'):
-            playlists.append(f)
+    seen_names = set()
+    for d in (g_dir, p_dir):
+        if d.is_dir():
+            for f in sorted(d.iterdir()):
+                if f.is_file() and f.suffix.lower() in ('.m3u', '.m3u8', '.xspf'):
+                    if f.name not in seen_names:
+                        seen_names.add(f.name)
+                        playlists.append(f)
+    playlists.sort(key=lambda x: x.name.lower())
     return playlists
 
 def parse_m3u(file_path):
+    p = Path(file_path)
     tracks = []
     try:
-        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#"):
-                    tracks.append(line)
+        with open(p, "r", encoding="utf-8", errors="ignore") as f:
+            if p.suffix.lower() == '.xspf':
+                import urllib.parse
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("<location>") and line.endswith("</location>"):
+                        loc = line[10:-11]
+                        if loc.startswith("file://"):
+                            loc = urllib.parse.unquote(loc[7:])
+                        tracks.append(loc)
+            else:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#"):
+                        tracks.append(line)
     except Exception:
         pass
     return tracks
@@ -185,6 +208,7 @@ def interactive_ui():
             
         print(f"{BOLD}Playlist Operations:{NC}")
         print(f"  {BOLD}{CYAN} C){NC} Create New Custom Playlist (.m3u8)")
+        print(f"  {BOLD}{CYAN} G){NC} {BOLD}{GREEN}Generate Mix Archive Folder Playlists (from Configured Storage Folders){NC}")
         print(f"  {BOLD}{CYAN} L){NC} Launch a Playlist in Audio Player (cliamp, Strawberry, VLC, etc.)")
         print(f"  {BOLD}{CYAN} E){NC} Edit / Re-order Tracks in Existing Playlist")
         print(f"  {BOLD}{CYAN} D){NC} Delete a Playlist")
@@ -199,6 +223,15 @@ def interactive_ui():
             
         if cmd.lower() == 'c':
             create_playlist_wizard()
+        elif cmd.lower() == 'g':
+            gen_script = get_base_dir() / "scripts" / "generate_archive_folder_playlists.py"
+            if not gen_script.is_file():
+                gen_script = get_base_dir() / "generate_archive_folder_playlists.py"
+            if gen_script.is_file():
+                subprocess.run([sys.executable, str(gen_script)])
+            else:
+                print(f"{RED}Error: generate_archive_folder_playlists.py not found!{NC}")
+                time.sleep(1)
         elif cmd.lower() == 't' and sys.platform == "darwin":
             traktor_script = get_base_dir() / "generate_traktor_playlist_from_history.py"
             if traktor_script.is_file():
@@ -337,11 +370,18 @@ def edit_playlist_wizard(p_file):
 def main():
     parser = argparse.ArgumentParser(description="Custom Playlists Creator & Launcher")
     parser.add_argument("--list", action="store_true", help="List all playlists")
+    parser.add_argument("--generate-archive-playlists", action="store_true", help="Generate playlists for all configured mix archive folders")
     parser.add_argument("--launch", help="Playlist path or name to launch")
     parser.add_argument("--player", default="cliamp", help="Audio player to launch")
     args = parser.parse_args()
     
-    if args.list:
+    if args.generate_archive_playlists:
+        gen_script = get_base_dir() / "scripts" / "generate_archive_folder_playlists.py"
+        if not gen_script.is_file():
+            gen_script = get_base_dir() / "generate_archive_folder_playlists.py"
+        if gen_script.is_file():
+            subprocess.run([sys.executable, str(gen_script), "--all"])
+    elif args.list:
         for p in list_playlists():
             print(f"{p.name} ({len(parse_m3u(p))} tracks)")
     elif args.launch:

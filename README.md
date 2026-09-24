@@ -196,6 +196,8 @@ MP_Mix_Manager_v0.3/
 ├── sync_video_companion.sh      # Mix-video companion shell launcher
 ├── manage_playlists.py          # Custom playlist suite (.m3u8 / .xspf creator & launcher)
 ├── manage_playlists.sh          # Custom playlist shell launcher
+├── generate_archive_folder_playlists.py # Mix Archive folder playlist generator (PLAYLISTS_GENERATED)
+├── generate_archive_folder_playlists.sh # Folder playlist shell launcher
 ├── manage_motd.py               # Dynamic System MOTD generator (Recent 3 mixes & full file names)
 ├── update_system_motd.sh        # System MOTD update shell launcher
 ├── generate_spek.sh             # Dedicated CLI/GUI acoustic spectrogram suite (Spek, SoX, Praat, Sonic Visualiser)
@@ -270,6 +272,8 @@ MP_Mix_Manager_v0.3/
 │   ├── sync_video_companion.sh  # Video companion launcher
 │   ├── manage_playlists.py      # Custom playlist creator & dispatcher
 │   ├── manage_playlists.sh      # Playlist launcher
+│   ├── generate_archive_folder_playlists.py # Mix Archive folder playlist generator (.m3u8 / .xspf)
+│   ├── generate_archive_folder_playlists.sh # Shell launcher for folder playlist generator
 │   ├── manage_motd.py           # Dynamic system MOTD generator
 │   ├── update_system_motd.sh    # System MOTD launcher
 │   ├── Make_SOF_FLAC_CONVERSION.sh  # 32-bit FLAC conversion & spectrogram generation
@@ -381,7 +385,7 @@ MP_Mix_Manager_v0.3/
 | **27**| **Configure Default Audio Player & Startup Autoplay** | User preferences suite: choose default audio player (cliamp, Strawberry, VLC, foobar2000, Winamp, Apple Music, Haruna, Kodi, Audacity, custom), default video player (VLC, mpv, Haruna, Kodi), toggle startup mix autoplay, toggle startup YouTube autoplay (only when mix audio plays), configure live weather banner location, toggle auto-opening cover art, toggle auto-displaying tracklists in borderless console, and configure tracklist viewer preference (`TRACKLIST_VIEWER`). |
 | **28**| **cliamp Music Player & Track Control** | Built-in retro terminal player: now-playing path display, cross-platform clipboard copy, folder open, and playback controls. |
 | **29**| **View Playing Mix Audio Specifications & Stream Metadata** | Inspects currently playing mix (or selected archive mix) and displays deep technical audio stream specifications: Container/Format (`WAV`, `FLAC`), Bit Depth (`24-Bit`, `16-Bit`, `32-Bit`), Sampling Rate (`48,000 Hz / 48.0 kHz`), File Path, File Name, Duration, Size, Title, Artist, Codec, Bitrate, Compression Ratio, and Companion Assets (`inspect_playing_audio.sh`). |
-| **30**| **Custom Mix Playlists Suite (.m3u8 / .xspf)** | Comprehensive archive playlist manager (`manage_playlists.sh`): build custom playlists from archive mixes, search and add tracks, reorder, export `.m3u8` / `.xspf`, and dispatch to `cliamp`, `strawberry`, `vlc`, or `mpv`. |
+| **30**| **Custom Mix Playlists & Archive Folder Playlists Suite (.m3u8 / .xspf)** | Comprehensive archive playlist manager (`manage_playlists.sh` & `generate_archive_folder_playlists.py`): build custom playlists, generate Mix Archive Folder Playlists from all configured storage folders with automatic synchronization to `PLAYLISTS_GENERATED` (in application root and all archive storage folders), reorder, export `.m3u8` / `.xspf`, and dispatch to `cliamp`, `strawberry`, `vlc`, `mpv`, or `kodi`. |
 | **31**| **Launch Strawberry Music Player** | Opens Strawberry Music Player in a separate desktop window. |
 | **32**| **Launch VLC Media Player** | Launches VLC audio/video media player. |
 | **33**| **Generate Playlist from Traktor History (macOS Native)** / **Haruna (Linux)** | **macOS Native Spotlight Feature:** Scans Traktor Pro 3/4 history files, displays session tracklists in console, sorts tracks in Key Field Ascending order (1A–12B), injects playlist into Traktor root collection (`$ROOT`), and launches Traktor in full screen with Decks A, B, C, & D pre-loaded ready to mix! On Linux: launches Haruna (`org.kde.haruna`). |

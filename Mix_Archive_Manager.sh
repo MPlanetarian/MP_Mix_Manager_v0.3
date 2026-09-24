@@ -1027,6 +1027,26 @@ if [ -n "${MIX_ARCHIVE_DIR:-}" ] && [ -d "$MIX_ARCHIVE_DIR" ]; then
     export OUTPUT_DIR ARCHIVE_DIR MP3_OUTPUT_DIR WAV_OUTPUT_DIR MP4_OUTPUT_DIR
 fi
 
+# Ensure PLAYLISTS_GENERATED exists in application root and all configured mix archive folders
+ensure_playlists_generated_dirs() {
+    mkdir -p "$SCRIPT_DIR/PLAYLISTS_GENERATED" 2>/dev/null || true
+    local all_arch_dirs=()
+    while IFS= read -r adir; do
+        [ -n "$adir" ] && all_arch_dirs+=("$adir")
+    done < <(get_all_mix_archive_dirs 2>/dev/null)
+    for pdir in "${all_arch_dirs[@]}"; do
+        if [ -d "$pdir" ]; then
+            mkdir -p "$pdir/PLAYLISTS_GENERATED" 2>/dev/null || true
+            if [[ "$pdir" =~ (FLAC_CONVERTED_OUTPUTS|CONVERTED_WAV_FILES|MP3_CONVERTED_OUTPUTS)/?$ ]]; then
+                local pparent
+                pparent="$(dirname "$pdir")"
+                [ -d "$pparent" ] && mkdir -p "$pparent/PLAYLISTS_GENERATED" 2>/dev/null || true
+            fi
+        fi
+    done
+}
+ensure_playlists_generated_dirs
+
 # Default Audio Player and Startup Autoplay Preferences
 DEFAULT_AUDIO_PLAYER="${DEFAULT_AUDIO_PLAYER:-strawberry}"
 AUTO_PLAY_ON_STARTUP="${AUTO_PLAY_ON_STARTUP:-true}"
@@ -9203,30 +9223,49 @@ manage_tracklist_suite() {
     done
 }
 
+generate_archive_folder_playlists_menu() {
+    ensure_playlists_generated_dirs
+    local py_script="$SCRIPT_DIR/scripts/generate_archive_folder_playlists.py"
+    if [ ! -f "$py_script" ]; then
+        py_script="$SCRIPT_DIR/generate_archive_folder_playlists.py"
+    fi
+    if [ -f "$py_script" ]; then
+        python3 "$py_script"
+    else
+        echo -e "${RED}Error: generate_archive_folder_playlists.py not found!${NC}"
+        press_enter
+    fi
+}
+
 manage_playlists_and_history() {
     while true; do
         clear
-        echo -e "${BOLD}${MAGENTA}====================================================${NC}"
-        echo -e "${BOLD}${MAGENTA}      CUSTOM PLAYLISTS & TRAKTOR HISTORY SUITE      ${NC}"
-        echo -e "${BOLD}${MAGENTA}====================================================${NC}"
+        echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
+        echo -e "${BOLD}${MAGENTA}            CUSTOM PLAYLISTS & TRAKTOR HISTORY SUITE                  ${NC}"
+        echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
         echo ""
         echo -e "${BOLD}Select an operation:${NC}"
         echo -e "  ${BOLD}${CYAN}1)${NC} Custom Mix Playlists Suite (${GREEN}.m3u8 / .xspf - Create, Edit & Launch${NC})"
+        echo -e "  ${BOLD}${CYAN}2)${NC} Generate Mix Archive Folder Playlists (${GREEN}From Configured Storage Folders ➔ PLAYLISTS_GENERATED${NC})"
         local t_ver
-        t_ver="$(get_traktor_version_mac 2>/dev/null || echo "3")"
+        t_ver="$(get_traktor_version_mac 2>/dev/null | tr -d '\r\n')"
+        t_ver="${t_ver:-3}"
         if [ -n "$t_ver" ] && [ "$t_ver" != "3" ]; then
-            echo -e "  ${BOLD}${CYAN}2)${NC} Generate Playlist from History Files on Traktor 3 (${GREEN}v${t_ver} Key Sorted / Decks Ready${NC})"
+            echo -e "  ${BOLD}${CYAN}3)${NC} Generate Playlist from History Files on Traktor 3 (${GREEN}v${t_ver} Key Sorted / Decks Ready${NC})"
         else
-            echo -e "  ${BOLD}${CYAN}2)${NC} Generate Playlist from History Files on Traktor 3 (${GREEN}Key Sorted / Decks Ready${NC})"
+            echo -e "  ${BOLD}${CYAN}3)${NC} Generate Playlist from History Files on Traktor 3 (${GREEN}Key Sorted / Decks Ready${NC})"
         fi
         echo -e "  ${BOLD}${CYAN}0)${NC} Return to Main Menu"
         echo ""
-        read -r -p "Enter choice [0-2]: " ph_choice
+        read -r -p "Enter choice [0-3]: " ph_choice
         case "$ph_choice" in
             1)
                 manage_playlists_menu
                 ;;
             2)
+                generate_archive_folder_playlists_menu
+                ;;
+            3)
                 generate_traktor_playlist_from_history
                 ;;
             0|[qQ]|[eE][xX][iI][tT])
