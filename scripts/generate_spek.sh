@@ -20,6 +20,62 @@ DIM='\033[2m'
 NC='\033[0m'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PARENT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Source config.env if present
+for cfg in "$SCRIPT_DIR/config.env" "$PARENT_DIR/config.env" "$PWD/config.env" "${MIX_ARCHIVE_DIR:-}/config.env"; do
+    if [ -f "$cfg" ]; then
+        # shellcheck source=/dev/null
+        source "$cfg"
+        break
+    fi
+done
+
+# Discover all FLAC directories
+all_flac_dirs=()
+if [ -n "${MIX_ARCHIVE_DIR:-}" ] && [ -d "$MIX_ARCHIVE_DIR/FLAC_CONVERTED_OUTPUTS" ]; then
+    all_flac_dirs+=("$(cd "$MIX_ARCHIVE_DIR/FLAC_CONVERTED_OUTPUTS" && pwd)")
+elif [ -n "${MIX_ARCHIVE_DIR:-}" ] && [ -d "$MIX_ARCHIVE_DIR" ]; then
+    all_flac_dirs+=("$(cd "$MIX_ARCHIVE_DIR" && pwd)")
+elif [ -d "${OUTPUT_DIR:-FLAC_CONVERTED_OUTPUTS}" ]; then
+    all_flac_dirs+=("$(cd "${OUTPUT_DIR:-FLAC_CONVERTED_OUTPUTS}" && pwd)")
+fi
+
+if [ -n "${EXTRA_MIX_ARCHIVE_DIRS:-}" ]; then
+    IFS=':;,' read -ra EXTRA_DIRS <<< "$EXTRA_MIX_ARCHIVE_DIRS"
+    for ed in "${EXTRA_DIRS[@]}"; do
+        ed="$(echo "$ed" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+        [ -z "$ed" ] && continue
+        if [ -d "$ed/FLAC_CONVERTED_OUTPUTS" ]; then
+            cand="$(cd "$ed/FLAC_CONVERTED_OUTPUTS" && pwd)"
+            [[ ! " ${all_flac_dirs[*]} " =~ " ${cand} " ]] && all_flac_dirs+=("$cand")
+        elif [ -d "$ed" ]; then
+            cand="$(cd "$ed" && pwd)"
+            [[ ! " ${all_flac_dirs[*]} " =~ " ${cand} " ]] && all_flac_dirs+=("$cand")
+        fi
+    done
+fi
+[ ${#all_flac_dirs[@]} -eq 0 ] && [ -d "$PWD" ] && all_flac_dirs+=("$PWD")
+
+# Discover all WAV archive directories
+all_wav_dirs=()
+if [ -n "${MIX_ARCHIVE_DIR:-}" ] && [ -d "$MIX_ARCHIVE_DIR/CONVERTED_WAV_FILES" ]; then
+    all_wav_dirs+=("$(cd "$MIX_ARCHIVE_DIR/CONVERTED_WAV_FILES" && pwd)")
+elif [ -d "${ARCHIVE_DIR:-CONVERTED_WAV_FILES}" ]; then
+    all_wav_dirs+=("$(cd "${ARCHIVE_DIR:-CONVERTED_WAV_FILES}" && pwd)")
+fi
+
+if [ -n "${EXTRA_MIX_ARCHIVE_DIRS:-}" ]; then
+    IFS=':;,' read -ra EXTRA_DIRS <<< "$EXTRA_MIX_ARCHIVE_DIRS"
+    for ed in "${EXTRA_DIRS[@]}"; do
+        ed="$(echo "$ed" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+        [ -z "$ed" ] && continue
+        if [ -d "$ed/CONVERTED_WAV_FILES" ]; then
+            cand="$(cd "$ed/CONVERTED_WAV_FILES" && pwd)"
+            [[ ! " ${all_wav_dirs[*]} " =~ " ${cand} " ]] && all_wav_dirs+=("$cand")
+        fi
+    done
+fi
 
 # OS Platform Detection
 OS_TYPE="linux"
@@ -610,12 +666,14 @@ fi
 # Mode 3: Process All Archives
 if [ "$PROCESS_ALL" -eq 1 ]; then
     shopt -s nullglob nocaseglob
-    targets=(
-        "FLAC_CONVERTED_OUTPUTS"/*.flac
-        "CONVERTED_WAV_FILES"/*.wav
-        "$PWD"/*.wav
-        "$PWD"/*.flac
-    )
+    targets=()
+    for fd in "${all_flac_dirs[@]}"; do
+        [ -d "$fd" ] && targets+=("$fd"/*.flac)
+    done
+    for wd in "${all_wav_dirs[@]}"; do
+        [ -d "$wd" ] && targets+=("$wd"/*.wav)
+    done
+    targets+=("$PWD"/*.wav "$PWD"/*.flac)
     shopt -u nullglob nocaseglob
 
     if [ ${#targets[@]} -eq 0 ]; then
@@ -623,7 +681,7 @@ if [ "$PROCESS_ALL" -eq 1 ]; then
         exit 0
     fi
 
-    echo -e "${CYAN}Found ${#targets[@]} candidate audio file(s) in archives. Generating spectrograms...${NC}\n"
+    echo -e "${CYAN}Found ${#targets[@]} candidate audio file(s) across archives. Generating spectrograms...${NC}\n"
     success_count=0
     for f in "${targets[@]}"; do
         if generate_single_spek "$f" "$OUTPUT_DIR" 0; then
@@ -640,9 +698,9 @@ echo -e "${BOLD}Select a Spectrogram Generation Mode:${NC}"
 echo -e "  ${BOLD}${CYAN} 1)${NC} ${BOLD}${GREEN}Generate Spectrogram using Spek for WAV/MP3/FLAC (Single File)${NC}"
 echo -e "  ${BOLD}${CYAN} 2)${NC} ${BOLD}${GREEN}Generate Speks for Multiple WAV/MP3/FLAC Files (Scan Directory Path)${NC}"
 echo -e "  ${BOLD}${BLUE}──────────────────────────────────────────────────────────────────${NC}"
-echo -e "  ${BOLD}${CYAN} 3)${NC} Generate Spek for Single Mix from Archive (Search or Select & Auto-Open)"
-echo -e "  ${BOLD}${CYAN} 4)${NC} Batch Generate Speks for all FLACs in ${BOLD}FLAC_CONVERTED_OUTPUTS/${NC}"
-echo -e "  ${BOLD}${CYAN} 5)${NC} Batch Generate Speks for all WAVs in ${BOLD}CONVERTED_WAV_FILES/${NC}"
+echo -e "  ${BOLD}${CYAN} 3)${NC} Generate Spek for Single Mix from Archive (Search or Select across all Archives)"
+echo -e "  ${BOLD}${CYAN} 4)${NC} Batch Generate Speks for all FLACs across all Configured Archives"
+echo -e "  ${BOLD}${CYAN} 5)${NC} Batch Generate Speks for all WAVs across all Configured Archives"
 echo -e "  ${BOLD}${CYAN} 6)${NC} Batch Generate Speks for WAV/FLAC files in Current Directory ($PWD)"
 echo -e "  ${BOLD}${CYAN} 7)${NC} Launch Native Spek GUI Application (macOS / Windows / Linux / FreeBSD)"
 echo -e "  ${BOLD}${CYAN} 8)${NC} Open Spectrograms Output Folder (${BOLD}${OUTPUT_DIR}/${NC})"
@@ -686,12 +744,14 @@ case "$choice" in
         ;;
     3)
         shopt -s nullglob nocaseglob
-        audio_list=(
-            "FLAC_CONVERTED_OUTPUTS"/*.flac
-            "CONVERTED_WAV_FILES"/*.wav
-            "$PWD"/*.wav
-            "$PWD"/*.flac
-        )
+        audio_list=()
+        for fd in "${all_flac_dirs[@]}"; do
+            [ -d "$fd" ] && audio_list+=("$fd"/*.flac)
+        done
+        for wd in "${all_wav_dirs[@]}"; do
+            [ -d "$wd" ] && audio_list+=("$wd"/*.wav)
+        done
+        audio_list+=("$PWD"/*.wav "$PWD"/*.flac)
         shopt -u nullglob nocaseglob
 
         if [ ${#audio_list[@]} -eq 0 ]; then
@@ -752,12 +812,16 @@ case "$choice" in
         fi
         ;;
     4)
-        echo ""
-        "$0" -d "FLAC_CONVERTED_OUTPUTS" -o "$OUTPUT_DIR"
+        echo -e "\n${BOLD}${CYAN}Batch generating spectrograms across ${#all_flac_dirs[@]} FLAC archive location(s)...${NC}\n"
+        for fd in "${all_flac_dirs[@]}"; do
+            [ -d "$fd" ] && "$0" -d "$fd" -o "$OUTPUT_DIR"
+        done
         ;;
     5)
-        echo ""
-        "$0" -d "CONVERTED_WAV_FILES" -o "$OUTPUT_DIR"
+        echo -e "\n${BOLD}${CYAN}Batch generating spectrograms across ${#all_wav_dirs[@]} WAV archive location(s)...${NC}\n"
+        for wd in "${all_wav_dirs[@]}"; do
+            [ -d "$wd" ] && "$0" -d "$wd" -o "$OUTPUT_DIR"
+        done
         ;;
     6)
         echo ""
@@ -775,7 +839,7 @@ case "$choice" in
         echo ""
         read -r -p "Enter path to audio mix (or press Enter to select recent): " sfile
         if [ -z "$sfile" ]; then
-            sfile="$(find FLAC_CONVERTED_OUTPUTS CONVERTED_WAV_FILES -name "*.flac" -o -name "*.wav" 2>/dev/null | head -n 1 || true)"
+            sfile="$(find "${all_flac_dirs[@]}" "${all_wav_dirs[@]}" -name "*.flac" -o -name "*.wav" 2>/dev/null | head -n 1 || true)"
         fi
         launch_sonic_visualiser "$sfile" || true
         ;;
@@ -783,7 +847,7 @@ case "$choice" in
         echo ""
         read -r -p "Enter path to audio mix (or press Enter for newest): " sxfile
         if [ -z "$sxfile" ]; then
-            sxfile="$(find FLAC_CONVERTED_OUTPUTS CONVERTED_WAV_FILES -name "*.flac" -o -name "*.wav" 2>/dev/null | head -n 1 || true)"
+            sxfile="$(find "${all_flac_dirs[@]}" "${all_wav_dirs[@]}" -name "*.flac" -o -name "*.wav" 2>/dev/null | head -n 1 || true)"
         fi
         echo "Select colormap: 1) Magma/Fire  2) Viridis  3) Rainbow  4) Monochrome"
         read -r -p "Choice [1-4, default 1]: " cmap_choice
@@ -797,7 +861,7 @@ case "$choice" in
         echo ""
         read -r -p "Enter path to audio mix (or press Enter for newest): " prfile
         if [ -z "$prfile" ]; then
-            prfile="$(find FLAC_CONVERTED_OUTPUTS CONVERTED_WAV_FILES -name "*.flac" -o -name "*.wav" 2>/dev/null | head -n 1 || true)"
+            prfile="$(find "${all_flac_dirs[@]}" "${all_wav_dirs[@]}" -name "*.flac" -o -name "*.wav" 2>/dev/null | head -n 1 || true)"
         fi
         launch_praat_or_kwave "$prfile" || true
         ;;

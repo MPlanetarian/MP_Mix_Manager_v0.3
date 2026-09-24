@@ -389,10 +389,54 @@ What began on September 13, 2026, as a collection of scattered shell utilities a
 
 ---
 
+### Phase 4: Multi-Archive Storage Locations & Cross-Workstation Modernization (2026-09-24)
+
+#### Session 4: Support for Multiple Mix Archive Storage Locations (Option 13)
+- **Primary Request**:
+  - Update Mix Archive Manager to support multiple Mix Archive Folder Storage Locations.
+  - Secondary archive storage configured at: `/run/media/mplanetarian/DATA/MIX_ARCHIVE2/FLAC_CONVERTED_OUTPUTS/`.
+  - Allow user configuration of multiple mix archive storage locations under Option 13 (alongside the Main Mix Archive Folder).
+  - Update all other scripts across the manager suite to discover, aggregate, inspect, and process mixes across all configured locations.
+  - Commit all changes to Git and update remote Mac workstation (`192.168.1.138`).
+- **Engineering Accomplished**:
+  1. **Configurable Multi-Storage Architecture (`config.env` & `config.env.example`)**:
+     - Introduced `EXTRA_MIX_ARCHIVE_DIRS` array supporting arbitrary secondary, tertiary, and external drive mountpoints.
+  2. **Option 13 Enhanced Interactive Configuration (`Mix_Archive_Manager.sh`)**:
+     - Submenu to view active archives, add new storage directories (with interactive tab-completion and path validation), remove extra storage locations, and test storage paths with live mix counts and available disk space.
+     - Added core helper functions `get_all_mix_archive_dirs()` and `get_all_flac_output_dirs()` ensuring universal multi-archive discovery.
+  3. **Suite-Wide Multi-Storage Script Integration**:
+     - `SOF_Archive_Stats.sh`: Scans and aggregates mix metrics across all active storage locations with per-drive breakdown and grand total (301 mixes: 33 on WD Black + 268 on DATA).
+     - `generate_master_tracklist.py` & `Generate_Master_Tracklist.sh`: Multi-directory scanning, deduplication, HTML report generation.
+     - `Check_Find_Tracklists.sh`: Identifies missing tracklists across all storage locations.
+     - `Verify_FLAC_Files.sh`: Tests audio integrity and FLAC stream verification across all directories.
+     - `MOVE_NOT_CONVERTED_WAVS.sh`: Discovers and archives uncompressed WAVs across all paths.
+     - `Make_SOF_FLAC_CONVERSION.sh`: Converts and routes audio to active storage targets.
+     - `convert_audio_format.sh`: Multi-archive source input resolution.
+     - `generate_spek.sh`: Multi-storage spectrogram batch and single analysis.
+     - `manage_checksums.sh`: Verifies and generates checksums across all archive directories.
+     - `Split_FLAC_File.sh` & `Split_Video_File.sh`: Resolves source audio and video across multi-archive locations.
+     - `generate_youtube_video.sh`: Discovers audio and tracklists across all configured storage roots.
+     - `manage_playlists.py`: Scans and populates playlists from all archive locations.
+     - `schedule_mix_playback.py`, `publish_calendar_scheduler.py`, `manage_motd.py`, `search_and_import_mixes.py`, `inspect_playing_audio.py`, `generate_tracklist_docs.py`: Multi-archive discovery and metadata resolution.
+  4. **Dual-Mirroring & Platform Synchronization**:
+     - Synchronized 1:1 between root scripts and `scripts/` mirror in `/var/home/mplanetarian/MP_Mix_Manager_v0.3/`.
+     - Synchronized standalone scripts to external drive `/run/media/mplanetarian/WD BLACK B/MIX_ARCHIVE/`.
+     - Synchronized local mirror `/var/home/mplanetarian/Documents/BASH_SCRIPTS/`.
+
+---
+
 ## 📜 Complete Git Commit Ledger
 
 | Commit Hash | Timestamp (BST) | Author | Commit Subject / Scope |
 | :--- | :--- | :--- | :--- |
+| `[PENDING]` | 2026-09-24 23:10:00 | MPlanetarian | `feat: support multiple mix archive storage locations across manager suite (Option 13)` |
+| `7e44dbe` | 2026-09-24 03:51:07 | MPlanetarian | `fix(bin): convert KDE Connect launchers to relative symlinks` |
+| `c45e16c` | 2026-09-24 03:49:42 | MPlanetarian | `feat(v0.3.0): release MP_Mix_Manager_v0.3 with dedicated output directories, media routing, and condensed menus` |
+| `fc76922` | 2026-09-24 03:27:45 | MPlanetarian | `fix(youtube): display latest mixes first when generating YouTube videos` |
+| `54c3b9b` | 2026-09-24 03:24:28 | MPlanetarian | `refactor(ui): condense main menu into 3 sections and 30 options` |
+| `6b5c071` | 2026-09-24 03:19:42 | MPlanetarian | `style(ui): remove leading space before system maintenance option text` |
+| `7af3cfc` | 2026-09-24 03:17:35 | MPlanetarian | `feat: add MP4-to-MP4 looping video generator and fix macOS Bash 3.2 compatibility` |
+| `f14e70e` | 2026-09-23 23:44:07 | MPlanetarian | `feat(maintenance): add universal multi-OS update support and open System Update windows on Windows and macOS` |
 | `9e651df` | 2026-09-17 19:48:15 | MPlanetarian | `feat: add DeepSeek Harness (dsh-mobile) and Ollama server management to manager` |
 | `383c9f0` | 2026-09-17 01:06:17 | MPlanetarian | `feat: add Beszel monitoring hub and agent management to manager (Option 57)` |
 | `ac76fb9` | 2026-09-17 00:58:49 | MPlanetarian | `feat: add FLAC audio and YouTube MP4 video splitting utilities with manager menu integration` |
@@ -409,7 +453,7 @@ What began on September 13, 2026, as a collection of scattered shell utilities a
 | `b3e729b` | 2026-09-14 02:15:03 | MPlanetarian | `fix(launchers): resolve symlinks accurately across ~/.local/bin and manager wrappers` |
 | `522bac5` | 2026-09-14 01:45:49 | MPlanetarian | `feat(v0.2): release v0.2 with publishing calendar, studio diagnostics, PPM art, audio control & 69 operations` |
 | `9e45702` | 2026-09-14 01:33:45 | MPlanetarian | `Add installation path migration, config backup/export/import suite, and universal mix search & importer for local drives and SMB` |
-| `0be50ef` | 2026-09-14 01:18:24 | MPlanetarian | `Add promotional & publisher outreach email system for podcast enquiries, club promoters, radio & labels` |
+| `0be50ef` | 2026-09-14 01:18:24 | MPlanetarian | `Add promotional & outreach email system for podcast enquiries, club promoters, radio & labels` |
 | `2cea384` | 2026-09-14 01:13:53 | MPlanetarian | `Add Logic Pro, Traktor, Winamp, Foobar2000, GarageBand & FL Studio support, Open WAV in DAW, Spek generator, and FreeBSD platform support` |
 | `47b687b` | 2026-09-14 01:05:45 | MPlanetarian | `Add YouTube 4K & 720p video generation, default audio player configuration, and startup mix autoplay with cover & tracklist display` |
 | `4b3ac96` | 2026-09-14 01:01:15 | MPlanetarian | `Add audio converter, tracklist HTML/PDF docs, duplicate cleaner, checksums, cover compressor, and 56-operation categorized menu` |
@@ -428,3 +472,4 @@ What began on September 13, 2026, as a collection of scattered shell utilities a
    Modern web interfaces like DeepSeek Harness enforce strict loopback security boundaries. Utilizing native Linux socket forwarders (`socat`) managed via user-level systemd units provides a zero-downtime, fully transparent bridge that preserves upstream software integrity while enabling mobile LAN accessibility.
 3. **Decoupled Architecture & Dual Mirroring**:
    The master repository [`MP_Mix_Manager_v0.3`](file:///home/mplanetarian/MP_Mix_Manager_v0.3/) maintains dual-mirror synchronicity with [`/var/home/mplanetarian/Documents/BASH_SCRIPTS/`](file:///var/home/mplanetarian/Documents/BASH_SCRIPTS/), guaranteeing full redundancy across local user documents and standard Git version control.
+

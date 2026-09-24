@@ -124,6 +124,19 @@ def get_existing_archive_keys(dest_dir):
         os.path.join(dest_dir, "FLAC_CONVERTED_OUTPUTS"),
         "/run/media/mplanetarian/VROC/M_PRODUCTION/STREAM_OF_FREQUENCY/CONVERTED_WAV_FILES_MOVED"
     ]
+    env_vars = load_config()
+    extra_env = os.environ.get("EXTRA_MIX_ARCHIVE_DIRS") or env_vars.get("EXTRA_MIX_ARCHIVE_DIRS")
+    if extra_env:
+        for sep in [':', ';', ',']:
+            if sep in extra_env:
+                extras = [x.strip() for x in extra_env.split(sep) if x.strip()]
+                break
+        else:
+            extras = [extra_env.strip()] if extra_env.strip() else []
+        for ed in extras:
+            subdirs_to_check.append(ed)
+            subdirs_to_check.append(os.path.join(ed, "FLAC_CONVERTED_OUTPUTS"))
+            subdirs_to_check.append(os.path.join(ed, "CONVERTED_WAV_FILES"))
     
     for sdir in subdirs_to_check:
         if not os.path.isdir(sdir):

@@ -42,18 +42,43 @@ def get_base_dir():
 def find_recent_mixes(limit=3):
     """Discover the last N created/converted mixes across archive directories."""
     base_dir = get_base_dir()
-    scan_paths = [
-        base_dir / "FLAC_CONVERTED_OUTPUTS",
-        Path("/run/media/mplanetarian/WD BLACK B/MIX_ARCHIVE/FLAC_CONVERTED_OUTPUTS"),
-        base_dir / "CONVERTED_WAV_FILES",
-        Path("/run/media/mplanetarian/WD BLACK B/MIX_ARCHIVE/CONVERTED_WAV_FILES"),
-        base_dir
-    ]
+    scan_paths = []
     mix_archive_env = os.environ.get("MIX_ARCHIVE_DIR")
     if mix_archive_env:
         p = Path(mix_archive_env)
-        scan_paths.insert(0, p / "FLAC_CONVERTED_OUTPUTS")
-        scan_paths.insert(2, p / "CONVERTED_WAV_FILES")
+        scan_paths.extend([p / "FLAC_CONVERTED_OUTPUTS", p / "CONVERTED_WAV_FILES", p])
+    scan_paths.extend([
+        base_dir / "FLAC_CONVERTED_OUTPUTS",
+        base_dir / "CONVERTED_WAV_FILES",
+        base_dir / "MIX_ARCHIVE" / "FLAC_CONVERTED_OUTPUTS",
+        base_dir / "MIX_ARCHIVE" / "CONVERTED_WAV_FILES",
+        base_dir / "MIX_ARCHIVE",
+        base_dir
+    ])
+    extra_env = os.environ.get("EXTRA_MIX_ARCHIVE_DIRS")
+    if not extra_env:
+        cfg = base_dir / "config.env"
+        if cfg.is_file():
+            try:
+                with open(cfg, "r", encoding="utf-8", errors="ignore") as f:
+                    for line in f:
+                        if line.startswith("EXTRA_MIX_ARCHIVE_DIRS="):
+                            extra_env = line.split("=", 1)[1].strip().strip('"').strip("'")
+            except Exception:
+                pass
+    if extra_env:
+        for sep in [':', ';', ',']:
+            if sep in extra_env:
+                extras = [x.strip() for x in extra_env.split(sep) if x.strip()]
+                break
+        else:
+            extras = [extra_env.strip()] if extra_env.strip() else []
+        for ed in extras:
+            p = Path(ed)
+            if (p / "FLAC_CONVERTED_OUTPUTS").is_dir():
+                scan_paths.insert(0, p / "FLAC_CONVERTED_OUTPUTS")
+            if p.is_dir():
+                scan_paths.insert(1, p)
     
     seen_bases = set()
     mix_candidates = []

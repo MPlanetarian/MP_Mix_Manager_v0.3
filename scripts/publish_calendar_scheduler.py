@@ -202,6 +202,30 @@ def list_archive_mixes():
         base_dir / "FLAC_CONVERTED_OUTPUTS",
         base_dir / "CONVERTED_WAV_FILES"
     ]
+    extra_env = os.environ.get("EXTRA_MIX_ARCHIVE_DIRS")
+    if not extra_env:
+        cfg = base_dir / "config.env"
+        if cfg.is_file():
+            try:
+                with open(cfg, "r", encoding="utf-8", errors="ignore") as f:
+                    for line in f:
+                        if line.startswith("EXTRA_MIX_ARCHIVE_DIRS="):
+                            extra_env = line.split("=", 1)[1].strip().strip('"').strip("'")
+            except Exception:
+                pass
+    if extra_env:
+        for sep in [':', ';', ',']:
+            if sep in extra_env:
+                extras = [x.strip() for x in extra_env.split(sep) if x.strip()]
+                break
+        else:
+            extras = [extra_env.strip()] if extra_env.strip() else []
+        for ed in extras:
+            p = Path(ed)
+            if (p / "FLAC_CONVERTED_OUTPUTS").is_dir():
+                archive_paths.append(p / "FLAC_CONVERTED_OUTPUTS")
+            if p.is_dir():
+                archive_paths.append(p)
     mixes = []
     seen = set()
     for p in archive_paths:

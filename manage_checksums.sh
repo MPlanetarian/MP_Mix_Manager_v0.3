@@ -17,6 +17,61 @@ NC='\033[0m'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PARENT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Source config.env if present
+for cfg in "$SCRIPT_DIR/config.env" "$PARENT_DIR/config.env" "$PWD/config.env" "${MIX_ARCHIVE_DIR:-}/config.env"; do
+    if [ -f "$cfg" ]; then
+        # shellcheck source=/dev/null
+        source "$cfg"
+        break
+    fi
+done
+
+# Discover all FLAC directories
+all_flac_dirs=()
+if [ -n "${MIX_ARCHIVE_DIR:-}" ] && [ -d "$MIX_ARCHIVE_DIR/FLAC_CONVERTED_OUTPUTS" ]; then
+    all_flac_dirs+=("$(cd "$MIX_ARCHIVE_DIR/FLAC_CONVERTED_OUTPUTS" && pwd)")
+elif [ -n "${MIX_ARCHIVE_DIR:-}" ] && [ -d "$MIX_ARCHIVE_DIR" ]; then
+    all_flac_dirs+=("$(cd "$MIX_ARCHIVE_DIR" && pwd)")
+elif [ -d "${OUTPUT_DIR:-FLAC_CONVERTED_OUTPUTS}" ]; then
+    all_flac_dirs+=("$(cd "${OUTPUT_DIR:-FLAC_CONVERTED_OUTPUTS}" && pwd)")
+fi
+
+if [ -n "${EXTRA_MIX_ARCHIVE_DIRS:-}" ]; then
+    IFS=':;,' read -ra EXTRA_DIRS <<< "$EXTRA_MIX_ARCHIVE_DIRS"
+    for ed in "${EXTRA_DIRS[@]}"; do
+        ed="$(echo "$ed" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+        [ -z "$ed" ] && continue
+        if [ -d "$ed/FLAC_CONVERTED_OUTPUTS" ]; then
+            cand="$(cd "$ed/FLAC_CONVERTED_OUTPUTS" && pwd)"
+            [[ ! " ${all_flac_dirs[*]} " =~ " ${cand} " ]] && all_flac_dirs+=("$cand")
+        elif [ -d "$ed" ]; then
+            cand="$(cd "$ed" && pwd)"
+            [[ ! " ${all_flac_dirs[*]} " =~ " ${cand} " ]] && all_flac_dirs+=("$cand")
+        fi
+    done
+fi
+[ ${#all_flac_dirs[@]} -eq 0 ] && [ -d "$PWD" ] && all_flac_dirs+=("$PWD")
+
+# Discover all WAV archive directories
+all_wav_dirs=()
+if [ -n "${MIX_ARCHIVE_DIR:-}" ] && [ -d "$MIX_ARCHIVE_DIR/CONVERTED_WAV_FILES" ]; then
+    all_wav_dirs+=("$(cd "$MIX_ARCHIVE_DIR/CONVERTED_WAV_FILES" && pwd)")
+elif [ -d "${ARCHIVE_DIR:-CONVERTED_WAV_FILES}" ]; then
+    all_wav_dirs+=("$(cd "${ARCHIVE_DIR:-CONVERTED_WAV_FILES}" && pwd)")
+fi
+
+if [ -n "${EXTRA_MIX_ARCHIVE_DIRS:-}" ]; then
+    IFS=':;,' read -ra EXTRA_DIRS <<< "$EXTRA_MIX_ARCHIVE_DIRS"
+    for ed in "${EXTRA_DIRS[@]}"; do
+        ed="$(echo "$ed" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+        [ -z "$ed" ] && continue
+        if [ -d "$ed/CONVERTED_WAV_FILES" ]; then
+            cand="$(cd "$ed/CONVERTED_WAV_FILES" && pwd)"
+            [[ ! " ${all_wav_dirs[*]} " =~ " ${cand} " ]] && all_wav_dirs+=("$cand")
+        fi
+    done
+fi
+
 # Resolve compute command
 compute_sha256() {
     local target="$1"
@@ -194,14 +249,16 @@ read -r -p "Enter choice [1-7]: " c_choice
 
 case "$c_choice" in
     1)
-        target="FLAC_CONVERTED_OUTPUTS"
-        [ ! -d "$target" ] && [ -d "/run/media/$USER/WD BLACK B/MIX_ARCHIVE/FLAC_CONVERTED_OUTPUTS" ] && target="/run/media/$USER/WD BLACK B/MIX_ARCHIVE/FLAC_CONVERTED_OUTPUTS"
-        generate_checksums_for_dir "$target" "checksums.sha256"
+        echo -e "\n${BOLD}${CYAN}Generating SHA-256 manifests across ${#all_flac_dirs[@]} FLAC archive location(s)...${NC}\n"
+        for fd in "${all_flac_dirs[@]}"; do
+            [ -d "$fd" ] && generate_checksums_for_dir "$fd" "checksums.sha256"
+        done
         ;;
     2)
-        target="CONVERTED_WAV_FILES"
-        [ ! -d "$target" ] && [ -d "/run/media/$USER/WD BLACK B/MIX_ARCHIVE/CONVERTED_WAV_FILES" ] && target="/run/media/$USER/WD BLACK B/MIX_ARCHIVE/CONVERTED_WAV_FILES"
-        generate_checksums_for_dir "$target" "checksums.sha256"
+        echo -e "\n${BOLD}${CYAN}Generating SHA-256 manifests across ${#all_wav_dirs[@]} WAV archive location(s)...${NC}\n"
+        for wd in "${all_wav_dirs[@]}"; do
+            [ -d "$wd" ] && generate_checksums_for_dir "$wd" "checksums.sha256"
+        done
         ;;
     3)
         generate_checksums_for_dir "." "checksums.sha256"
@@ -221,14 +278,16 @@ case "$c_choice" in
         fi
         ;;
     5)
-        target="FLAC_CONVERTED_OUTPUTS"
-        [ ! -d "$target" ] && [ -d "/run/media/$USER/WD BLACK B/MIX_ARCHIVE/FLAC_CONVERTED_OUTPUTS" ] && target="/run/media/$USER/WD BLACK B/MIX_ARCHIVE/FLAC_CONVERTED_OUTPUTS"
-        verify_checksums_in_dir "$target" "checksums.sha256"
+        echo -e "\n${BOLD}${CYAN}Verifying FLAC integrity across ${#all_flac_dirs[@]} FLAC archive location(s)...${NC}\n"
+        for fd in "${all_flac_dirs[@]}"; do
+            [ -d "$fd" ] && verify_checksums_in_dir "$fd" "checksums.sha256"
+        done
         ;;
     6)
-        target="CONVERTED_WAV_FILES"
-        [ ! -d "$target" ] && [ -d "/run/media/$USER/WD BLACK B/MIX_ARCHIVE/CONVERTED_WAV_FILES" ] && target="/run/media/$USER/WD BLACK B/MIX_ARCHIVE/CONVERTED_WAV_FILES"
-        verify_checksums_in_dir "$target" "checksums.sha256"
+        echo -e "\n${BOLD}${CYAN}Verifying WAV integrity across ${#all_wav_dirs[@]} WAV archive location(s)...${NC}\n"
+        for wd in "${all_wav_dirs[@]}"; do
+            [ -d "$wd" ] && verify_checksums_in_dir "$wd" "checksums.sha256"
+        done
         ;;
     7)
         read -r -e -p "Enter directory containing checksums.sha256 (or path to manifest): " cust_m

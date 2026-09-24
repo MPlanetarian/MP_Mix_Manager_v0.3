@@ -504,6 +504,16 @@ find_mix_tracklist() {
         "$PWD"
         "${MIX_ARCHIVE_DIR:-$PWD}/TEMP"
     )
+    if command -v get_all_flac_output_dirs >/dev/null 2>&1; then
+        while IFS= read -r f_dir; do
+            [ -n "$f_dir" ] && candidate_dirs+=("$f_dir")
+        done < <(get_all_flac_output_dirs)
+    fi
+    if command -v get_all_mix_archive_dirs >/dev/null 2>&1; then
+        while IFS= read -r a_dir; do
+            [ -n "$a_dir" ] && candidate_dirs+=("$a_dir")
+        done < <(get_all_mix_archive_dirs)
+    fi
 
     # 1. Exact stem match: <dir>/<mix_stem>.txt or <mix_file_without_ext>.txt
     if [ -f "${mix_file%.*}.txt" ]; then
@@ -643,6 +653,11 @@ find_mix_cover() {
         "$SCRIPT_DIR/COVERS"
         "$SCRIPT_DIR"
     )
+    if command -v get_all_mix_archive_dirs >/dev/null 2>&1; then
+        while IFS= read -r a_dir; do
+            [ -n "$a_dir" ] && candidate_dirs+=("$a_dir" "$a_dir/COVERS")
+        done < <(get_all_mix_archive_dirs)
+    fi
 
     # 1. Exact match with same stem
     for d in "${candidate_dirs[@]}"; do
@@ -823,13 +838,148 @@ ARCHIVE_DIR="${ARCHIVE_DIR:-CONVERTED_WAV_FILES}"
 MP3_OUTPUT_DIR="${MP3_OUTPUT_DIR:-MP3_CONVERTED_OUTPUTS}"
 WAV_OUTPUT_DIR="${WAV_OUTPUT_DIR:-WAV_CONVERTED_OUTPUTS}"
 MP4_OUTPUT_DIR="${MP4_OUTPUT_DIR:-MP4_CONVERTED_OUTPUTS}"
-export OUTPUT_DIR ARCHIVE_DIR MP3_OUTPUT_DIR WAV_OUTPUT_DIR MP4_OUTPUT_DIR
+EXTRA_MIX_ARCHIVE_DIRS="${EXTRA_MIX_ARCHIVE_DIRS:-${MIX_ARCHIVE_DIRS:-}}"
+export OUTPUT_DIR ARCHIVE_DIR MP3_OUTPUT_DIR WAV_OUTPUT_DIR MP4_OUTPUT_DIR EXTRA_MIX_ARCHIVE_DIRS
 
 is_mix_archive_configured() {
     if [ "${MIX_ARCHIVE_CONFIGURED:-false}" = "true" ] && [ -n "${MIX_ARCHIVE_DIR:-}" ]; then
         return 0
     fi
     return 1
+}
+
+# Helper: Get all configured mix archive directories
+get_all_mix_archive_dirs() {
+    local dirs=()
+    local seen=()
+
+    # Primary archive directory
+    local primary="${MIX_ARCHIVE_DIR:-$SCRIPT_DIR/MIX_ARCHIVE}"
+    if [ -n "$primary" ]; then
+        dirs+=("$primary")
+        seen+=("$(cd "$primary" 2>/dev/null && pwd -P || echo "$primary")")
+    fi
+
+    # Extra archive directories (colon, comma, or newline separated)
+    local raw_extras="${EXTRA_MIX_ARCHIVE_DIRS:-${MIX_ARCHIVE_DIRS:-}}"
+    if [ -n "$raw_extras" ]; then
+        local IFS_BACK="$IFS"
+        IFS=':,;'
+        for raw_entry in $raw_extras; do
+            IFS="$IFS_BACK"
+            local d
+            d="${raw_entry#"${raw_entry%%[![:space:]]*}"}"
+            d="${d%"${d##*[![:space:]]}"}"
+            d="${d%\"}"
+            d="${d#\"}"
+            d="${d%\'}"
+            d="${d#\'}"
+            if [[ "$d" =~ ^~(/.*)?$ ]]; then
+                d="${HOME}${d:1}"
+            fi
+            if [ -n "$d" ]; then
+                local real_d
+                real_d="$(cd "$d" 2>/dev/null && pwd -P || echo "$d")"
+                if [[ ! " ${seen[*]} " =~ " ${real_d} " ]]; then
+                    seen+=("$real_d")
+                    dirs+=("$d")
+                fi
+            fi
+            IFS=':,;'
+        done
+        IFS="$IFS_BACK"
+    fi
+
+    printf '%s\n' "${dirs[@]}"
+}
+
+# Helper: Get all FLAC output directories across all configured archives
+get_all_flac_output_dirs() {
+    local flac_dirs=()
+    local seen=()
+
+    # Active primary OUTPUT_DIR first
+    if [ -n "${OUTPUT_DIR:-}" ] && [ -d "$OUTPUT_DIR" ]; then
+        local real_out
+        real_out="$(cd "$OUTPUT_DIR" 2>/dev/null && pwd -P || echo "$OUTPUT_DIR")"
+        flac_dirs+=("$OUTPUT_DIR")
+        seen+=("$real_out")
+    fi
+
+    while IFS= read -r adir; do
+        [ -z "$adir" ] && continue
+        # 1. If adir is itself named FLAC_CONVERTED_OUTPUTS or ends with it
+        if [[ "$adir" =~ FLAC_CONVERTED_OUTPUTS/?$ ]]; then
+            local r
+            r="$(cd "$adir" 2>/dev/null && pwd -P || echo "$adir")"
+            if [ -d "$adir" ] && [[ ! " ${seen[*]} " =~ " ${r} " ]]; then
+                seen+=("$r")
+                flac_dirs+=("$adir")
+            fi
+        fi
+        # 2. If adir has FLAC_CONVERTED_OUTPUTS subdirectory
+        if [ -d "$adir/FLAC_CONVERTED_OUTPUTS" ]; then
+            local r
+            r="$(cd "$adir/FLAC_CONVERTED_OUTPUTS" 2>/dev/null && pwd -P || echo "$adir/FLAC_CONVERTED_OUTPUTS")"
+            if [[ ! " ${seen[*]} " =~ " ${r} " ]]; then
+                seen+=("$r")
+                flac_dirs+=("$adir/FLAC_CONVERTED_OUTPUTS")
+            fi
+        fi
+        # 3. If adir directly contains .flac files
+        if [ -d "$adir" ]; then
+            local r
+            r="$(cd "$adir" 2>/dev/null && pwd -P || echo "$adir")"
+            if [[ ! " ${seen[*]} " =~ " ${r} " ]]; then
+                local has_flac=0
+                shopt -s nullglob nocaseglob
+                local test_flacs=("$adir"/*.flac)
+                shopt -u nullglob nocaseglob
+                [ ${#test_flacs[@]} -gt 0 ] && has_flac=1
+                if [ "$has_flac" -eq 1 ]; then
+                    seen+=("$r")
+                    flac_dirs+=("$adir")
+                fi
+            fi
+        fi
+    done < <(get_all_mix_archive_dirs)
+
+    printf '%s\n' "${flac_dirs[@]}"
+}
+
+# Helper: Get all converted WAV directories across all configured archives
+get_all_wav_archive_dirs() {
+    local wav_dirs=()
+    local seen=()
+
+    if [ -n "${ARCHIVE_DIR:-}" ] && [ -d "$ARCHIVE_DIR" ]; then
+        local r
+        r="$(cd "$ARCHIVE_DIR" 2>/dev/null && pwd -P || echo "$ARCHIVE_DIR")"
+        wav_dirs+=("$ARCHIVE_DIR")
+        seen+=("$r")
+    fi
+
+    while IFS= read -r adir; do
+        [ -z "$adir" ] && continue
+        if [[ "$adir" =~ CONVERTED_WAV_FILES/?$ ]]; then
+            local r
+            r="$(cd "$adir" 2>/dev/null && pwd -P || echo "$adir")"
+            if [ -d "$adir" ] && [[ ! " ${seen[*]} " =~ " ${r} " ]]; then
+                seen+=("$r")
+                wav_dirs+=("$adir")
+            fi
+        fi
+        if [ -d "$adir/CONVERTED_WAV_FILES" ]; then
+            local r
+            r="$(cd "$adir/CONVERTED_WAV_FILES" 2>/dev/null && pwd -P || echo "$adir/CONVERTED_WAV_FILES")"
+            if [[ ! " ${seen[*]} " =~ " ${r} " ]]; then
+                seen+=("$r")
+                wav_dirs+=("$adir/CONVERTED_WAV_FILES")
+            fi
+        fi
+    done < <(get_all_mix_archive_dirs)
+
+    printf '%s\n' "${wav_dirs[@]}"
 }
 
 # Determine target working archive directory
@@ -1400,46 +1550,78 @@ show_stats() {
     done
     local root_wav_size_mb=$((root_wav_size / 1024 / 1024))
 
-    # 2. Converted WAVs in archive
-    local archive_wavs=("${ARCHIVE_DIR}"/*.wav)
-    local archive_wav_count=${#archive_wavs[@]}
+    # 2. Converted WAVs in archive (across all configured locations)
+    local archive_wav_count=0
     local archive_wav_size=0
-    for w in "${archive_wavs[@]}"; do
-        if [ -f "$w" ]; then
-            local sz
-            sz=$(stat -c %s "$w" 2>/dev/null || stat -f %z "$w" 2>/dev/null || wc -c < "$w")
-            archive_wav_size=$((archive_wav_size + sz))
+    while IFS= read -r wdir; do
+        if [ -d "$wdir" ]; then
+            shopt -s nullglob nocaseglob
+            local cur_wavs=("$wdir"/*.wav)
+            shopt -u nullglob nocaseglob
+            archive_wav_count=$((archive_wav_count + ${#cur_wavs[@]}))
+            for w in "${cur_wavs[@]}"; do
+                if [ -f "$w" ]; then
+                    local sz
+                    sz=$(stat -c %s "$w" 2>/dev/null || stat -f %z "$w" 2>/dev/null || wc -c < "$w")
+                    archive_wav_size=$((archive_wav_size + sz))
+                fi
+            done
         fi
-    done
+    done < <(get_all_wav_archive_dirs)
     local archive_wav_size_gb=$(echo "scale=2; $archive_wav_size / 1024 / 1024 / 1024" | bc 2>/dev/null || echo "$((archive_wav_size / 1024 / 1024 / 1024))")
 
-    # 3. FLAC files in output
-    local flac_files=("${OUTPUT_DIR}"/*.flac)
-    local flac_count=${#flac_files[@]}
+    # 3. FLAC files in output (across all configured locations)
+    local all_flac_dirs=()
+    while IFS= read -r fdir; do
+        [ -n "$fdir" ] && [ -d "$fdir" ] && all_flac_dirs+=("$fdir")
+    done < <(get_all_flac_output_dirs)
 
-    # 4. Missing tracklists
+    local total_flac_count=0
     local missing_tl_count=0
-    for f in "${flac_files[@]}"; do
-        local flac_base
-        flac_base=$(basename "$f" .flac)
-        if [ ! -f "${OUTPUT_DIR}/${flac_base}.txt" ]; then
-            ((missing_tl_count++))
-        fi
+    local flac_folder_summary=()
+
+    for fdir in "${all_flac_dirs[@]}"; do
+        shopt -s nullglob nocaseglob
+        local cur_flacs=("$fdir"/*.flac)
+        shopt -u nullglob nocaseglob
+        local count_here=${#cur_flacs[@]}
+        total_flac_count=$((total_flac_count + count_here))
+        [ $count_here -gt 0 ] && flac_folder_summary+=("$(basename "$(dirname "$fdir")")/$(basename "$fdir"): ${count_here}")
+
+        for f in "${cur_flacs[@]}"; do
+            local flac_base
+            flac_base=$(basename "$f" .flac)
+            if [ ! -f "${fdir}/${flac_base}.txt" ] && [ ! -f "${f%.*}.txt" ]; then
+                ((missing_tl_count++))
+            fi
+        done
     done
 
-    local mp3_files=()
-    [ -d "${MP3_OUTPUT_DIR}" ] && mp3_files=("${MP3_OUTPUT_DIR}"/*.mp3)
-    local wav_out_files=()
-    [ -d "${WAV_OUTPUT_DIR}" ] && wav_out_files=("${WAV_OUTPUT_DIR}"/*.wav)
-    local mp4_files=()
-    [ -d "${MP4_OUTPUT_DIR}" ] && mp4_files=("${MP4_OUTPUT_DIR}"/*.mp4)
+    # 4. MP3, WAV and MP4 outputs
+    local mp3_count=0
+    local wav_out_count=0
+    local mp4_count=0
+    while IFS= read -r adir; do
+        [ -z "$adir" ] && continue
+        local parent_dir="$adir"
+        [[ "$adir" =~ FLAC_CONVERTED_OUTPUTS/?$ ]] && parent_dir="$(dirname "$adir")"
+        [ -d "$parent_dir/MP3_CONVERTED_OUTPUTS" ] && mp3_count=$((mp3_count + $(find "$parent_dir/MP3_CONVERTED_OUTPUTS" -maxdepth 1 -type f -name "*.mp3" 2>/dev/null | wc -l)))
+        [ -d "$parent_dir/WAV_CONVERTED_OUTPUTS" ] && wav_out_count=$((wav_out_count + $(find "$parent_dir/WAV_CONVERTED_OUTPUTS" -maxdepth 1 -type f -name "*.wav" 2>/dev/null | wc -l)))
+        [ -d "$parent_dir/MP4_CONVERTED_OUTPUTS" ] && mp4_count=$((mp4_count + $(find "$parent_dir/MP4_CONVERTED_OUTPUTS" -maxdepth 1 -type f -name "*.mp4" 2>/dev/null | wc -l)))
+    done < <(get_all_mix_archive_dirs)
+
+    local loc_count=${#all_flac_dirs[@]}
+    local loc_note=""
+    if [ "$loc_count" -gt 1 ]; then
+        loc_note=" across ${BOLD}${WHITE}${loc_count}${NC}${CYAN} storage archives${NC}"
+    fi
 
     echo -e "  Root Directory WAVs (Pending Conversion):  ${BOLD}${YELLOW}${root_wav_count}${NC} files (${root_wav_size_mb} MB)"
     echo -e "  Archive Directory WAVs (Converted):       ${BOLD}${GREEN}${archive_wav_count}${NC} files (${archive_wav_size_gb} GB)"
-    echo -e "  Total FLAC Files Generated:               ${BOLD}${CYAN}${flac_count}${NC} files"
-    [ ${#mp3_files[@]} -gt 0 ] && echo -e "  Total MP3 Files Generated:                ${BOLD}${CYAN}${#mp3_files[@]}${NC} files"
-    [ ${#wav_out_files[@]} -gt 0 ] && echo -e "  Total WAV Converted Outputs:              ${BOLD}${CYAN}${#wav_out_files[@]}${NC} files"
-    [ ${#mp4_files[@]} -gt 0 ] && echo -e "  Total MP4 Videos Generated:               ${BOLD}${CYAN}${#mp4_files[@]}${NC} videos"
+    echo -e "  Total FLAC Files Generated:               ${BOLD}${CYAN}${total_flac_count}${NC} files${loc_note}"
+    [ "$mp3_count" -gt 0 ] && echo -e "  Total MP3 Files Generated:                ${BOLD}${CYAN}${mp3_count}${NC} files"
+    [ "$wav_out_count" -gt 0 ] && echo -e "  Total WAV Converted Outputs:              ${BOLD}${CYAN}${wav_out_count}${NC} files"
+    [ "$mp4_count" -gt 0 ] && echo -e "  Total MP4 Videos Generated:               ${BOLD}${CYAN}${mp4_count}${NC} videos"
     if [ "$missing_tl_count" -gt 0 ]; then
         echo -e "  FLAC Files Missing Tracklists:            ${BOLD}${RED}${missing_tl_count}${NC} files"
     else
@@ -1502,20 +1684,73 @@ press_enter() {
 
 rename_mix() {
     echo -e "\n${BOLD}${BLUE}=== RENAME MIX FILE & ASSOCIATED ASSETS ===${NC}"
-    read -r -p "Enter the current FLAC filename to search for: " src_flac
+    read -r -p "Enter current FLAC filename (or search keyword): " src_flac
     
     # Clean and locate file
     src_flac_name=$(basename "$src_flac" | tr -d '\r' | tr -d '\n')
-    src_path="${OUTPUT_DIR}/${src_flac_name}"
-    
-    if [ ! -f "$src_path" ]; then
-        echo -e "${RED}Error: File '$src_path' not found in $OUTPUT_DIR!${NC}"
-        return
+    local src_path=""
+    local found_dir=""
+
+    if [ -f "$src_flac" ]; then
+        src_path="$src_flac"
+        found_dir="$(dirname "$src_path")"
+        src_flac_name="$(basename "$src_path")"
+    else
+        while IFS= read -r fdir; do
+            if [ -n "$fdir" ] && [ -f "$fdir/$src_flac_name" ]; then
+                src_path="$fdir/$src_flac_name"
+                found_dir="$fdir"
+                break
+            fi
+        done < <(get_all_flac_output_dirs)
+    fi
+
+    # Fallback to search if not exact filename match
+    if [ -z "$src_path" ]; then
+        local candidates=()
+        while IFS= read -r fdir; do
+            if [ -d "$fdir" ]; then
+                shopt -s nullglob nocaseglob
+                for mf in "$fdir"/*"$src_flac"*.flac; do
+                    [ -f "$mf" ] && candidates+=("$mf")
+                done
+                shopt -u nullglob nocaseglob
+            fi
+        done < <(get_all_flac_output_dirs)
+
+        if [ ${#candidates[@]} -eq 1 ]; then
+            src_path="${candidates[0]}"
+            found_dir="$(dirname "$src_path")"
+            src_flac_name="$(basename "$src_path")"
+        elif [ ${#candidates[@]} -gt 1 ]; then
+            echo -e "\nMultiple matching FLAC files found:"
+            for i in "${!candidates[@]}"; do
+                echo "  $((i+1))) [$(basename "$(dirname "${candidates[$i]}")")] $(basename "${candidates[$i]}")"
+            done
+            read -r -p "Select mix to rename [1-${#candidates[@]}]: " pick
+            if [[ "$pick" =~ ^[0-9]+$ ]] && [ "$pick" -ge 1 ] && [ "$pick" -le "${#candidates[@]}" ]; then
+                src_path="${candidates[$((pick-1))]}"
+                found_dir="$(dirname "$src_path")"
+                src_flac_name="$(basename "$src_path")"
+            else
+                echo -e "${RED}Invalid selection.${NC}"
+                return
+            fi
+        fi
     fi
     
-    read -r -p "Enter the destination filename for the final FLAC: " dest_flac
+    if [ -z "$src_path" ] || [ ! -f "$src_path" ]; then
+        echo -e "${RED}Error: File '$src_flac' not found across any configured archive directories!${NC}"
+        return
+    fi
+
+    echo -e "\n${CYAN}Located Mix in:${NC} ${found_dir}"
+    echo -e "Current file: ${WHITE}$src_flac_name${NC}"
+    
+    read -r -p "Enter destination filename for final FLAC: " dest_flac
     dest_flac_name=$(basename "$dest_flac" | tr -d '\r' | tr -d '\n')
-    dest_path="${OUTPUT_DIR}/${dest_flac_name}"
+    [[ "$dest_flac_name" != *.flac ]] && dest_flac_name="${dest_flac_name}.flac"
+    dest_path="${found_dir}/${dest_flac_name}"
     
     if [ -f "$dest_path" ]; then
         echo -e "${RED}Error: Destination file '$dest_path' already exists!${NC}"
@@ -1531,20 +1766,21 @@ rename_mix() {
     dest_base="${dest_flac_name%.*}"
     
     # Rename Tracklist if exists
-    src_txt="${OUTPUT_DIR}/${src_base}.txt"
-    dest_txt="${OUTPUT_DIR}/${dest_base}.txt"
+    src_txt="${found_dir}/${src_base}.txt"
+    dest_txt="${found_dir}/${dest_base}.txt"
     if [ -f "$src_txt" ]; then
         mv "$src_txt" "$dest_txt"
         echo -e "${GREEN}✓ Renamed Tracklist: $(basename "$src_txt") ➔ $(basename "$dest_txt")${NC}"
     fi
     
-    # Rename Spek if exists
-    src_spek="SPEK_OUTPUTS/${src_base}_spectrogram.png"
-    dest_spek="SPEK_OUTPUTS/${dest_base}_spectrogram.png"
-    if [ -f "$src_spek" ]; then
-        mv "$src_spek" "$dest_spek"
-        echo -e "${GREEN}✓ Renamed Spectrogram: $(basename "$src_spek") ➔ $(basename "$dest_spek")${NC}"
-    fi
+    # Rename Spek if exists (check in parent archive SPEK_OUTPUTS as well)
+    local spek_dirs=("SPEK_OUTPUTS" "${found_dir}/SPEK_OUTPUTS" "$(dirname "$found_dir")/SPEK_OUTPUTS")
+    for s_dir in "${spek_dirs[@]}"; do
+        if [ -f "$s_dir/${src_base}_spectrogram.png" ]; then
+            mv "$s_dir/${src_base}_spectrogram.png" "$s_dir/${dest_base}_spectrogram.png"
+            echo -e "${GREEN}✓ Renamed Spectrogram in $s_dir: ${src_base}_spectrogram.png ➔ ${dest_base}_spectrogram.png${NC}"
+        fi
+    done
 }
 
 view_tasks() {
@@ -5245,6 +5481,16 @@ execute_startup_autoplay() {
         "${MIX_ARCHIVE_DIR:-$PWD}"
         "$PWD"
     )
+    if command -v get_all_flac_output_dirs >/dev/null 2>&1; then
+        while IFS= read -r f_dir; do
+            [ -n "$f_dir" ] && [ -d "$f_dir" ] && search_dirs+=("$f_dir")
+        done < <(get_all_flac_output_dirs)
+    fi
+    if command -v get_all_mix_archive_dirs >/dev/null 2>&1; then
+        while IFS= read -r a_dir; do
+            [ -n "$a_dir" ] && [ -d "$a_dir" ] && search_dirs+=("$a_dir")
+        done < <(get_all_mix_archive_dirs)
+    fi
 
     shopt -s nullglob nocaseglob
     local flac_candidates=()
@@ -5758,9 +6004,10 @@ manage_audio_players() {
         echo -e "  ${BOLD}${CYAN}10)${NC} Launch Audacity Audio Editor (${GREEN}audacity${NC})"
         echo -e "  ${BOLD}${CYAN}11)${NC} Show Connected USB MIDI Devices (${GREEN}list-midi-devices${NC})"
         echo -e "  ${BOLD}${CYAN}12)${NC} Configure Default Audio Player & Startup Autoplay (${GREEN}Current: ${DEFAULT_AUDIO_PLAYER:-strawberry}${NC})"
+        echo -e "  ${BOLD}${CYAN}13)${NC} View Playing Mix Audio Specifications & Stream Metadata (${GREEN}Bit Depth, Sample Rate, Codec, Title${NC})"
         echo -e "  ${BOLD}${CYAN} 0)${NC} Return to Main Menu"
         echo ""
-        read -r -p "Enter choice [0-12]: " p_choice
+        read -r -p "Enter choice [0-13]: " p_choice
 
         case "$p_choice" in
             1)
@@ -5798,6 +6045,9 @@ manage_audio_players() {
                 ;;
             12)
                 configure_audio_player_and_startup
+                ;;
+            13)
+                inspect_playing_audio_file
                 ;;
             0|[qQ])
                 return 0
@@ -6348,76 +6598,158 @@ launch_traktor_monitor_window() {
 show_mix_drive_space() {
     clear
     echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
-    echo -e "${BOLD}${MAGENTA}             MIX STORAGE DRIVE - DISK SPACE USAGE REPORT             ${NC}"
+    echo -e "${BOLD}${MAGENTA}       MIX STORAGE DRIVES - DISK SPACE & INVENTORY USAGE REPORT       ${NC}"
     echo -e "${BOLD}${MAGENTA}======================================================================${NC}\n"
 
-    local mix_target="${MIX_ARCHIVE_DIR:-$SCRIPT_DIR/MIX_ARCHIVE}"
-    echo -e "${BOLD}Target Archive Location:${NC} ${GREEN}${mix_target}${NC}\n"
+    local all_arch_dirs=()
+    while IFS= read -r adir; do
+        [ -n "$adir" ] && all_arch_dirs+=("$adir")
+    done < <(get_all_mix_archive_dirs)
 
-    # Only show THIS drive
-    local df_output
-    df_output=$(df -h -T "$mix_target" 2>/dev/null || df -h "$mix_target" 2>/dev/null)
-    
-    echo -e "${BOLD}${CYAN}Filesystem Mount & Capacity Details (Mix Drive Only):${NC}"
-    echo -e "${BOLD}${BLUE}----------------------------------------------------------------------${NC}"
-    echo "$df_output"
-    echo -e "${BOLD}${BLUE}----------------------------------------------------------------------${NC}\n"
-
-    # Extract human readable metrics
-    local line
-    line=$(echo "$df_output" | tail -n 1)
-    local fs type total used avail pct mount
-    if [ "$(echo "$df_output" | head -n 1 | awk '{print NF}')" -ge 7 ]; then
-        read -r fs type total used avail pct mount <<< "$line"
-    else
-        read -r fs total used avail pct mount <<< "$line"
-        type="filesystem"
+    if [ ${#all_arch_dirs[@]} -eq 0 ]; then
+        all_arch_dirs=("${MIX_ARCHIVE_DIR:-$SCRIPT_DIR/MIX_ARCHIVE}")
     fi
 
-    echo -e "  • ${BOLD}Device Filesystem:${NC}   ${CYAN}${fs}${NC} (${type})"
-    echo -e "  • ${BOLD}Mount Point:${NC}         ${GREEN}${mount}${NC}"
-    echo -e "  • ${BOLD}Total Capacity:${NC}      ${total}"
-    echo -e "  • ${BOLD}Space Used:${NC}          ${YELLOW}${used}${NC} (${pct})"
-    echo -e "  • ${BOLD}Space Remaining:${NC}     ${BOLD}${GREEN}${avail}${NC} free\n"
+    local loc_num=1
+    local total_flacs_all=0
+    for mix_target in "${all_arch_dirs[@]}"; do
+        echo -e "${BOLD}${CYAN}──────────────────────────────────────────────────────────────────────${NC}"
+        local label="Primary Archive"
+        [ "$loc_num" -gt 1 ] && label="Additional Storage Location #${loc_num}"
+        echo -e "  [${BOLD}${YELLOW}${label}${NC}] ➔ ${BOLD}${WHITE}${mix_target}${NC}"
+        echo -e "${BOLD}${CYAN}──────────────────────────────────────────────────────────────────────${NC}"
 
-    # Progress bar representation
-    local pct_num
-    pct_num=$(echo "$pct" | tr -dc '0-9')
-    if [ -n "$pct_num" ]; then
-        local bar_len=40
-        local filled=$(( (pct_num * bar_len) / 100 ))
-        local empty=$(( bar_len - filled ))
-        local bar=""
-        for ((i=0; i<filled; i++)); do bar+="█"; done
-        for ((i=0; i<empty; i++)); do bar+="░"; done
-        
-        local bar_color="${GREEN}"
-        if [ "$pct_num" -ge 90 ]; then
-            bar_color="${RED}"
-        elif [ "$pct_num" -ge 75 ]; then
-            bar_color="${YELLOW}"
+        if [ ! -d "$mix_target" ]; then
+            echo -e "  ${YELLOW}⚠️  Directory is currently unmounted or not accessible.${NC}\n"
+            ((loc_num++))
+            continue
         fi
-        echo -e "  Usage: [${bar_color}${bar}${NC}] ${BOLD}${pct}${NC}\n"
+
+        local df_output
+        df_output=$(df -h -T "$mix_target" 2>/dev/null || df -h "$mix_target" 2>/dev/null)
+        local line
+        line=$(echo "$df_output" | tail -n 1)
+        local fs type total used avail pct mount
+        if [ "$(echo "$df_output" | head -n 1 | awk '{print NF}')" -ge 7 ]; then
+            read -r fs type total used avail pct mount <<< "$line"
+        else
+            read -r fs total used avail pct mount <<< "$line"
+            type="filesystem"
+        fi
+
+        echo -e "  • ${BOLD}Device Filesystem:${NC}   ${CYAN}${fs}${NC} (${type})"
+        echo -e "  • ${BOLD}Mount Point:${NC}         ${GREEN}${mount}${NC}"
+        echo -e "  • ${BOLD}Total Capacity:${NC}      ${total}"
+        echo -e "  • ${BOLD}Space Used:${NC}          ${YELLOW}${used}${NC} (${pct})"
+        echo -e "  • ${BOLD}Space Remaining:${NC}     ${BOLD}${GREEN}${avail}${NC} free"
+
+        local pct_num
+        pct_num=$(echo "$pct" | tr -dc '0-9')
+        if [ -n "$pct_num" ]; then
+            local bar_len=35
+            local filled=$(( (pct_num * bar_len) / 100 ))
+            local empty=$(( bar_len - filled ))
+            local bar=""
+            for ((i=0; i<filled; i++)); do bar+="█"; done
+            for ((i=0; i<empty; i++)); do bar+="░"; done
+            local bar_color="${GREEN}"
+            [ "$pct_num" -ge 75 ] && bar_color="${YELLOW}"
+            [ "$pct_num" -ge 90 ] && bar_color="${RED}"
+            echo -e "  • ${BOLD}Usage Graph:${NC}         [${bar_color}${bar}${NC}] ${BOLD}${pct}${NC}"
+        fi
+
+        # File counts
+        local flac_count wav_count mp3_count
+        flac_count=$(find "$mix_target" -maxdepth 2 -type f -name "*.flac" 2>/dev/null | wc -l)
+        wav_count=$(find "$mix_target" -maxdepth 2 -type f -name "*.wav" 2>/dev/null | wc -l)
+        mp3_count=$(find "$mix_target" -maxdepth 2 -type f -name "*.mp3" 2>/dev/null | wc -l)
+        total_flacs_all=$((total_flacs_all + flac_count))
+        echo -e "  • ${BOLD}Audio Files Hosted:${NC}  ${GREEN}${flac_count}${NC} FLACs | ${CYAN}${wav_count}${NC} WAVs | ${YELLOW}${mp3_count}${NC} MP3s\n"
+        ((loc_num++))
+    done
+
+    echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
+    echo -e "  Total FLAC Master Mixes Across All Drives: ${BOLD}${GREEN}${total_flacs_all}${NC}"
+    echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
+    press_enter
+}
+
+# Helper: Add extra mix archive storage directory and persist
+add_extra_mix_archive_dir() {
+    local new_dir="$1"
+    [ -z "$new_dir" ] && return 1
+
+    local current_extras="${EXTRA_MIX_ARCHIVE_DIRS:-${MIX_ARCHIVE_DIRS:-}}"
+    local new_extras=""
+    if [ -z "$current_extras" ]; then
+        new_extras="$new_dir"
+    else
+        local IFS_BACK="$IFS"
+        IFS=':,;'
+        for e in $current_extras; do
+            IFS="$IFS_BACK"
+            local clean_e="${e#"${e%%[![:space:]]*}"}"
+            clean_e="${clean_e%"${clean_e##*[![:space:]]}"}"
+            clean_e="${clean_e%\"}"
+            clean_e="${clean_e#\"}"
+            clean_e="${clean_e%\'}"
+            clean_e="${clean_e#\'}"
+            if [ "$clean_e" = "$new_dir" ]; then
+                return 0
+            fi
+            IFS=':,;'
+        done
+        IFS="$IFS_BACK"
+        new_extras="${current_extras}:${new_dir}"
     fi
 
-    # Mix archive file counts
-    local flac_count wav_count mp3_count
-    flac_count=$(find "$mix_target" -maxdepth 2 -type f -name "*.flac" 2>/dev/null | wc -l)
-    wav_count=$(find "$mix_target" -maxdepth 2 -type f -name "*.wav" 2>/dev/null | wc -l)
-    mp3_count=$(find "$mix_target" -maxdepth 2 -type f -name "*.mp3" 2>/dev/null | wc -l)
-    echo -e "${BOLD}Audio Files Hosted on Mix Drive:${NC}"
-    echo -e "  • FLAC Master Mixes:   ${GREEN}${flac_count}${NC}"
-    echo -e "  • Staging / Converted: ${CYAN}${wav_count}${NC} WAVs"
-    echo -e "  • MP3 Deliverables:    ${YELLOW}${mp3_count}${NC} files\n"
+    EXTRA_MIX_ARCHIVE_DIRS="$new_extras"
+    export EXTRA_MIX_ARCHIVE_DIRS
+    save_config_setting "EXTRA_MIX_ARCHIVE_DIRS" "$new_extras"
+    save_config_setting "MIX_ARCHIVE_CONFIGURED" "true"
+}
 
-    press_enter
+# Helper: Remove extra mix archive storage directory and persist
+remove_extra_mix_archive_dir() {
+    local target_dir="$1"
+    local raw_extras="${EXTRA_MIX_ARCHIVE_DIRS:-${MIX_ARCHIVE_DIRS:-}}"
+    local kept=()
+    local IFS_BACK="$IFS"
+    IFS=':,;'
+    for e in $raw_extras; do
+        IFS="$IFS_BACK"
+        local clean_e="${e#"${e%%[![:space:]]*}"}"
+        clean_e="${clean_e%"${clean_e##*[![:space:]]}"}"
+        clean_e="${clean_e%\"}"
+        clean_e="${clean_e#\"}"
+        clean_e="${clean_e%\'}"
+        clean_e="${clean_e#\'}"
+        if [ -n "$clean_e" ] && [ "$clean_e" != "$target_dir" ]; then
+            kept+=("$clean_e")
+        fi
+        IFS=':,;'
+    done
+    IFS="$IFS_BACK"
+
+    local joined=""
+    for k in "${kept[@]}"; do
+        if [ -z "$joined" ]; then
+            joined="$k"
+        else
+            joined="${joined}:${k}"
+        fi
+    done
+
+    EXTRA_MIX_ARCHIVE_DIRS="$joined"
+    export EXTRA_MIX_ARCHIVE_DIRS
+    save_config_setting "EXTRA_MIX_ARCHIVE_DIRS" "$joined"
 }
 
 configure_mix_archive_folder() {
     while true; do
         clear
         echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
-        echo -e "${BOLD}${MAGENTA}           CONFIGURE DEFAULT MIX ARCHIVE STORAGE FOLDER               ${NC}"
+        echo -e "${BOLD}${MAGENTA}     CONFIGURE MIX ARCHIVE STORAGE FOLDERS (PRIMARY & MULTIPLE)       ${NC}"
         echo -e "${BOLD}${MAGENTA}======================================================================${NC}\n"
         
         local current_path="${MIX_ARCHIVE_DIR:-}"
@@ -6430,21 +6762,75 @@ configure_mix_archive_folder() {
             status_str="${RED}Not Configured (Defaulting to: ${SCRIPT_DIR}/MIX_ARCHIVE)${NC}"
         fi
         
-        echo -e "  • Current Archive Path : ${BOLD}${CYAN}${current_path:-$SCRIPT_DIR/MIX_ARCHIVE}${NC}"
-        echo -e "  • Configuration Status : ${status_str}\n"
-        echo -e "${BOLD}${BLUE}----------------------------------------------------------------------${NC}"
-        echo -e "  ${BOLD}${CYAN}1)${NC} Enter New Mix Archive Folder Path ${GREEN}(Custom Directory Path)${NC}"
-        echo -e "  ${BOLD}${CYAN}2)${NC} Auto-Detect & Select from Connected Drives / Volumes"
-        echo -e "  ${BOLD}${CYAN}3)${NC} Reset to Application Root Folder ${YELLOW}(${SCRIPT_DIR}/MIX_ARCHIVE)${NC}"
+        local prim_flacs=0
+        if [ -d "$current_path/FLAC_CONVERTED_OUTPUTS" ]; then
+            prim_flacs=$(find "$current_path/FLAC_CONVERTED_OUTPUTS" -maxdepth 1 -type f -name "*.flac" 2>/dev/null | wc -l)
+        elif [ -d "$current_path" ]; then
+            prim_flacs=$(find "$current_path" -maxdepth 1 -type f -name "*.flac" 2>/dev/null | wc -l)
+        fi
+
+        echo -e "  • Primary Archive Path     : ${BOLD}${CYAN}${current_path:-$SCRIPT_DIR/MIX_ARCHIVE}${NC} ${DIM}(${prim_flacs} FLACs)${NC}"
+        echo -e "  • Primary Status           : ${status_str}"
+
+        # Parse and display extra archive paths
+        local extra_list=()
+        local raw_extras="${EXTRA_MIX_ARCHIVE_DIRS:-${MIX_ARCHIVE_DIRS:-}}"
+        if [ -n "$raw_extras" ]; then
+            local IFS_BACK="$IFS"
+            IFS=':,;'
+            for e_item in $raw_extras; do
+                IFS="$IFS_BACK"
+                local clean_e
+                clean_e="${e_item#"${e_item%%[![:space:]]*}"}"
+                clean_e="${clean_e%"${clean_e##*[![:space:]]}"}"
+                clean_e="${clean_e%\"}"
+                clean_e="${clean_e#\"}"
+                clean_e="${clean_e%\'}"
+                clean_e="${clean_e#\'}"
+                [ -n "$clean_e" ] && extra_list+=("$clean_e")
+                IFS=':,;'
+            done
+            IFS="$IFS_BACK"
+        fi
+
+        if [ ${#extra_list[@]} -gt 0 ]; then
+            echo -e "  • Additional Storage Paths :"
+            local e_idx=1
+            for ed in "${extra_list[@]}"; do
+                local ed_stat="${RED}Not Found${NC}"
+                local ed_flacs=0
+                if [ -d "$ed" ]; then
+                    ed_flacs=$(find "$ed" -maxdepth 2 -type f -name "*.flac" 2>/dev/null | wc -l)
+                    ed_stat="${GREEN}Accessible (${ed_flacs} FLACs)${NC}"
+                fi
+                echo -e "      ${BOLD}${CYAN}[${e_idx}]${NC} ${WHITE}${ed}${NC} ➔ ${ed_stat}"
+                ((e_idx++))
+            done
+        else
+            echo -e "  • Additional Storage Paths : ${DIM}None configured (Single Archive Mode)${NC}"
+        fi
+        echo ""
+
+        echo -e "${BOLD}${BLUE}─── [ PRIMARY ARCHIVE CONFIGURATION ] ────────────────────────────────${NC}"
+        echo -e "  ${BOLD}${CYAN}1)${NC} Enter New Primary Mix Archive Folder Path ${GREEN}(Custom Directory Path)${NC}"
+        echo -e "  ${BOLD}${CYAN}2)${NC} Auto-Detect & Select Primary from Connected Drives / Volumes"
+        echo -e "  ${BOLD}${CYAN}3)${NC} Reset Primary to Application Root Folder ${YELLOW}(${SCRIPT_DIR}/MIX_ARCHIVE)${NC}"
+        echo ""
+        echo -e "${BOLD}${BLUE}─── [ MULTIPLE / ADDITIONAL MIX ARCHIVE LOCATIONS ] ──────────────────${NC}"
+        echo -e "  ${BOLD}${CYAN}4)${NC} Add New Additional Mix Archive Storage Location Folder"
+        echo -e "  ${BOLD}${CYAN}5)${NC} Remove an Additional Mix Archive Storage Location"
+        echo -e "  ${BOLD}${CYAN}6)${NC} Auto-Detect & Add Other Mix Folders from Connected Drives"
+        echo -e "  ${BOLD}${CYAN}7)${NC} View Detailed Space & Mix Inventory Across All Storage Folders"
+        echo -e "  ${BOLD}${CYAN}8)${NC} Clear All Additional Mix Archive Storage Locations"
         echo -e "${BOLD}${BLUE}----------------------------------------------------------------------${NC}"
         echo -e "  ${BOLD}0)${NC} Return to Main Menu ${DIM}(or q)${NC}\n"
         
-        read -r -p "Enter choice [1-3, 0 to return]: " opt
+        read -r -p "Enter choice [1-8, 0 to return]: " opt
         case "$opt" in
             1)
                 echo ""
-                echo -e "${BOLD}Enter full path to your Mix Archive storage directory:${NC}"
-                echo -e "${DIM}(e.g. /run/media/$USER/MY_DRIVE/MIX_ARCHIVE or /Volumes/EXTERNAL/MIX_ARCHIVE)${NC}"
+                echo -e "${BOLD}Enter full path to your Primary Mix Archive storage directory:${NC}"
+                echo -e "${DIM}(e.g. /run/media/$USER/WD BLACK B/MIX_ARCHIVE or /Volumes/EXTERNAL/MIX_ARCHIVE)${NC}"
                 read -e -r -p "Path: " new_dir
                 new_dir="${new_dir#"${new_dir%%[![:space:]]*}"}"
                 new_dir="${new_dir%"${new_dir##*[![:space:]]}"}"
@@ -6490,10 +6876,9 @@ configure_mix_archive_folder() {
                 save_config_setting "MIX_ARCHIVE_CONFIGURED" "true"
                 
                 cd "$new_dir" 2>/dev/null || true
-                echo -e "\n${GREEN}✓ Mix Archive Storage Folder successfully configured and saved!${NC}"
-                echo -e "  New Archive Location: ${BOLD}${WHITE}${new_dir}${NC}"
+                echo -e "\n${GREEN}✓ Primary Mix Archive Folder successfully configured and saved!${NC}"
+                echo -e "  Primary Location: ${BOLD}${WHITE}${new_dir}${NC}"
                 sleep 2
-                return 0
                 ;;
             2)
                 local found_dirs=()
@@ -6502,6 +6887,7 @@ configure_mix_archive_folder() {
                 for d in "/run/media/$USER"/* "/run/media/mplanetarian"/* "/Volumes"/* "/media/$USER"/* "/mnt"/*; do
                     if [ -d "$d" ]; then
                         [ -d "$d/MIX_ARCHIVE" ] && found_dirs+=("$d/MIX_ARCHIVE")
+                        [ -d "$d/MIX_ARCHIVE2" ] && found_dirs+=("$d/MIX_ARCHIVE2")
                         [ -d "$d/Mixes" ] && found_dirs+=("$d/Mixes")
                         [ -d "$d/MIXES" ] && found_dirs+=("$d/MIXES")
                         found_dirs+=("$d")
@@ -6551,9 +6937,8 @@ configure_mix_archive_folder() {
                     save_config_setting "MIX_ARCHIVE_DIR" "$chosen_dir"
                     save_config_setting "MIX_ARCHIVE_CONFIGURED" "true"
                     cd "$chosen_dir" 2>/dev/null || true
-                    echo -e "\n${GREEN}✓ Mix Archive Storage Folder successfully set to:${NC} ${BOLD}${WHITE}${chosen_dir}${NC}"
+                    echo -e "\n${GREEN}✓ Primary Mix Archive Folder successfully set to:${NC} ${BOLD}${WHITE}${chosen_dir}${NC}"
                     sleep 2
-                    return 0
                 fi
                 ;;
             3)
@@ -6570,9 +6955,144 @@ configure_mix_archive_folder() {
                 save_config_setting "MIX_ARCHIVE_DIR" "$root_archive"
                 save_config_setting "MIX_ARCHIVE_CONFIGURED" "true"
                 cd "$root_archive" 2>/dev/null || true
-                echo -e "\n${GREEN}✓ Mix Archive Storage Folder reset to Application Root Folder:${NC} ${BOLD}${WHITE}${root_archive}${NC}"
+                echo -e "\n${GREEN}✓ Primary Mix Archive Folder reset to Application Root Folder:${NC} ${BOLD}${WHITE}${root_archive}${NC}"
                 sleep 2
-                return 0
+                ;;
+            4)
+                echo ""
+                echo -e "${BOLD}Enter full path to the Additional Mix Archive folder:${NC}"
+                echo -e "${DIM}(e.g. /run/media/$USER/DATA/MIX_ARCHIVE2/FLAC_CONVERTED_OUTPUTS/)${NC}"
+                read -e -r -p "Additional Archive Path: " add_dir
+                add_dir="${add_dir#"${add_dir%%[![:space:]]*}"}"
+                add_dir="${add_dir%"${add_dir##*[![:space:]]}"}"
+                add_dir="${add_dir%\"}"
+                add_dir="${add_dir#\"}"
+                add_dir="${add_dir%\'}"
+                add_dir="${add_dir#\'}"
+                
+                if [[ "$add_dir" =~ ^~(/.*)?$ ]]; then
+                    add_dir="${HOME}${add_dir:1}"
+                fi
+                
+                [ -z "$add_dir" ] && continue
+                
+                if [ ! -d "$add_dir" ]; then
+                    echo -e "\n${YELLOW}Directory does not currently exist:${NC} ${add_dir}"
+                    read -r -p "Create this directory now? [y/N]: " create_ans
+                    if [[ "$create_ans" =~ ^[yY] ]]; then
+                        mkdir -p "$add_dir" 2>/dev/null || {
+                            echo -e "${RED}Error: Failed to create directory.${NC}"
+                            sleep 2
+                            continue
+                        }
+                    else
+                        continue
+                    fi
+                fi
+                
+                add_extra_mix_archive_dir "$add_dir"
+                echo -e "\n${GREEN}✓ Additional Mix Archive Location successfully added and saved!${NC}"
+                echo -e "  Location: ${BOLD}${WHITE}${add_dir}${NC}"
+                sleep 2
+                ;;
+            5)
+                if [ ${#extra_list[@]} -eq 0 ]; then
+                    echo -e "\n${YELLOW}No additional mix archive locations currently configured.${NC}"
+                    sleep 1.5
+                    continue
+                fi
+                echo -e "\n${BOLD}Select an Additional Mix Archive Location to Remove:${NC}"
+                local r_idx=1
+                for ed in "${extra_list[@]}"; do
+                    echo -e "  ${BOLD}${CYAN}${r_idx})${NC} ${ed}"
+                    ((r_idx++))
+                done
+                echo -e "  ${BOLD}0)${NC} Cancel"
+                read -r -p "Enter number to remove [1-${#extra_list[@]}, 0]: " rem_idx
+                if [[ "$rem_idx" =~ ^[0-9]+$ ]] && [ "$rem_idx" -ge 1 ] && [ "$rem_idx" -le "${#extra_list[@]}" ]; then
+                    local rem_target="${extra_list[$((rem_idx - 1))]}"
+                    remove_extra_mix_archive_dir "$rem_target"
+                    echo -e "\n${GREEN}✓ Removed:${NC} ${rem_target}"
+                    sleep 1.5
+                fi
+                ;;
+            6)
+                local found_dirs=()
+                echo -e "\n${CYAN}Scanning mounted drives for potential mix archive folders...${NC}"
+                shopt -s nullglob
+                for d in "/run/media/$USER"/* "/run/media/mplanetarian"/* "/Volumes"/* "/media/$USER"/* "/mnt"/*; do
+                    if [ -d "$d" ]; then
+                        [ -d "$d/FLAC_CONVERTED_OUTPUTS" ] && found_dirs+=("$d/FLAC_CONVERTED_OUTPUTS")
+                        [ -d "$d/MIX_ARCHIVE/FLAC_CONVERTED_OUTPUTS" ] && found_dirs+=("$d/MIX_ARCHIVE/FLAC_CONVERTED_OUTPUTS")
+                        [ -d "$d/MIX_ARCHIVE2/FLAC_CONVERTED_OUTPUTS" ] && found_dirs+=("$d/MIX_ARCHIVE2/FLAC_CONVERTED_OUTPUTS")
+                        [ -d "$d/MIX_ARCHIVE" ] && found_dirs+=("$d/MIX_ARCHIVE")
+                        [ -d "$d/MIX_ARCHIVE2" ] && found_dirs+=("$d/MIX_ARCHIVE2")
+                        [ -d "$d/Mixes" ] && found_dirs+=("$d/Mixes")
+                        [ -d "$d/MIXES" ] && found_dirs+=("$d/MIXES")
+                    fi
+                done
+                shopt -u nullglob
+
+                local unique_candidates=()
+                local seen_cand=()
+                local prim_real
+                prim_real="$(cd "${MIX_ARCHIVE_DIR:-$SCRIPT_DIR/MIX_ARCHIVE}" 2>/dev/null && pwd -P || echo "")"
+                for cand in "${found_dirs[@]}"; do
+                    local r_cand
+                    r_cand="$(cd "$cand" 2>/dev/null && pwd -P || echo "$cand")"
+                    # Skip primary
+                    [ "$r_cand" = "$prim_real" ] && continue
+                    # Skip already in extra_list
+                    local already=0
+                    for ex in "${extra_list[@]}"; do
+                        local r_ex
+                        r_ex="$(cd "$ex" 2>/dev/null && pwd -P || echo "$ex")"
+                        [ "$r_cand" = "$r_ex" ] && already=1 && break
+                    done
+                    [ "$already" -eq 1 ] && continue
+                    if [[ ! " ${seen_cand[*]} " =~ " ${r_cand} " ]]; then
+                        seen_cand+=("$r_cand")
+                        unique_candidates+=("$cand")
+                    fi
+                done
+
+                if [ ${#unique_candidates[@]} -eq 0 ]; then
+                    echo -e "\n${YELLOW}No new unconfigured mix archive folders detected on mounted drives.${NC}"
+                    sleep 2
+                    continue
+                fi
+
+                echo -e "\n${BOLD}Select a detected folder to add as an Additional Archive:${NC}"
+                local c_idx=1
+                for cand in "${unique_candidates[@]}"; do
+                    local fc
+                    fc=$(find "$cand" -maxdepth 2 -type f -name "*.flac" 2>/dev/null | wc -l)
+                    echo -e "  ${BOLD}${CYAN}${c_idx})${NC} ${cand} ${GREEN}(${fc} FLAC files)${NC}"
+                    ((c_idx++))
+                done
+                echo -e "  ${BOLD}0)${NC} Back"
+
+                read -r -p "Select folder [1-${#unique_candidates[@]}, 0]: " sel_cand
+                if [[ "$sel_cand" =~ ^[0-9]+$ ]] && [ "$sel_cand" -ge 1 ] && [ "$sel_cand" -le "${#unique_candidates[@]}" ]; then
+                    local chosen_extra="${unique_candidates[$((sel_cand - 1))]}"
+                    add_extra_mix_archive_dir "$chosen_extra"
+                    echo -e "\n${GREEN}✓ Added additional mix archive location:${NC} ${chosen_extra}"
+                    sleep 2
+                fi
+                ;;
+            7)
+                show_mix_drive_space
+                ;;
+            8)
+                echo -e "\n${YELLOW}Are you sure you want to clear all additional mix archive locations? [y/N]:${NC} "
+                read -r clr_ans
+                if [[ "$clr_ans" =~ ^[yY] ]]; then
+                    EXTRA_MIX_ARCHIVE_DIRS=""
+                    export EXTRA_MIX_ARCHIVE_DIRS
+                    save_config_setting "EXTRA_MIX_ARCHIVE_DIRS" ""
+                    echo -e "\n${GREEN}✓ All additional storage locations cleared.${NC}"
+                    sleep 1.5
+                fi
                 ;;
             0|[qQ])
                 return 0
@@ -6781,8 +7301,12 @@ manage_tracklists() {
                 ;;
             6)
                 if [ -n "$doc_script" ]; then
-                    echo -e "\n${BOLD}${YELLOW}Batch exporting all tracklists to HTML and PDF...${NC}\n"
-                    python3 "$doc_script" -d "$OUTPUT_DIR" -f both
+                    local all_flac_dirs=()
+                    while IFS= read -r f_dir; do
+                        [ -n "$f_dir" ] && [ -d "$f_dir" ] && all_flac_dirs+=("$f_dir")
+                    done < <(get_all_flac_output_dirs)
+                    echo -e "\n${BOLD}${YELLOW}Batch exporting all tracklists across ${#all_flac_dirs[@]} archive(s) to HTML and PDF...${NC}\n"
+                    python3 "$doc_script" -d "${all_flac_dirs[@]}" -f both
                 else
                     echo -e "\n${RED}Error: generate_tracklist_docs.py not found!${NC}"
                 fi
@@ -7033,6 +7557,16 @@ search_and_play_mix() {
     echo -e "\n${CYAN}Searching archive for '${query}'...${NC}"
 
     local search_dirs=("$OUTPUT_DIR" "$PWD" "${OUTPUT_DIR%/*}/CONVERTED_WAV_FILES" "${MIX_ARCHIVE_DIR:-$SCRIPT_DIR/MIX_ARCHIVE}" "${MIX_ARCHIVE_DIR:-$SCRIPT_DIR/MIX_ARCHIVE}/FLAC_CONVERTED_OUTPUTS")
+    while IFS= read -r f_dir; do
+        [ -n "$f_dir" ] && [ -d "$f_dir" ] && search_dirs+=("$f_dir")
+    done < <(get_all_flac_output_dirs)
+    while IFS= read -r w_dir; do
+        [ -n "$w_dir" ] && [ -d "$w_dir" ] && search_dirs+=("$w_dir")
+    done < <(get_all_wav_archive_dirs)
+    while IFS= read -r a_dir; do
+        [ -n "$a_dir" ] && [ -d "$a_dir" ] && search_dirs+=("$a_dir")
+    done < <(get_all_mix_archive_dirs)
+
     local matches=()
     local seen_names=()
 
@@ -7125,20 +7659,24 @@ search_and_play_mix() {
         bname_no_ext=$(basename "$selected_mix")
         bname_no_ext="${bname_no_ext%.*}"
 
-        shopt -s nullglob nocaseglob
-        local tl_candidates=(
-            "${OUTPUT_DIR}/${bname_no_ext}.txt"
-            "${selected_mix%.*}.txt"
-            "$PWD/${bname_no_ext}.txt"
-            "${OUTPUT_DIR}/"*${query}*".txt"
-            "$PWD/"*${query}*".txt"
-        )
-        shopt -u nullglob nocaseglob
-
         local found_tl=""
-        for tc in "${tl_candidates[@]}"; do
-            if [ -f "$tc" ]; then found_tl="$tc"; break; fi
-        done
+        found_tl=$(find_mix_tracklist "$selected_mix" 2>/dev/null || true)
+        if [ -z "$found_tl" ] || [ ! -f "$found_tl" ]; then
+            shopt -s nullglob nocaseglob
+            local tl_candidates=(
+                "${OUTPUT_DIR}/${bname_no_ext}.txt"
+                "${selected_mix%.*}.txt"
+                "$(dirname "$selected_mix")/${bname_no_ext}.txt"
+                "$PWD/${bname_no_ext}.txt"
+                "${OUTPUT_DIR}/"*${query}*".txt"
+                "$PWD/"*${query}*".txt"
+            )
+            shopt -u nullglob nocaseglob
+
+            for tc in "${tl_candidates[@]}"; do
+                if [ -f "$tc" ]; then found_tl="$tc"; break; fi
+            done
+        fi
 
         if [ -n "$found_tl" ]; then
             echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
@@ -7281,15 +7819,25 @@ find_duplicate_audio_mixes() {
         return 1
     fi
 
+    local scan_dirs=()
+    while IFS= read -r f_dir; do
+        [ -n "$f_dir" ] && [ -d "$f_dir" ] && scan_dirs+=("$f_dir")
+    done < <(get_all_flac_output_dirs)
+    while IFS= read -r w_dir; do
+        [ -n "$w_dir" ] && [ -d "$w_dir" ] && scan_dirs+=("$w_dir")
+    done < <(get_all_wav_archive_dirs)
+    [ -d "$PWD" ] && scan_dirs+=("$PWD")
+
     while true; do
         clear
         echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
         echo -e "${BOLD}${MAGENTA}             DUPLICATE AUDIO FILE DETECTOR & CLEANER                  ${NC}"
         echo -e "${BOLD}${MAGENTA}======================================================================${NC}\n"
         echo -e "  Detects exact binary duplicates and multiple renders across:"
-        echo -e "  • ${CYAN}FLAC_CONVERTED_OUTPUTS/${NC}"
-        echo -e "  • ${CYAN}CONVERTED_WAV_FILES/${NC}"
-        echo -e "  • ${CYAN}Current staging directory (${PWD})${NC}\n"
+        for sd in "${scan_dirs[@]}"; do
+            echo -e "  • ${CYAN}${sd}${NC}"
+        done
+        echo ""
         echo -e "  ${BOLD}${CYAN}1)${NC} Scan & Generate Duplicate Mixes Report (${GREEN}Safe: Read Only${NC})"
         echo -e "  ${BOLD}${CYAN}2)${NC} Move Duplicates to Quarantine Directory (${YELLOW}DUPLICATES_QUARANTINE/${NC})"
         echo -e "  ${BOLD}${CYAN}3)${NC} Permanently Remove Duplicates (${RED}Prompt with safety confirmation${NC})"
@@ -7299,13 +7847,13 @@ find_duplicate_audio_mixes() {
 
         case "$dup_choice" in
             1)
-                echo -e "\n${BOLD}${YELLOW}Scanning archive for duplicate mixes...${NC}\n"
-                python3 "$script" --action report
+                echo -e "\n${BOLD}${YELLOW}Scanning archives for duplicate mixes...${NC}\n"
+                python3 "$script" -d "${scan_dirs[@]}" --action report
                 press_enter
                 ;;
             2)
                 echo -e "\n${BOLD}${YELLOW}Scanning and moving duplicates to quarantine...${NC}\n"
-                python3 "$script" --action quarantine
+                python3 "$script" -d "${scan_dirs[@]}" --action quarantine
                 press_enter
                 ;;
             3)
@@ -7313,7 +7861,7 @@ find_duplicate_audio_mixes() {
                 read -r -p "Are you sure you want to permanently delete duplicate files? [y/N]: " del_confirm
                 case "$del_confirm" in
                     [yY]|[yY][eE][sS])
-                        python3 "$script" --action delete
+                        python3 "$script" -d "${scan_dirs[@]}" --action delete
                         ;;
                     *)
                         echo -e "\n${GREEN}Deletion cancelled.${NC}"
@@ -7372,6 +7920,11 @@ export_mixes_to_path() {
         esac
     fi
 
+    local all_flac_dirs=()
+    while IFS= read -r f_dir; do
+        [ -n "$f_dir" ] && [ -d "$f_dir" ] && all_flac_dirs+=("$f_dir")
+    done < <(get_all_flac_output_dirs)
+
     echo -e "${BOLD}Select items to export:${NC}"
     echo -e "  ${BOLD}${CYAN}1)${NC} Complete Mix Package (FLAC + Cover Art + Tracklists TXT/HTML/PDF + Spek)"
     echo -e "  ${BOLD}${CYAN}2)${NC} Audio Files Only (FLAC / WAV / MP3)"
@@ -7384,10 +7937,11 @@ export_mixes_to_path() {
     case "$exp_choice" in
         1)
             echo -e "\n${BOLD}${YELLOW}Exporting complete packages to: ${dest_dir}...${NC}\n"
-            if [ -d "$OUTPUT_DIR" ]; then
-                rsync -avh --progress "$OUTPUT_DIR"/*.flac "$dest_dir/" 2>/dev/null || true
-                rsync -avh "$OUTPUT_DIR"/*.txt "$OUTPUT_DIR"/*.html "$OUTPUT_DIR"/*.pdf "$dest_dir/" 2>/dev/null || true
-            fi
+            for fdir in "${all_flac_dirs[@]}"; do
+                echo -e "Exporting from: ${CYAN}${fdir}${NC}"
+                rsync -avh --progress "$fdir"/*.flac "$dest_dir/" 2>/dev/null || true
+                rsync -avh "$fdir"/*.txt "$fdir"/*.html "$fdir"/*.pdf "$dest_dir/" 2>/dev/null || true
+            done
             if [ -d "$PWD/COVERS" ]; then
                 rsync -avh "$PWD/COVERS/" "$dest_dir/COVERS/" 2>/dev/null || true
             fi
@@ -7398,15 +7952,19 @@ export_mixes_to_path() {
             ;;
         2)
             echo -e "\n${BOLD}${YELLOW}Exporting audio files to: ${dest_dir}...${NC}\n"
-            if [ -d "$OUTPUT_DIR" ]; then
-                rsync -avh --progress "$OUTPUT_DIR"/*.flac "$dest_dir/" 2>/dev/null || true
-            fi
+            for fdir in "${all_flac_dirs[@]}"; do
+                echo -e "Exporting from: ${CYAN}${fdir}${NC}"
+                rsync -avh --progress "$fdir"/*.flac "$dest_dir/" 2>/dev/null || true
+            done
             rsync -avh --progress "$PWD"/*.flac "$PWD"/*.wav "$PWD"/*.mp3 "$dest_dir/" 2>/dev/null || true
             echo -e "\n${BOLD}${GREEN}✓ Audio file export finished.${NC}"
             ;;
         3)
             echo -e "\n${BOLD}${YELLOW}Exporting tracklists and documentation to: ${dest_dir}...${NC}\n"
-            rsync -avh "$OUTPUT_DIR"/*.txt "$OUTPUT_DIR"/*.html "$OUTPUT_DIR"/*.pdf "$dest_dir/" 2>/dev/null || true
+            for fdir in "${all_flac_dirs[@]}"; do
+                echo -e "Exporting from: ${CYAN}${fdir}${NC}"
+                rsync -avh "$fdir"/*.txt "$fdir"/*.html "$fdir"/*.pdf "$dest_dir/" 2>/dev/null || true
+            done
             rsync -avh "$PWD"/*.txt "$PWD"/*.html "$PWD"/*.pdf "$dest_dir/" 2>/dev/null || true
             echo -e "\n${BOLD}${GREEN}✓ Tracklist documentation export finished.${NC}"
             ;;
@@ -7421,7 +7979,9 @@ export_mixes_to_path() {
             read -r -p "Enter mix search term (Episode #, Title): " mix_kw
             if [ -n "$mix_kw" ]; then
                 echo -e "\n${BOLD}${YELLOW}Exporting matching assets for '${mix_kw}' to: ${dest_dir}...${NC}\n"
-                find "$OUTPUT_DIR" "$PWD" -maxdepth 2 -type f -iname "*${mix_kw}*" -exec cp -v {} "$dest_dir/" \; 2>/dev/null
+                for fdir in "${all_flac_dirs[@]}" "$PWD"; do
+                    find "$fdir" -maxdepth 2 -type f -iname "*${mix_kw}*" -exec cp -v {} "$dest_dir/" \; 2>/dev/null
+                done
                 echo -e "\n${BOLD}${GREEN}✓ Matching mix assets exported.${NC}"
             fi
             ;;
@@ -8418,16 +8978,19 @@ manage_storage_and_archive_config() {
         else
             archive_disp="${RED}Not Configured${NC} ${DIM}(Root: ${SCRIPT_DIR}/MIX_ARCHIVE)${NC}"
         fi
-        echo -e "  Current Archive: ${archive_disp}"
+        echo -e "  Primary Archive : ${archive_disp}"
+        if [ -n "${EXTRA_MIX_ARCHIVE_DIRS:-}" ]; then
+            echo -e "  Extra Archives  : ${CYAN}${EXTRA_MIX_ARCHIVE_DIRS}${NC}"
+        fi
         echo ""
         echo -e "${BOLD}Select an operation:${NC}"
-        echo -e "  ${BOLD}${CYAN}1)${NC} Show Mix Storage Drive Space Remaining (${GREEN}Mix Drive Only${NC})"
+        echo -e "  ${BOLD}${CYAN}1)${NC} Show Mix Storage Drive Space Remaining (${GREEN}All Configured Mix Drives${NC})"
         echo -e "  ${BOLD}${CYAN}2)${NC} Show All Attached Drives Space Remaining (${GREEN}Get_All_Drive_Space.sh${NC})"
         echo -e "  ${BOLD}${CYAN}3)${NC} Refresh Archive Status & File Counts (${GREEN}Rescan WAVs, FLACs & Tracklists${NC})"
-        echo -e "  ${BOLD}${CYAN}4)${NC} Configure Default Mix Archive Storage Folder"
+        echo -e "  ${BOLD}${CYAN}4)${NC} Configure Mix Archive Storage Locations (${GREEN}Option 13: Primary & Multiple Folders${NC})"
         echo -e "  ${BOLD}${CYAN}0)${NC} Return to Main Menu"
         echo ""
-        read -r -p "Enter choice [0-4]: " stg_choice
+        read -r -p "Enter choice [0-4, or 13]: " stg_choice
         case "$stg_choice" in
             1)
                 show_mix_drive_space
@@ -8441,7 +9004,7 @@ manage_storage_and_archive_config() {
                 _LAST_OS_UPDATE_CHECK=0
                 return 0
                 ;;
-            4)
+            4|13)
                 configure_mix_archive_folder
                 ;;
             0|[qQ]|[eE][xX][iI][tT])
@@ -8942,7 +9505,7 @@ while true; do
     fi
     echo -e "${BOLD}${MAGENTA}-----------------------------------------------------------------------------------${NC}"
     if ! is_mix_archive_configured; then
-        echo -e "\n  ${BOLD}${RED}⚠️  Please be advised you have not configured your Mix Archive Folder, Please use option 10 to Configure this now.${NC}"
+        echo -e "\n  ${BOLD}${RED}⚠️  Please be advised you have not configured your Mix Archive Folder, Please use Option 13 or 10 to Configure this now.${NC}"
         echo -e "  ${DIM}${YELLOW}(Currently using application root folder: ${SCRIPT_DIR}/MIX_ARCHIVE)${NC}"
     fi
     echo ""
@@ -8962,12 +9525,12 @@ while true; do
     echo -e "  ${BOLD}${CYAN} 7)${NC} Export / Copy Mixes to Specified Path (${GREEN}Audio, Covers, Tracklists, Spek${NC})"
     echo -e "  ${BOLD}${CYAN} 8)${NC} Audio Integrity Checksums & FLAC Verification Suite (${GREEN}SHA-256 Manifest & Verification${NC})"
     echo -e "  ${BOLD}${CYAN} 9)${NC} Back up FLAC Outputs to Google Drive (${GREEN}backup_to_gdrive.sh${NC})"
-    echo -e "  ${BOLD}${CYAN}10)${NC} Storage Management & Archive Folder Setup (${GREEN}Drive Space, Rescan, Configure Folder${NC})"
+    echo -e "  ${BOLD}${CYAN}10)${NC} Storage Management & Multiple Mix Archives Setup (${GREEN}Drive Space, Rescan, Configure Archives${NC})"
     
     echo -e "\n  ${BOLD}${BLUE}─── [ SECTION 2: STUDIO AUDIO, PLAYBACK, METADATA & VIDEO ] ──${NC}"
     echo -e "  ${BOLD}${CYAN}11)${NC} Tracklist Management, Scanning & Metadata Suite (${GREEN}Browse, Search, Picard, HTML Index${NC})"
     echo -e "  ${BOLD}${CYAN}12)${NC} Audio Players & Retro Playback Suite (${GREEN}cliamp, Strawberry, VLC, Audacity, Haruna, Winamp...${NC})"
-    echo -e "  ${BOLD}${CYAN}13)${NC} View Playing Mix Audio Specifications & Stream Metadata (${GREEN}Bit Depth, 48kHz, Codec, Title${NC})"
+    echo -e "  ${BOLD}${CYAN}13)${NC} Configure Mix Archive Storage Locations (${GREEN}Option 13: Primary & Multiple Archives${NC})"
     echo -e "  ${BOLD}${CYAN}14)${NC} Custom Mix Playlists & Traktor History Suite (${GREEN}.m3u8, .xspf, Traktor 3 Playlists${NC})"
     echo -e "  ${BOLD}${CYAN}15)${NC} Digital Audio Workstations (DAWs) & Mix Dispatch (${GREEN}Reaper, Logic, FL Studio, Ardour, Traktor${NC})"
     echo -e "  ${BOLD}${CYAN}16)${NC} Studio Hardware, Audio Interfaces & Master Volume Control (${GREEN}PipeWire, ALSA, MIDI, Mute${NC})"
@@ -9029,7 +9592,7 @@ while true; do
             run_sub_script "backup_to_gdrive.sh"
             press_enter
             ;;
-        10|config-archive|archive-dir|archive-folder)
+        10)
             manage_storage_and_archive_config
             ;;
         11)
@@ -9038,7 +9601,10 @@ while true; do
         12|manage-audio-players|players)
             manage_audio_players
             ;;
-        13)
+        13|config-archive|archive-dir|archive-folder)
+            configure_mix_archive_folder
+            ;;
+        specs|metadata|inspect)
             inspect_playing_audio_file
             ;;
         14)

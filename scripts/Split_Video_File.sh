@@ -112,6 +112,15 @@ if [ -z "$input_mp4" ]; then
         "$PWD"
         "$SCRIPT_DIR"
     )
+    if [ -n "${EXTRA_MIX_ARCHIVE_DIRS:-}" ]; then
+        IFS=':;,' read -ra EXTRA_DIRS <<< "$EXTRA_MIX_ARCHIVE_DIRS"
+        for ed in "${EXTRA_DIRS[@]}"; do
+            ed="$(echo "$ed" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+            [ -z "$ed" ] && continue
+            [ -d "$ed/downloaded_videos" ] && candidate_dirs+=("$ed/downloaded_videos")
+            [ -d "$ed" ] && candidate_dirs+=("$ed")
+        done
+    fi
 
     found_videos=()
     shopt -s nullglob nocaseglob

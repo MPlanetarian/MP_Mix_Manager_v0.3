@@ -115,6 +115,18 @@ if [ -z "$input_flac" ]; then
         "${MIX_ARCHIVE_DIR:-$PWD}"
         "$PWD"
     )
+    if [ -n "${EXTRA_MIX_ARCHIVE_DIRS:-}" ]; then
+        IFS=':;,' read -ra EXTRA_DIRS <<< "$EXTRA_MIX_ARCHIVE_DIRS"
+        for ed in "${EXTRA_DIRS[@]}"; do
+            ed="$(echo "$ed" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+            [ -z "$ed" ] && continue
+            if [ -d "$ed/FLAC_CONVERTED_OUTPUTS" ]; then
+                candidate_dirs+=("$ed/FLAC_CONVERTED_OUTPUTS")
+            elif [ -d "$ed" ]; then
+                candidate_dirs+=("$ed")
+            fi
+        done
+    fi
 
     found_flacs=()
     shopt -s nullglob nocaseglob

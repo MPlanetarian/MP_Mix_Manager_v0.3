@@ -23,6 +23,16 @@ BOLD='\033[1m'
 DIM='\033[2m'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PARENT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Source config.env if present
+for cfg in "$SCRIPT_DIR/config.env" "$PARENT_DIR/config.env" "$PWD/config.env" "${MIX_ARCHIVE_DIR:-}/config.env"; do
+    if [ -f "$cfg" ]; then
+        # shellcheck source=/dev/null
+        source "$cfg"
+        break
+    fi
+done
 
 AUDIO_FILE=""
 VIDEO_FILE=""
@@ -151,8 +161,24 @@ if [ -z "$AUDIO_FILE" ] && [ -z "$VIDEO_FILE" ]; then
         # Search for available FLACs/WAVs (newest/latest first)
         local flac_list=()
         local search_dirs=()
+        if [ -n "${MIX_ARCHIVE_DIR:-}" ] && [ -d "$MIX_ARCHIVE_DIR/FLAC_CONVERTED_OUTPUTS" ]; then
+            search_dirs+=("$MIX_ARCHIVE_DIR/FLAC_CONVERTED_OUTPUTS")
+        elif [ -n "${MIX_ARCHIVE_DIR:-}" ] && [ -d "$MIX_ARCHIVE_DIR" ]; then
+            search_dirs+=("$MIX_ARCHIVE_DIR")
+        fi
+        if [ -n "${EXTRA_MIX_ARCHIVE_DIRS:-}" ]; then
+            IFS=':;,' read -ra EXTRA_DIRS <<< "$EXTRA_MIX_ARCHIVE_DIRS"
+            for ed in "${EXTRA_DIRS[@]}"; do
+                ed="$(echo "$ed" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+                [ -z "$ed" ] && continue
+                if [ -d "$ed/FLAC_CONVERTED_OUTPUTS" ]; then
+                    search_dirs+=("$ed/FLAC_CONVERTED_OUTPUTS")
+                elif [ -d "$ed" ]; then
+                    search_dirs+=("$ed")
+                fi
+            done
+        fi
         [ -d "$OUTPUT_DIR" ] && search_dirs+=("$OUTPUT_DIR")
-        [ -n "${MIX_ARCHIVE_DIR:-}" ] && [ -d "$MIX_ARCHIVE_DIR/FLAC_CONVERTED_OUTPUTS" ] && search_dirs+=("$MIX_ARCHIVE_DIR/FLAC_CONVERTED_OUTPUTS")
         [ -d "$SCRIPT_DIR/FLAC_CONVERTED_OUTPUTS" ] && search_dirs+=("$SCRIPT_DIR/FLAC_CONVERTED_OUTPUTS")
         search_dirs+=("$PWD")
 

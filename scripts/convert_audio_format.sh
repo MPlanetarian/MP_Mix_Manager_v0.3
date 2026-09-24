@@ -18,10 +18,72 @@ NC='\033[0m'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PARENT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Source config.env if present
+for cfg in "$SCRIPT_DIR/config.env" "$PARENT_DIR/config.env" "$PWD/config.env" "${MIX_ARCHIVE_DIR:-}/config.env"; do
+    if [ -f "$cfg" ]; then
+        # shellcheck source=/dev/null
+        source "$cfg"
+        break
+    fi
+done
+
+# Discover all FLAC directories
+all_flac_dirs=()
+if [ -n "${MIX_ARCHIVE_DIR:-}" ] && [ -d "$MIX_ARCHIVE_DIR/FLAC_CONVERTED_OUTPUTS" ]; then
+    all_flac_dirs+=("$(cd "$MIX_ARCHIVE_DIR/FLAC_CONVERTED_OUTPUTS" && pwd)")
+elif [ -n "${MIX_ARCHIVE_DIR:-}" ] && [ -d "$MIX_ARCHIVE_DIR" ]; then
+    all_flac_dirs+=("$(cd "$MIX_ARCHIVE_DIR" && pwd)")
+elif [ -d "${OUTPUT_DIR:-FLAC_CONVERTED_OUTPUTS}" ]; then
+    all_flac_dirs+=("$(cd "${OUTPUT_DIR:-FLAC_CONVERTED_OUTPUTS}" && pwd)")
+fi
+
+if [ -n "${EXTRA_MIX_ARCHIVE_DIRS:-}" ]; then
+    IFS=':;,' read -ra EXTRA_DIRS <<< "$EXTRA_MIX_ARCHIVE_DIRS"
+    for ed in "${EXTRA_DIRS[@]}"; do
+        ed="$(echo "$ed" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+        [ -z "$ed" ] && continue
+        if [ -d "$ed/FLAC_CONVERTED_OUTPUTS" ]; then
+            cand="$(cd "$ed/FLAC_CONVERTED_OUTPUTS" && pwd)"
+            [[ ! " ${all_flac_dirs[*]} " =~ " ${cand} " ]] && all_flac_dirs+=("$cand")
+        elif [ -d "$ed" ]; then
+            cand="$(cd "$ed" && pwd)"
+            [[ ! " ${all_flac_dirs[*]} " =~ " ${cand} " ]] && all_flac_dirs+=("$cand")
+        fi
+    done
+fi
+[ ${#all_flac_dirs[@]} -eq 0 ] && [ -d "$PWD" ] && all_flac_dirs+=("$PWD")
+
+# Discover all WAV archive directories
+all_wav_dirs=()
+if [ -n "${MIX_ARCHIVE_DIR:-}" ] && [ -d "$MIX_ARCHIVE_DIR/CONVERTED_WAV_FILES" ]; then
+    all_wav_dirs+=("$(cd "$MIX_ARCHIVE_DIR/CONVERTED_WAV_FILES" && pwd)")
+elif [ -d "${ARCHIVE_DIR:-CONVERTED_WAV_FILES}" ]; then
+    all_wav_dirs+=("$(cd "${ARCHIVE_DIR:-CONVERTED_WAV_FILES}" && pwd)")
+fi
+
+if [ -n "${EXTRA_MIX_ARCHIVE_DIRS:-}" ]; then
+    IFS=':;,' read -ra EXTRA_DIRS <<< "$EXTRA_MIX_ARCHIVE_DIRS"
+    for ed in "${EXTRA_DIRS[@]}"; do
+        ed="$(echo "$ed" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+        [ -z "$ed" ] && continue
+        if [ -d "$ed/CONVERTED_WAV_FILES" ]; then
+            cand="$(cd "$ed/CONVERTED_WAV_FILES" && pwd)"
+            [[ ! " ${all_wav_dirs[*]} " =~ " ${cand} " ]] && all_wav_dirs+=("$cand")
+        fi
+    done
+fi
+
 # Find matching cover art
 find_cover_art() {
     local base_name="$1"
-    local search_dirs=("./COVERS" "$PARENT_DIR/COVERS" "/run/media/$USER/WD BLACK B/MIX_ARCHIVE/COVERS" "/Volumes/WD BLACK B/MIX_ARCHIVE/COVERS" "D:/MIX_ARCHIVE/COVERS")
+    local search_dirs=("./COVERS" "$PARENT_DIR/COVERS" "${MIX_ARCHIVE_DIR:-}/COVERS" "/run/media/$USER/WD BLACK B/MIX_ARCHIVE/COVERS" "/Volumes/WD BLACK B/MIX_ARCHIVE/COVERS" "D:/MIX_ARCHIVE/COVERS")
+    if [ -n "${EXTRA_MIX_ARCHIVE_DIRS:-}" ]; then
+        IFS=':;,' read -ra EXTRA_DIRS <<< "$EXTRA_MIX_ARCHIVE_DIRS"
+        for ed in "${EXTRA_DIRS[@]}"; do
+            ed="$(echo "$ed" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+            [ -n "$ed" ] && [ -d "$ed/COVERS" ] && search_dirs+=("$ed/COVERS")
+        done
+    fi
     
     # Try show number match (e.g. 033)
     local show_num=""
@@ -202,16 +264,16 @@ case "$scope_choice" in
         else
             # Search for keyword
             shopt -s nullglob nocaseglob
-            candidates=(*"$user_input"*.[wW][aA][vV] *"$user_input"*.[fF][lL][aA][cC] \
-                "${OUTPUT_DIR:-FLAC_CONVERTED_OUTPUTS}"/*"$user_input"*.[fF][lL][aA][cC] \
-                "${ARCHIVE_DIR:-CONVERTED_WAV_FILES}"/*"$user_input"*.[wW][aA][vV] \
-                "${WAV_OUTPUT_DIR:-WAV_CONVERTED_OUTPUTS}"/*"$user_input"*.[wW][aA][vV] \
-                "${MP3_OUTPUT_DIR:-MP3_CONVERTED_OUTPUTS}"/*"$user_input"*.[mM][pP]3 \
-                "${MIX_ARCHIVE_DIR:-}/FLAC_CONVERTED_OUTPUTS"/*"$user_input"*.[fF][lL][aA][cC] \
-                "${MIX_ARCHIVE_DIR:-}/CONVERTED_WAV_FILES"/*"$user_input"*.[wW][aA][vV])
+            candidates=(*"$user_input"*.[wW][aA][vV] *"$user_input"*.[fF][lL][aA][cC])
+            for fd in "${all_flac_dirs[@]}"; do
+                [ -d "$fd" ] && candidates+=("$fd"/*"$user_input"*.[fF][lL][aA][cC] "$fd"/*"$user_input"*.[wW][aA][vV])
+            done
+            for wd in "${all_wav_dirs[@]}"; do
+                [ -d "$wd" ] && candidates+=("$wd"/*"$user_input"*.[wW][aA][vV])
+            done
             shopt -u nullglob nocaseglob
             if [ ${#candidates[@]} -eq 0 ]; then
-                echo -e "${RED}No audio files found matching '$user_input'!${NC}"
+                echo -e "${RED}No audio files found matching '$user_input' across configured archives!${NC}"
                 exit 1
             elif [ ${#candidates[@]} -eq 1 ]; then
                 target_file="${candidates[0]}"
@@ -254,20 +316,17 @@ case "$scope_choice" in
         echo -e "${BOLD}${GREEN}✓ Batch conversion completed: $success / ${#wav_files[@]} succeeded!${NC}\n"
         ;;
     3)
-        wav_dir="${ARCHIVE_DIR:-CONVERTED_WAV_FILES}"
-        if [ ! -d "$wav_dir" ] && [ -n "${MIX_ARCHIVE_DIR:-}" ] && [ -d "$MIX_ARCHIVE_DIR/CONVERTED_WAV_FILES" ]; then
-            wav_dir="$MIX_ARCHIVE_DIR/CONVERTED_WAV_FILES"
-        elif [ ! -d "$wav_dir" ] && [ -d "/run/media/$USER/WD BLACK B/MIX_ARCHIVE/CONVERTED_WAV_FILES" ]; then
-            wav_dir="/run/media/$USER/WD BLACK B/MIX_ARCHIVE/CONVERTED_WAV_FILES"
-        fi
         shopt -s nullglob nocaseglob
-        wav_files=("$wav_dir"/*.[wW][aA][vV])
+        wav_files=()
+        for wd in "${all_wav_dirs[@]}"; do
+            [ -d "$wd" ] && wav_files+=("$wd"/*.[wW][aA][vV])
+        done
         shopt -u nullglob nocaseglob
         if [ ${#wav_files[@]} -eq 0 ]; then
-            echo -e "${RED}No WAV files found in $wav_dir!${NC}"
+            echo -e "${RED}No WAV files found across configured WAV archives!${NC}"
             exit 1
         fi
-        echo -e "\nFound ${#wav_files[@]} WAV file(s) in $wav_dir."
+        echo -e "\nFound ${#wav_files[@]} WAV file(s) across ${#all_wav_dirs[@]} archive location(s)."
         read -r -e -p "Enter output directory [default: $DEFAULT_OUT_DIR]: " custom_out
         final_out="${custom_out:-$DEFAULT_OUT_DIR}"
 
@@ -281,20 +340,17 @@ case "$scope_choice" in
         echo -e "${BOLD}${GREEN}✓ Batch conversion completed: $success / ${#wav_files[@]} succeeded!${NC}\n"
         ;;
     4)
-        flac_dir="${OUTPUT_DIR:-FLAC_CONVERTED_OUTPUTS}"
-        if [ ! -d "$flac_dir" ] && [ -n "${MIX_ARCHIVE_DIR:-}" ] && [ -d "$MIX_ARCHIVE_DIR/FLAC_CONVERTED_OUTPUTS" ]; then
-            flac_dir="$MIX_ARCHIVE_DIR/FLAC_CONVERTED_OUTPUTS"
-        elif [ ! -d "$flac_dir" ] && [ -d "/run/media/$USER/WD BLACK B/MIX_ARCHIVE/FLAC_CONVERTED_OUTPUTS" ]; then
-            flac_dir="/run/media/$USER/WD BLACK B/MIX_ARCHIVE/FLAC_CONVERTED_OUTPUTS"
-        fi
         shopt -s nullglob nocaseglob
-        flac_files=("$flac_dir"/*.[fF][lL][aA][cC])
+        flac_files=()
+        for fd in "${all_flac_dirs[@]}"; do
+            [ -d "$fd" ] && flac_files+=("$fd"/*.[fF][lL][aA][cC])
+        done
         shopt -u nullglob nocaseglob
         if [ ${#flac_files[@]} -eq 0 ]; then
-            echo -e "${RED}No FLAC files found in $flac_dir!${NC}"
+            echo -e "${RED}No FLAC files found across configured FLAC archives!${NC}"
             exit 1
         fi
-        echo -e "\nFound ${#flac_files[@]} FLAC file(s) in $flac_dir."
+        echo -e "\nFound ${#flac_files[@]} FLAC file(s) across ${#all_flac_dirs[@]} archive location(s)."
         read -r -e -p "Enter output directory [default: $DEFAULT_OUT_DIR]: " custom_out
         final_out="${custom_out:-$DEFAULT_OUT_DIR}"
 

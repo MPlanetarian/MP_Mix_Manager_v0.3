@@ -532,7 +532,7 @@ def batch_convert(target_dir, output_dir=None, out_fmt="both"):
 def main():
     parser = argparse.ArgumentParser(description="Generate HTML and PDF tracklist documents.")
     parser.add_argument("-i", "--input", help="Path to single .txt tracklist file")
-    parser.add_argument("-d", "--dir", help="Directory containing .txt tracklists for batch generation")
+    parser.add_argument("-d", "--dir", nargs="+", help="Directory or directories containing .txt tracklists for batch generation")
     parser.add_argument("-o", "--output-dir", help="Output directory for generated documents")
     parser.add_argument("-f", "--format", choices=["html", "pdf", "both"], default="both", help="Output format (default: both)")
 
@@ -552,17 +552,24 @@ def main():
             print(f"  PDF File:    {res['pdf']}")
         print("=" * 60 + "\n")
     elif args.dir:
-        print(f"\nScanning {args.dir} for tracklists...")
-        processed, errors = batch_convert(args.dir, args.output_dir, args.format)
+        all_processed = []
+        all_errors = []
+        for d in args.dir:
+            if not os.path.isdir(d):
+                continue
+            print(f"\nScanning {d} for tracklists...")
+            p, e = batch_convert(d, args.output_dir, args.format)
+            all_processed.extend(p)
+            all_errors.extend(e)
         print("\n" + "=" * 60)
         print("       BATCH TRACKLIST GENERATION COMPLETE")
         print("=" * 60)
-        print(f"  Total Processed: {len(processed)}")
-        print(f"  Total Errors:    {len(errors)}")
-        for orig, res in processed[:10]:
+        print(f"  Total Processed: {len(all_processed)}")
+        print(f"  Total Errors:    {len(all_errors)}")
+        for orig, res in all_processed[:10]:
             print(f"  ✓ {os.path.basename(orig)} -> {', '.join(res.keys())}")
-        if len(processed) > 10:
-            print(f"  ... and {len(processed) - 10} more.")
+        if len(all_processed) > 10:
+            print(f"  ... and {len(all_processed) - 10} more.")
         print("=" * 60 + "\n")
     else:
         parser.print_help()

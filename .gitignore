@@ -80,3 +80,7 @@ Thumbs.db
 *.swp
 assets/weather_cache.txt
 .aider*
+
+# Generated reports
+master_tracklists.html
+

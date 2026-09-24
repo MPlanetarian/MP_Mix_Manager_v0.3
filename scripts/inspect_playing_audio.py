@@ -676,25 +676,65 @@ def main():
 
         cfg = load_config()
         if c == '1':
-            flac_dir = os.path.join(SCRIPT_DIR, "FLAC_CONVERTED_OUTPUTS")
-            if not os.path.isdir(flac_dir):
-                flac_dir = os.path.join(cfg.get("MIX_ARCHIVE_DIR", ""), "FLAC_CONVERTED_OUTPUTS")
-            files = [os.path.join(flac_dir, f) for f in os.listdir(flac_dir) if f.lower().endswith(".flac")] if os.path.isdir(flac_dir) else []
+            flac_dirs = []
+            if os.path.isdir(os.path.join(SCRIPT_DIR, "FLAC_CONVERTED_OUTPUTS")):
+                flac_dirs.append(os.path.join(SCRIPT_DIR, "FLAC_CONVERTED_OUTPUTS"))
+            if cfg.get("MIX_ARCHIVE_DIR"):
+                p = os.path.join(cfg["MIX_ARCHIVE_DIR"], "FLAC_CONVERTED_OUTPUTS")
+                if os.path.isdir(p) and p not in flac_dirs:
+                    flac_dirs.append(p)
+            extra_env = os.environ.get("EXTRA_MIX_ARCHIVE_DIRS") or cfg.get("EXTRA_MIX_ARCHIVE_DIRS")
+            if extra_env:
+                for sep in [':', ';', ',']:
+                    if sep in extra_env:
+                        extras = [x.strip() for x in extra_env.split(sep) if x.strip()]
+                        break
+                else:
+                    extras = [extra_env.strip()] if extra_env.strip() else []
+                for ed in extras:
+                    p1 = os.path.join(ed, "FLAC_CONVERTED_OUTPUTS")
+                    if os.path.isdir(p1) and p1 not in flac_dirs:
+                        flac_dirs.append(p1)
+                    elif os.path.isdir(ed) and ed not in flac_dirs:
+                        flac_dirs.append(ed)
+            files = []
+            for fd in flac_dirs:
+                files.extend([os.path.join(fd, f) for f in os.listdir(fd) if f.lower().endswith(".flac")])
             files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
             if files:
                 target_file = files[0]
             else:
-                print(f"{RED}No FLAC mixes found in archive.{NC}")
+                print(f"{RED}No FLAC mixes found in archives.{NC}")
                 time.sleep(1.2)
                 return
         elif c == '2':
-            wav_dir = os.path.join(cfg.get("MIX_ARCHIVE_DIR", ""), "CONVERTED_WAV_FILES")
-            files = [os.path.join(wav_dir, f) for f in os.listdir(wav_dir) if f.lower().endswith((".wav", ".flac"))] if os.path.isdir(wav_dir) else []
+            wav_dirs = []
+            if os.path.isdir(os.path.join(SCRIPT_DIR, "CONVERTED_WAV_FILES")):
+                wav_dirs.append(os.path.join(SCRIPT_DIR, "CONVERTED_WAV_FILES"))
+            if cfg.get("MIX_ARCHIVE_DIR"):
+                p = os.path.join(cfg["MIX_ARCHIVE_DIR"], "CONVERTED_WAV_FILES")
+                if os.path.isdir(p) and p not in wav_dirs:
+                    wav_dirs.append(p)
+            extra_env = os.environ.get("EXTRA_MIX_ARCHIVE_DIRS") or cfg.get("EXTRA_MIX_ARCHIVE_DIRS")
+            if extra_env:
+                for sep in [':', ';', ',']:
+                    if sep in extra_env:
+                        extras = [x.strip() for x in extra_env.split(sep) if x.strip()]
+                        break
+                else:
+                    extras = [extra_env.strip()] if extra_env.strip() else []
+                for ed in extras:
+                    p2 = os.path.join(ed, "CONVERTED_WAV_FILES")
+                    if os.path.isdir(p2) and p2 not in wav_dirs:
+                        wav_dirs.append(p2)
+            files = []
+            for wd in wav_dirs:
+                files.extend([os.path.join(wd, f) for f in os.listdir(wd) if f.lower().endswith((".wav", ".flac"))])
             files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
             if files:
                 target_file = files[0]
             else:
-                print(f"{RED}No WAV mixes found in archive.{NC}")
+                print(f"{RED}No WAV mixes found in archives.{NC}")
                 time.sleep(1.2)
                 return
         elif c == '3':

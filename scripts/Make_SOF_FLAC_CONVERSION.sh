@@ -19,14 +19,54 @@ if [ "${BASH_VERSINFO[0]:-0}" -lt 4 ] && [ "$(uname -s 2>/dev/null)" = "Darwin" 
     fi
 fi
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PARENT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Source config.env if present
+for cfg in "$SCRIPT_DIR/config.env" "$PARENT_DIR/config.env" "$PWD/config.env" "${MIX_ARCHIVE_DIR:-}/config.env"; do
+    if [ -f "$cfg" ]; then
+        # shellcheck source=/dev/null
+        source "$cfg"
+        break
+    fi
+done
+
 # ================================
 # USER CONFIGURATION & SETUP
 # ================================
-OUTPUT_DIR="FLAC_CONVERTED_OUTPUTS"
-ARCHIVE_DIR="CONVERTED_WAV_FILES"
-SPEK_DIR="SPEK_OUTPUTS"
+OUTPUT_DIR="${OUTPUT_DIR:-FLAC_CONVERTED_OUTPUTS}"
+ARCHIVE_DIR="${ARCHIVE_DIR:-CONVERTED_WAV_FILES}"
+SPEK_DIR="${SPEK_DIR:-SPEK_OUTPUTS}"
 LOG_FILE="FLAC_CONVERSION_SOF.log"
 COVER_ART="Cover.png"
+
+# Resolve relative to MIX_ARCHIVE_DIR if configured
+if [ -n "${MIX_ARCHIVE_DIR:-}" ] && [ -d "$MIX_ARCHIVE_DIR" ]; then
+    if [[ "$OUTPUT_DIR" != /* ]] && [ -d "$MIX_ARCHIVE_DIR/FLAC_CONVERTED_OUTPUTS" ]; then
+        OUTPUT_DIR="$MIX_ARCHIVE_DIR/FLAC_CONVERTED_OUTPUTS"
+    fi
+    if [[ "$ARCHIVE_DIR" != /* ]] && [ -d "$MIX_ARCHIVE_DIR/CONVERTED_WAV_FILES" ]; then
+        ARCHIVE_DIR="$MIX_ARCHIVE_DIR/CONVERTED_WAV_FILES"
+    fi
+fi
+
+# Discover all FLAC check directories for existing mix detection
+flac_check_dirs=()
+[ -d "$OUTPUT_DIR" ] && flac_check_dirs+=("$(cd "$OUTPUT_DIR" && pwd)")
+if [ -n "${EXTRA_MIX_ARCHIVE_DIRS:-}" ]; then
+    IFS=':;,' read -ra EXTRA_DIRS <<< "$EXTRA_MIX_ARCHIVE_DIRS"
+    for ed in "${EXTRA_DIRS[@]}"; do
+        ed="$(echo "$ed" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+        [ -z "$ed" ] && continue
+        if [ -d "$ed/FLAC_CONVERTED_OUTPUTS" ]; then
+            cand="$(cd "$ed/FLAC_CONVERTED_OUTPUTS" && pwd)"
+            [[ ! " ${flac_check_dirs[*]} " =~ " ${cand} " ]] && flac_check_dirs+=("$cand")
+        elif [ -d "$ed" ]; then
+            cand="$(cd "$ed" && pwd)"
+            [[ ! " ${flac_check_dirs[*]} " =~ " ${cand} " ]] && flac_check_dirs+=("$cand")
+        fi
+    done
+fi
 
 # Cross-platform helper functions (Bash 3.2+ compatible)
 get_abs_path() {
@@ -261,9 +301,17 @@ for g_hash in "${group_keys[@]}"; do
     tracklist_filename="${normalized_name}.txt"
     tracklist_path="${OUTPUT_DIR}/${tracklist_filename}"
 
-    if [ -f "$output_path" ] && [ -s "$output_path" ]; then
+    existing_flac=""
+    for fdir in "${flac_check_dirs[@]}"; do
+        if [ -f "$fdir/$output_filename" ] && [ -s "$fdir/$output_filename" ]; then
+            existing_flac="$fdir/$output_filename"
+            break
+        fi
+    done
+
+    if [ -n "$existing_flac" ]; then
         echo "Processing Group [$counter/$total_groups]: Session ID '$base'"
-        echo " -> Output FLAC file already exists ($output_filename). Skipping conversion."
+        echo " -> Output FLAC file already exists in archive ($existing_flac). Skipping conversion."
         # Move source WAVs to Archive if they exist
         for w in "${current_wavs[@]}"; do
             if [ -f "$w" ]; then
