@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.0] - 2026-09-24
 
+- **CLI Help & Options Reference (`mix-archive-manager --help` / `-h`)**:
+  - Added `-h`, `--help`, and `help` launch flags to [`bin/mix-archive-manager`](file:///var/home/mplanetarian/MP_Mix_Manager_v0.3/bin/mix-archive-manager) and [`Mix_Archive_Manager.sh`](file:///var/home/mplanetarian/MP_Mix_Manager_v0.3/Mix_Archive_Manager.sh).
+  - Built dedicated help engine in [`scripts/show_help.sh`](file:///var/home/mplanetarian/MP_Mix_Manager_v0.3/scripts/show_help.sh) displaying full usage instructions, launch flags, direct shortcuts, and exhaustive listings of all 31 main menu options across all 3 sections.
+  - Added direct execution support for menu options and shortcuts from the command line (e.g. `mix-archive-manager 13`).
+
 - **Project Promotion to Version 0.3.0 (`MP_Mix_Manager_v0.3`)**:
   - Full project upgrade and version promotion across all launchers, scripts, configurations, and documentation.
   - Centralized version tracking bumped to `0.3.0` in [`VERSION`](file:///var/home/mplanetarian/MP_Mix_Manager_v0.3/VERSION).
