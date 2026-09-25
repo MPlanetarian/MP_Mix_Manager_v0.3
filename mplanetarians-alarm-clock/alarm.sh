@@ -318,23 +318,13 @@ random_mix() {
 }
 
 choose_player() {
-    local first second roll
-    roll=$((RANDOM % 2))
-    if (( roll == 0 )); then
-        first="strawberry"; second="cliamp"
-    else
-        first="cliamp"; second="strawberry"
+    if command -v audacious >/dev/null 2>&1 || command -v audtool >/dev/null 2>&1 || qdbus org.mpris.MediaPlayer2.audacious >/dev/null 2>&1; then
+        printf 'audacious\n'; return 0
     fi
-    if [[ "$first" == "cliamp" && -n "$CLIAMP_BIN" ]]; then
+    if [[ -n "$CLIAMP_BIN" ]]; then
         printf 'cliamp\n'; return 0
     fi
-    if [[ "$first" == "strawberry" ]] && command -v strawberry >/dev/null 2>&1; then
-        printf 'strawberry\n'; return 0
-    fi
-    if [[ "$second" == "cliamp" && -n "$CLIAMP_BIN" ]]; then
-        printf 'cliamp\n'; return 0
-    fi
-    if [[ "$second" == "strawberry" ]] && command -v strawberry >/dev/null 2>&1; then
+    if command -v strawberry >/dev/null 2>&1; then
         printf 'strawberry\n'; return 0
     fi
     return 1
@@ -366,6 +356,69 @@ total=int(data.get("total") or 0)
 path=str(track.get("path") or "")
 sys.exit(0 if path or total>0 else 1)
 '
+}
+
+ensure_audacious() {
+    if qdbus org.mpris.MediaPlayer2.audacious /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.PlaybackStatus >/dev/null 2>&1; then
+        return 0
+    fi
+    if command -v audtool >/dev/null 2>&1 && audtool playback-status >/dev/null 2>&1; then
+        return 0
+    fi
+    if command -v audacious >/dev/null 2>&1; then
+        audacious >/dev/null 2>&1 &
+    elif command -v flatpak >/dev/null 2>&1; then
+        flatpak run org.atheme.audacious >/dev/null 2>&1 &
+    else
+        return 1
+    fi
+    local i
+    for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+        if qdbus org.mpris.MediaPlayer2.audacious /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.PlaybackStatus >/dev/null 2>&1 || { command -v audtool >/dev/null 2>&1 && audtool playback-status >/dev/null 2>&1; }; then
+            return 0
+        fi
+        sleep 0.3
+    done
+    return 1
+}
+
+audacious_is_ready() {
+    if command -v audtool >/dev/null 2>&1; then
+        local song
+        song="$(audtool current-song 2>/dev/null || true)"
+        [[ -n "$song" ]] && return 0
+    fi
+    qdbus org.mpris.MediaPlayer2.audacious /org/mpris/MediaPlayer2 org.freedesktop.DBus.Properties.Get org.mpris.MediaPlayer2.Player Metadata 2>/dev/null | grep -q 'xesam:' && return 0
+    return 1
+}
+
+audacious_shuffle_play() {
+    if command -v audtool >/dev/null 2>&1; then
+        audtool playlist-shuffle-toggle on >/dev/null 2>&1 || true
+        audtool set-volume 100 >/dev/null 2>&1 || true
+        audtool playback-play >/dev/null 2>&1 || true
+    else
+        dbus-send --session --dest=org.mpris.MediaPlayer2.audacious /org/mpris/MediaPlayer2 \
+            org.freedesktop.DBus.Properties.Set string:org.mpris.MediaPlayer2.Player string:Shuffle variant:boolean:true >/dev/null 2>&1 || true
+        dbus-send --session --dest=org.mpris.MediaPlayer2.audacious /org/mpris/MediaPlayer2 \
+            org.freedesktop.DBus.Properties.Set string:org.mpris.MediaPlayer2.Player string:Volume variant:double:1.0 >/dev/null 2>&1 || true
+        dbus-send --session --dest=org.mpris.MediaPlayer2.audacious /org/mpris/MediaPlayer2 \
+            org.mpris.MediaPlayer2.Player.Play >/dev/null 2>&1 || true
+    fi
+}
+
+audacious_open() {
+    local file="$1"
+    if command -v audtool >/dev/null 2>&1; then
+        audtool playlist-clear >/dev/null 2>&1 || true
+        audtool playlist-addurl "$file" >/dev/null 2>&1 || true
+        audtool playback-play >/dev/null 2>&1 || true
+    else
+        local uri="file://$(python3 -c 'import pathlib,sys; print(pathlib.Path(sys.argv[1]).resolve().as_uri()[7:])' "$file")"
+        dbus-send --session --dest=org.mpris.MediaPlayer2.audacious /org/mpris/MediaPlayer2 \
+            org.mpris.MediaPlayer2.Player.OpenUri "string:${uri}" >/dev/null 2>&1 || true
+        audacious_shuffle_play
+    fi
 }
 
 ensure_strawberry() {
@@ -408,6 +461,12 @@ strawberry_open() {
 
 stop_players() {
     [[ -n "$CLIAMP_BIN" ]] && "$CLIAMP_BIN" stop >/dev/null 2>&1 || true
+    if command -v audtool >/dev/null 2>&1; then
+        audtool playback-stop >/dev/null 2>&1 || true
+    else
+        dbus-send --session --dest=org.mpris.MediaPlayer2.audacious /org/mpris/MediaPlayer2 \
+            org.mpris.MediaPlayer2.Player.Stop >/dev/null 2>&1 || true
+    fi
     dbus-send --session --dest=org.mpris.MediaPlayer2.strawberry /org/mpris/MediaPlayer2 \
         org.mpris.MediaPlayer2.Player.Stop >/dev/null 2>&1 || true
 }
@@ -485,6 +544,22 @@ play_on_player() {
         log_line "DRY play player=${player} music=${forced:-playlist}"
         return 0
     fi
+    if [[ "$player" == "audacious" ]]; then
+        ensure_audacious || return 1
+        if [[ -n "$forced" ]]; then
+            audacious_open "$forced" || return 1
+            printf '%s\n' "$forced" >"$STATE_DIR/current-mix"
+        elif audacious_is_ready; then
+            audacious_shuffle_play
+            printf 'playlist\n' >"$STATE_DIR/current-mix"
+        else
+            forced="$(random_mix || true)"
+            [[ -n "$forced" ]] || return 1
+            audacious_open "$forced" || return 1
+            printf '%s\n' "$forced" >"$STATE_DIR/current-mix"
+        fi
+        return 0
+    fi
     if [[ "$player" == "cliamp" ]]; then
         ensure_cliamp || return 1
         "$CLIAMP_BIN" shuffle on >/dev/null 2>&1 || true
@@ -520,11 +595,11 @@ play_on_player() {
 
 start_music() {
     local forced="${1:-}" player
-    player="$(choose_player)" || die "Neither Strawberry nor cliamp is installed"
+    player="$(choose_player)" || die "No supported audio player (Audacious, cliamp, Strawberry) is installed"
     log_line "PLAYER chosen ${player}"
     if ! play_on_player "$player" "$forced"; then
-        local other="strawberry"
-        [[ "$player" == "strawberry" ]] && other="cliamp"
+        local other="cliamp"
+        [[ "$player" == "cliamp" ]] && other="audacious"
         log_line "PLAYER ${player} failed, trying ${other}"
         play_on_player "$other" "$forced" || die "Could not start playback"
     fi

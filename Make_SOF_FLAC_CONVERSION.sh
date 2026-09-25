@@ -332,34 +332,51 @@ for g_hash in "${group_keys[@]}"; do
     echo " -> Standardized Output Name: '$normalized_name'"
 
     # Extract date components robustly from WAV filename (handles variable year/month positions)
-    session_year=$(echo "$base" | grep -oE '20[0-9]{2}' | head -n 1)
-    session_month=$(echo "$base" | grep -oE '20[0-9]{2}-[0-9]{2}' | awk -F'-' '{print $2}')
-    if [ -z "$session_month" ]; then
-        session_month=$(echo "$base" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' | awk -F'-' '{print $2}')
+    ref_name="$base"
+    if [ ${#current_wavs[@]} -gt 0 ]; then
+        ref_name="$(basename "${current_wavs[0]}")"
     fi
-    session_day=$(echo "$base" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' | awk -F'-' '{print $3}')
-    session_hour=$(echo "$base" | grep -oE '[0-9]{1,2}h' | head -n 1 | tr -d 'h')
+
+    session_year=$(echo "$ref_name" | grep -oE '20[0-9]{2}' | head -n 1)
+    session_month=$(echo "$ref_name" | grep -oE '20[0-9]{2}-[0-9]{2}' | awk -F'-' '{print $2}')
+    if [ -z "$session_month" ]; then
+        session_month=$(echo "$ref_name" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' | awk -F'-' '{print $2}')
+    fi
+    session_day=$(echo "$ref_name" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' | awk -F'-' '{print $3}')
+    session_hour=$(echo "$ref_name" | grep -oE '[0-9]{1,2}h' | head -n 1 | tr -d 'h')
     if [ -n "$session_hour" ] && [ ${#session_hour} -eq 1 ]; then
         session_hour="0${session_hour}"
     fi
-    session_min=$(echo "$base" | grep -oE '[0-9]{2}m' | head -n 1 | tr -d 'm')
+    session_min=$(echo "$ref_name" | grep -oE '[0-9]{2}m' | head -n 1 | tr -d 'm')
     
-    traktor_pattern="history_${session_year}y${session_month}m${session_day}d_${session_hour}h${session_min}"
-    fallback_pattern="history_${session_year}y${session_month}m${session_day}d"
-    session_date="${session_year}-${session_month}-${session_day}"
+    if [ -n "$session_year" ] && [ -n "$session_month" ] && [ -n "$session_day" ]; then
+        session_date="${session_year}-${session_month}-${session_day}"
+        fallback_pattern="history_${session_year}y${session_month}m${session_day}d"
+    else
+        session_date=""
+        fallback_pattern=""
+    fi
+
+    if [ -n "$fallback_pattern" ] && [ -n "$session_hour" ] && [ -n "$session_min" ]; then
+        traktor_pattern="history_${session_year}y${session_month}m${session_day}d_${session_hour}h${session_min}"
+    else
+        traktor_pattern=""
+    fi
 
     tracklist_found=false
     matched_history=""
 
     if [ -d "$LOCAL_HISTORY_DIR" ]; then
-        matched_history=$(find "$LOCAL_HISTORY_DIR" -maxdepth 2 -type f \( -name "*.nml" -o -name "*.xml" -o -name "*.txt" \) 2>/dev/null | grep -i "$traktor_pattern" | head -n 1)
+        if [ -n "$traktor_pattern" ]; then
+            matched_history=$(find "$LOCAL_HISTORY_DIR" -maxdepth 2 -type f \( -name "*.nml" -o -name "*.xml" -o -name "*.txt" \) 2>/dev/null | grep -i -- "$traktor_pattern" | head -n 1)
+        fi
         
-        if [ -z "$matched_history" ]; then
-            matched_history=$(find "$LOCAL_HISTORY_DIR" -maxdepth 2 -type f \( -name "*.nml" -o -name "*.xml" -o -name "*.txt" \) 2>/dev/null | grep -i "$fallback_pattern" | sort | tail -n 1)
+        if [ -z "$matched_history" ] && [ -n "$fallback_pattern" ]; then
+            matched_history=$(find "$LOCAL_HISTORY_DIR" -maxdepth 2 -type f \( -name "*.nml" -o -name "*.xml" -o -name "*.txt" \) 2>/dev/null | grep -i -- "$fallback_pattern" | sort | tail -n 1)
         fi
         
         if [ -z "$matched_history" ] && [ -n "$session_date" ]; then
-            matched_history=$(find "$LOCAL_HISTORY_DIR" -maxdepth 2 -type f \( -name "*.nml" -o -name "*.xml" -o -name "*.txt" \) 2>/dev/null | grep -i "$session_date" | sort | tail -n 1)
+            matched_history=$(find "$LOCAL_HISTORY_DIR" -maxdepth 2 -type f \( -name "*.nml" -o -name "*.xml" -o -name "*.txt" \) 2>/dev/null | grep -i -- "$session_date" | sort | tail -n 1)
         fi
 
         if [ -n "$matched_history" ] && [ -f "$matched_history" ]; then

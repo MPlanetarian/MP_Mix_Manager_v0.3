@@ -1048,7 +1048,7 @@ ensure_playlists_generated_dirs() {
 ensure_playlists_generated_dirs
 
 # Default Audio Player and Startup Autoplay Preferences
-DEFAULT_AUDIO_PLAYER="${DEFAULT_AUDIO_PLAYER:-strawberry}"
+DEFAULT_AUDIO_PLAYER="${DEFAULT_AUDIO_PLAYER:-audacious}"
 AUTO_PLAY_ON_STARTUP="${AUTO_PLAY_ON_STARTUP:-true}"
 AUTO_SHOW_COVER_ON_STARTUP="${AUTO_SHOW_COVER_ON_STARTUP:-true}"
 AUTO_SHOW_TRACKLIST_ON_STARTUP="${AUTO_SHOW_TRACKLIST_ON_STARTUP:-true}"
@@ -1168,6 +1168,236 @@ for db in db_candidates:
 
 sys.exit(0 if found else 1)
 " "$mix_file" 2>/dev/null
+}
+
+is_mix_in_audacious_playlist() {
+    local mix_file="$1"
+    [ -z "$mix_file" ] && return 1
+    local bname
+    bname="$(basename "$mix_file")"
+    local stem="${bname%.*}"
+    if command -v audtool >/dev/null 2>&1; then
+        if audtool playlist-display 2>/dev/null | grep -i -F "$stem" >/dev/null 2>&1; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+get_audacious_track_info() {
+    AUDACIOUS_RUNNING=0
+    AUDACIOUS_STATE=""
+    AUDACIOUS_TITLE=""
+    AUDACIOUS_ARTIST=""
+    AUDACIOUS_ALBUM=""
+    AUDACIOUS_RAW_PATH=""
+    AUDACIOUS_RESOLVED_PATH=""
+    AUDACIOUS_FILE_EXISTS=0
+    AUDACIOUS_FILE_SIZE=""
+    AUDACIOUS_POSITION=0
+    AUDACIOUS_DURATION=0
+    AUDACIOUS_POS_FMT="00:00"
+    AUDACIOUS_DUR_FMT="00:00"
+    AUDACIOUS_PROGRESS_PCT=0
+
+    if ! pgrep -i -f audacious >/dev/null 2>&1 && ! qdbus org.mpris.MediaPlayer2.audacious >/dev/null 2>&1; then
+        return 1
+    fi
+
+    local status_json
+    status_json=$(python3 -c '
+import subprocess, urllib.parse, sys, os, json, shutil
+
+def get_prop(dest, path, iface, prop):
+    try:
+        return subprocess.check_output(["qdbus", dest, path, f"{iface}.{prop}"], stderr=subprocess.DEVNULL).decode("utf-8", errors="ignore").strip()
+    except Exception:
+        pass
+    try:
+        out = subprocess.check_output(["dbus-send", "--print-reply", f"--dest={dest}", path, "org.freedesktop.DBus.Properties.Get", "string:" + iface, "string:" + prop], stderr=subprocess.DEVNULL).decode("utf-8", errors="ignore")
+        for line in out.splitlines():
+            line = line.strip()
+            if "variant" in line:
+                parts = line.split(None, 2)
+                if len(parts) >= 3:
+                    return parts[2].strip().strip("\"")
+    except Exception:
+        pass
+    return ""
+
+def get_meta(dest, path):
+    try:
+        raw = subprocess.check_output(["qdbus", dest, path, "org.mpris.MediaPlayer2.Player.Metadata"], stderr=subprocess.DEVNULL).decode("utf-8", errors="ignore")
+        meta = {}
+        for line in raw.splitlines():
+            if ": " in line:
+                k, v = line.split(": ", 1)
+                meta[k.strip()] = v.strip()
+        if meta:
+            return meta
+    except Exception:
+        pass
+    return {}
+
+dest = "org.mpris.MediaPlayer2.audacious"
+path = "/org/mpris/MediaPlayer2"
+iface = "org.mpris.MediaPlayer2.Player"
+
+status = get_prop(dest, path, iface, "PlaybackStatus")
+meta = get_meta(dest, path)
+
+if not status or not meta:
+    try:
+        audtool_cmd = ["audtool"] if shutil.which("audtool") else ["flatpak", "run", "--command=audtool", "org.atheme.audacious"]
+        if not status:
+            st = subprocess.check_output(audtool_cmd + ["playback-status"], stderr=subprocess.DEVNULL).decode("utf-8", errors="ignore").strip()
+            if st:
+                status = st
+        if not meta:
+            t = subprocess.check_output(audtool_cmd + ["current-song"], stderr=subprocess.DEVNULL).decode("utf-8", errors="ignore").strip()
+            fn = subprocess.check_output(audtool_cmd + ["current-song-filename"], stderr=subprocess.DEVNULL).decode("utf-8", errors="ignore").strip()
+            ln = subprocess.check_output(audtool_cmd + ["current-song-length-seconds"], stderr=subprocess.DEVNULL).decode("utf-8", errors="ignore").strip()
+            meta = {"xesam:title": t, "xesam:url": "file://" + fn if fn else "", "mpris:length": str(int(ln)*1000000) if ln.isdigit() else "0"}
+    except Exception:
+        pass
+
+if not status:
+    sys.exit(1)
+
+track_url = meta.get("xesam:url", "")
+if track_url.startswith("file://"):
+    track_url = track_url[7:]
+elif track_url.startswith("file:/"):
+    track_url = track_url[6:]
+track_url = urllib.parse.unquote(track_url)
+
+title = meta.get("xesam:title", "")
+artist = meta.get("xesam:artist", "")
+album = meta.get("xesam:album", "")
+
+if not title and track_url:
+    title = os.path.splitext(os.path.basename(track_url))[0]
+
+dur_us = meta.get("mpris:length", "0")
+try:
+    dur_s = int(dur_us) // 1000000
+except Exception:
+    try:
+        dur_s = int(float(dur_us))
+    except Exception:
+        dur_s = 0
+
+pos_val = get_prop(dest, path, iface, "Position")
+try:
+    pos_s = int(pos_val) // 1000000
+except Exception:
+    try:
+        pos_s = int(float(pos_val))
+    except Exception:
+        pos_s = 0
+
+if dur_s == 0 or pos_s == 0:
+    try:
+        audtool_cmd = ["audtool"] if shutil.which("audtool") else ["flatpak", "run", "--command=audtool", "org.atheme.audacious"]
+        if dur_s == 0:
+            ln = subprocess.check_output(audtool_cmd + ["current-song-length-seconds"], stderr=subprocess.DEVNULL).decode("utf-8", errors="ignore").strip()
+            if ln.isdigit():
+                dur_s = int(ln)
+        if pos_s == 0:
+            oln = subprocess.check_output(audtool_cmd + ["current-song-output-length-seconds"], stderr=subprocess.DEVNULL).decode("utf-8", errors="ignore").strip()
+            if oln.isdigit():
+                pos_s = int(oln)
+    except Exception:
+        pass
+
+data = {
+    "ok": True,
+    "state": status.lower(),
+    "title": title,
+    "artist": artist,
+    "album": album,
+    "path": track_url,
+    "position": pos_s,
+    "duration": dur_s
+}
+print(json.dumps(data))
+' 2>/dev/null)
+
+    if [ -z "$status_json" ] || ! echo "$status_json" | jq -e . >/dev/null 2>&1; then
+        return 1
+    fi
+
+    local ok
+    ok=$(echo "$status_json" | jq -r '.ok // false')
+    if [ "$ok" != "true" ]; then
+        return 1
+    fi
+
+    AUDACIOUS_RUNNING=1
+    AUDACIOUS_STATE=$(echo "$status_json" | jq -r '.state // "unknown"')
+    AUDACIOUS_TITLE=$(echo "$status_json" | jq -r '.title // ""')
+    AUDACIOUS_ARTIST=$(echo "$status_json" | jq -r '.artist // ""')
+    AUDACIOUS_ALBUM=$(echo "$status_json" | jq -r '.album // ""')
+    AUDACIOUS_RAW_PATH=$(echo "$status_json" | jq -r '.path // ""')
+    AUDACIOUS_POSITION=$(echo "$status_json" | jq -r '.position // 0' | awk '{printf "%d", $1}')
+    AUDACIOUS_DURATION=$(echo "$status_json" | jq -r '.duration // 0' | awk '{printf "%d", $1}')
+
+    format_seconds_aud() {
+        local t=$1
+        local h=$((t / 3600))
+        local m=$(( (t % 3600) / 60 ))
+        local s=$((t % 60))
+        if [ $h -gt 0 ]; then
+            printf "%02d:%02d:%02d" $h $m $s
+        else
+            printf "%02d:%02d" $m $s
+        fi
+    }
+    AUDACIOUS_POS_FMT=$(format_seconds_aud "$AUDACIOUS_POSITION")
+    AUDACIOUS_DUR_FMT=$(format_seconds_aud "$AUDACIOUS_DURATION")
+
+    if [ "$AUDACIOUS_DURATION" -gt 0 ]; then
+        AUDACIOUS_PROGRESS_PCT=$((AUDACIOUS_POSITION * 100 / AUDACIOUS_DURATION))
+    else
+        AUDACIOUS_PROGRESS_PCT=0
+    fi
+
+    AUDACIOUS_RESOLVED_PATH="$AUDACIOUS_RAW_PATH"
+    if [ -e "$AUDACIOUS_RESOLVED_PATH" ]; then
+        AUDACIOUS_FILE_EXISTS=1
+    else
+        local alt="${AUDACIOUS_RAW_PATH/#\/media\//\/run\/media\/}"
+        if [ -e "$alt" ]; then
+            AUDACIOUS_RESOLVED_PATH="$alt"
+            AUDACIOUS_FILE_EXISTS=1
+        else
+            local target_pids
+            target_pids=$(pgrep -i -f audacious 2>/dev/null)
+            for pid in $target_pids; do
+                for fd in /proc/"$pid"/fd/*; do
+                    if [ -e "$fd" ]; then
+                        local link_target
+                        link_target=$(readlink "$fd" 2>/dev/null)
+                        case "$link_target" in
+                            *.flac|*.wav|*.mp3|*.m4a|*.ogg)
+                                if [ -f "$link_target" ]; then
+                                    AUDACIOUS_RESOLVED_PATH="$link_target"
+                                    AUDACIOUS_FILE_EXISTS=1
+                                    break 2
+                                fi
+                                ;;
+                        esac
+                    fi
+                done
+            done
+        fi
+    fi
+
+    if [ "$AUDACIOUS_FILE_EXISTS" -eq 1 ]; then
+        AUDACIOUS_FILE_SIZE=$(ls -lh "$AUDACIOUS_RESOLVED_PATH" 2>/dev/null | awk '{print $5}')
+    fi
+
+    return 0
 }
 
 get_strawberry_track_info() {
@@ -1507,8 +1737,11 @@ get_cliamp_track_info() {
 }
 
 # Command-line flags for quick inspection without full interactive menu
-if [ "$1" = "--track" ] || [ "$1" = "--current-track" ] || [ "$1" = "--strawberry-path" ] || [ "$1" = "--cliamp-path" ] || [ "$1" = "-p" ]; then
-    if get_strawberry_track_info 2>/dev/null && [ -n "$STRAWBERRY_RESOLVED_PATH" ]; then
+if [ "$1" = "--track" ] || [ "$1" = "--current-track" ] || [ "$1" = "--audacious-path" ] || [ "$1" = "--strawberry-path" ] || [ "$1" = "--cliamp-path" ] || [ "$1" = "-p" ]; then
+    if get_audacious_track_info 2>/dev/null && [ -n "$AUDACIOUS_RESOLVED_PATH" ]; then
+        echo "$AUDACIOUS_RESOLVED_PATH"
+        exit 0
+    elif get_strawberry_track_info 2>/dev/null && [ -n "$STRAWBERRY_RESOLVED_PATH" ]; then
         echo "$STRAWBERRY_RESOLVED_PATH"
         exit 0
     elif get_cliamp_track_info 2>/dev/null && [ -n "$CLIAMP_RESOLVED_PATH" ]; then
@@ -1521,7 +1754,21 @@ if [ "$1" = "--track" ] || [ "$1" = "--current-track" ] || [ "$1" = "--strawberr
             echo "$detected_p"
             exit 0
         fi
-        echo "Error: No track currently playing in Strawberry, cliamp, or supported players." >&2
+        echo "Error: No track currently playing in Audacious, Strawberry, cliamp, or supported players." >&2
+        exit 1
+    fi
+elif [ "$1" = "--audacious-info" ]; then
+    if get_audacious_track_info 2>/dev/null; then
+        echo "State: $AUDACIOUS_STATE"
+        echo "Title: $AUDACIOUS_TITLE"
+        echo "Artist: $AUDACIOUS_ARTIST"
+        echo "Album: $AUDACIOUS_ALBUM"
+        echo "Time: $AUDACIOUS_POS_FMT / $AUDACIOUS_DUR_FMT ($AUDACIOUS_PROGRESS_PCT%)"
+        echo "Path: $AUDACIOUS_RESOLVED_PATH"
+        [ -n "$AUDACIOUS_FILE_SIZE" ] && echo "Size: $AUDACIOUS_FILE_SIZE"
+        exit 0
+    else
+        echo "Error: Audacious is not running or no track playing." >&2
         exit 1
     fi
 elif [ "$1" = "--strawberry-info" ]; then
@@ -1675,7 +1922,24 @@ show_stats() {
     fi
 
     # 5. Live Player Status & Audio Specifications
-    if get_strawberry_track_info 2>/dev/null; then
+    if get_audacious_track_info 2>/dev/null; then
+        local st_badge
+        case "$AUDACIOUS_STATE" in
+            playing) st_badge="${BOLD}${GREEN}▶ PLAYING${NC}" ;;
+            paused)  st_badge="${BOLD}${YELLOW}⏸ PAUSED${NC}" ;;
+            stopped) st_badge="${BOLD}${RED}⏹ STOPPED${NC}" ;;
+            *)       st_badge="${BOLD}${CYAN}${AUDACIOUS_STATE^^}${NC}" ;;
+        esac
+        echo -e "  --------------------------------------------------"
+        echo -e "  Audacious Audio Player:                   ${st_badge} [${AUDACIOUS_POS_FMT} / ${AUDACIOUS_DUR_FMT}] (${AUDACIOUS_PROGRESS_PCT}%)"
+        echo -e "  Audacious Current Track:                  ${BOLD}${YELLOW}${AUDACIOUS_TITLE}${NC}${AUDACIOUS_ARTIST:+ - $AUDACIOUS_ARTIST}"
+        [ -n "$AUDACIOUS_RESOLVED_PATH" ] && echo -e "  Audacious Active File Path:               ${BOLD}${CYAN}${AUDACIOUS_RESOLVED_PATH}${NC}"
+        if [ -n "$AUDACIOUS_RESOLVED_PATH" ] && [ -f "$AUDACIOUS_RESOLVED_PATH" ]; then
+            local audio_spec
+            audio_spec=$(get_playing_audio_spec_summary "$AUDACIOUS_RESOLVED_PATH")
+            [ -n "$audio_spec" ] && echo -e "  Audio Specifications:                     ${BOLD}${GREEN}${audio_spec}${NC}"
+        fi
+    elif get_strawberry_track_info 2>/dev/null; then
         local st_badge
         case "$STRAWBERRY_STATE" in
             playing) st_badge="${BOLD}${GREEN}▶ PLAYING${NC}" ;;
@@ -1925,6 +2189,15 @@ view_tasks() {
     fi
     if pgrep -f "ujust" > /dev/null || pgrep -f "rpm-ostree" > /dev/null; then
         echo -e "  [${YELLOW}RUNNING${NC}] System Maintenance / Update (ujust / rpm-ostree)"
+        ((tasks_found++))
+    fi
+    if pgrep -i -f "audacious" > /dev/null; then
+        local aud_pids aud_desc=""
+        aud_pids=$(pgrep -i -f audacious | tr '\n' ' ')
+        if get_audacious_track_info 2>/dev/null; then
+            aud_desc=" [${AUDACIOUS_STATE^^}: ${AUDACIOUS_TITLE} - ${AUDACIOUS_POS_FMT}/${AUDACIOUS_DUR_FMT}]"
+        fi
+        echo -e "  [${GREEN}RUNNING${NC}] Audacious Audio Player (PID: ${aud_pids})${aud_desc}"
         ((tasks_found++))
     fi
     if pgrep -i -f "strawberry" > /dev/null; then
@@ -4275,6 +4548,10 @@ launch_kodi() {
     launch_gui_app "Kodi" "kodi" "tv.kodi.Kodi" "Kodi" "kodi" "Kodi/kodi.exe" "XBMCFoundation.Kodi"
 }
 
+launch_audacious() {
+    launch_gui_app "Audacious Audio Player" "audacious" "org.atheme.audacious" "Audacious" "audacious" "Audacious/bin/audacious.exe" "Audacious.Audacious"
+}
+
 launch_strawberry() {
     launch_gui_app "Strawberry Music Player" "strawberry" "org.strawberrymusicplayer.strawberry" "Strawberry" "strawberry" "Strawberry Music Player/strawberry.exe" "JonasKvinge.Strawberry"
 }
@@ -5394,11 +5671,29 @@ manage_daws() {
 }
 
 play_audio_file() {
-    local player="${1:-${DEFAULT_AUDIO_PLAYER:-strawberry}}"
+    local player="${1:-${DEFAULT_AUDIO_PLAYER:-audacious}}"
     local file="$2"
     [ -z "$file" ] && return 1
 
     case "$player" in
+        audacious)
+            if get_audacious_track_info 2>/dev/null && [ "$AUDACIOUS_STATE" = "playing" ]; then
+                if [ "$AUDACIOUS_RESOLVED_PATH" = "$file" ] || [ "$AUDACIOUS_RAW_PATH" = "$file" ]; then
+                    align_mix_windows_on_screen --expect-audacious
+                    return 0
+                fi
+            fi
+            if command -v audacious >/dev/null 2>&1; then
+                nohup audacious "$file" >/dev/null 2>&1 &
+                disown 2>/dev/null || true
+            elif flatpak list 2>/dev/null | grep -q "org.atheme.audacious"; then
+                nohup flatpak run org.atheme.audacious "$file" >/dev/null 2>&1 &
+                disown 2>/dev/null || true
+            elif [ "$OS_TYPE" = "macos" ]; then
+                open -a Audacious "$file" >/dev/null 2>&1 &
+            fi
+            align_mix_windows_on_screen --expect-audacious
+            ;;
         cliamp)
             local cliamp_bin="cliamp"
             command -v cliamp >/dev/null 2>&1 || cliamp_bin="$SCRIPT_DIR/bin/cliamp"
@@ -5499,6 +5794,8 @@ play_audio_file() {
         *)
             if command -v "$player" >/dev/null 2>&1; then
                 nohup "$player" "$file" >/dev/null 2>&1 &
+            elif [ "$player" != "audacious" ] && (command -v audacious >/dev/null 2>&1 || flatpak list 2>/dev/null | grep -q "org.atheme.audacious"); then
+                play_audio_file "audacious" "$file"
             elif [ "$player" != "strawberry" ] && command -v strawberry >/dev/null 2>&1; then
                 play_audio_file "strawberry" "$file"
             else
@@ -5517,12 +5814,15 @@ execute_startup_autoplay() {
         return 0
     fi
 
-    # 0. Check if Strawberry or another player is ALREADY playing!
-    # If Strawberry or any player is already playing, DO NOT launch cliamp or start a new track!
+    # 0. Check if Audacious, Strawberry or another player is ALREADY playing!
+    # If Audacious or any player is already playing, DO NOT launch cliamp or start a new track!
     local active_playing_mix=""
     local active_player_name=""
 
-    if get_strawberry_track_info 2>/dev/null && [ "$STRAWBERRY_STATE" = "playing" ]; then
+    if get_audacious_track_info 2>/dev/null && [ "$AUDACIOUS_STATE" = "playing" ]; then
+        active_player_name="Audacious"
+        active_playing_mix="$AUDACIOUS_RESOLVED_PATH"
+    elif get_strawberry_track_info 2>/dev/null && [ "$STRAWBERRY_STATE" = "playing" ]; then
         active_player_name="Strawberry"
         active_playing_mix="$STRAWBERRY_RESOLVED_PATH"
     elif get_cliamp_track_info 2>/dev/null && [ "$CLIAMP_STATE" = "playing" ]; then
@@ -5533,12 +5833,12 @@ execute_startup_autoplay() {
         detected_mix=$(detect_currently_playing_mix 2>/dev/null)
         if [ -n "$detected_mix" ] && [ -f "$detected_mix" ]; then
             active_playing_mix="$detected_mix"
-            active_player_name="${DEFAULT_AUDIO_PLAYER:-strawberry}"
+            active_player_name="${DEFAULT_AUDIO_PLAYER:-audacious}"
         fi
     fi
 
-    if [ -n "$active_playing_mix" ] || [ "$active_player_name" = "Strawberry" ]; then
-        # Audio is already actively playing in the background (e.g. Strawberry).
+    if [ -n "$active_playing_mix" ] || [ "$active_player_name" = "Audacious" ] || [ "$active_player_name" = "Strawberry" ]; then
+        # Audio is already actively playing in the background (e.g. Audacious).
         # Open cover art if enabled and not already open
         if [ "${AUTO_SHOW_COVER_ON_STARTUP:-true}" = "true" ] && [ -n "$active_playing_mix" ]; then
             local found_cover
@@ -5634,31 +5934,51 @@ if files:
 
     # 1. Play in default audio player
     local SKIP_PLAYING_ASSETS=1
-    local player="${DEFAULT_AUDIO_PLAYER:-strawberry}"
+    local player="${DEFAULT_AUDIO_PLAYER:-audacious}"
     local mix_already_in_playlist=0
-    if [ "$player" = "strawberry" ] && is_mix_in_strawberry_playlist "$selected_mix"; then
+    if [ "$player" = "audacious" ] && is_mix_in_audacious_playlist "$selected_mix"; then
+        mix_already_in_playlist=1
+    elif [ "$player" = "strawberry" ] && is_mix_in_strawberry_playlist "$selected_mix"; then
         mix_already_in_playlist=1
     fi
 
     if [ "$mix_already_in_playlist" -eq 1 ]; then
-        # The latest mix was already added to Strawberry playlist previously; do NOT add it again!
-        if ! pgrep -i -f strawberry >/dev/null 2>&1; then
-            # Strawberry not running: launch Strawberry to load existing playlist without adding duplicates
-            if command -v strawberry >/dev/null 2>&1; then
-                nohup strawberry -p >/dev/null 2>&1 &
-                disown 2>/dev/null || true
-            elif flatpak list 2>/dev/null | grep -q "org.strawberrymusicplayer.strawberry"; then
-                nohup flatpak run org.strawberrymusicplayer.strawberry -p >/dev/null 2>&1 &
-                disown 2>/dev/null || true
-            elif [ "$OS_TYPE" = "macos" ]; then
-                open -a Strawberry >/dev/null 2>&1 &
+        if [ "$player" = "audacious" ]; then
+            if ! pgrep -i -f audacious >/dev/null 2>&1; then
+                if command -v audacious >/dev/null 2>&1; then
+                    nohup audacious -p >/dev/null 2>&1 &
+                    disown 2>/dev/null || true
+                elif flatpak list 2>/dev/null | grep -q "org.atheme.audacious"; then
+                    nohup flatpak run org.atheme.audacious -p >/dev/null 2>&1 &
+                    disown 2>/dev/null || true
+                fi
+            else
+                if command -v audtool >/dev/null 2>&1; then
+                    audtool playback-play >/dev/null 2>&1 || true
+                else
+                    qdbus org.mpris.MediaPlayer2.audacious /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Play >/dev/null 2>&1 || true
+                fi
             fi
-        else
-            # Strawberry already running: ensure playlist is playing if paused/stopped
-            if command -v strawberry >/dev/null 2>&1; then
-                strawberry -p >/dev/null 2>&1 || true
-            elif flatpak list 2>/dev/null | grep -q "org.strawberrymusicplayer.strawberry"; then
-                flatpak run org.strawberrymusicplayer.strawberry -p >/dev/null 2>&1 || true
+        elif [ "$player" = "strawberry" ]; then
+            # The latest mix was already added to Strawberry playlist previously; do NOT add it again!
+            if ! pgrep -i -f strawberry >/dev/null 2>&1; then
+                # Strawberry not running: launch Strawberry to load existing playlist without adding duplicates
+                if command -v strawberry >/dev/null 2>&1; then
+                    nohup strawberry -p >/dev/null 2>&1 &
+                    disown 2>/dev/null || true
+                elif flatpak list 2>/dev/null | grep -q "org.strawberrymusicplayer.strawberry"; then
+                    nohup flatpak run org.strawberrymusicplayer.strawberry -p >/dev/null 2>&1 &
+                    disown 2>/dev/null || true
+                elif [ "$OS_TYPE" = "macos" ]; then
+                    open -a Strawberry >/dev/null 2>&1 &
+                fi
+            else
+                # Strawberry already running: ensure playlist is playing if paused/stopped
+                if command -v strawberry >/dev/null 2>&1; then
+                    strawberry -p >/dev/null 2>&1 || true
+                elif flatpak list 2>/dev/null | grep -q "org.strawberrymusicplayer.strawberry"; then
+                    flatpak run org.strawberrymusicplayer.strawberry -p >/dev/null 2>&1 || true
+                fi
             fi
         fi
     else
@@ -5678,7 +5998,7 @@ if files:
     # 3. Find matching tracklist and open in dedicated new console window
     # ONLY show tracklist window on startup if single display connected (<= 1).
     # When >1 displays are connected, only the manager is shown on main screen and
-    # the other two windows (Strawberry + Cover) are placed on the secondary screen.
+    # the other two windows (Audacious/Strawberry + Cover) are placed on the secondary screen.
     local num_displays
     num_displays=$(get_connected_displays_count)
     if [ "$num_displays" -le 1 ]; then
@@ -5691,8 +6011,9 @@ if files:
         fi
     fi
 
-    # Align windows across displays: Manager on primary display, Strawberry & Cover on secondary display (>1 displays)
+    # Align windows across displays: Manager on primary display, Player & Cover on secondary display (>1 displays)
     local align_args=()
+    [ "$player" = "audacious" ] && align_args+=(--expect-audacious)
     [ "$player" = "strawberry" ] && align_args+=(--expect-strawberry)
     [ -n "$found_cover" ] && align_args+=(--expect-cover)
     align_mix_windows_on_screen "${align_args[@]}"
@@ -5712,6 +6033,8 @@ configure_audio_player_and_startup() {
         echo -e "${BOLD}${MAGENTA}      DEFAULT AUDIO PLAYER & STARTUP AUTOPLAY CONFIGURATION           ${NC}"
         echo -e "${BOLD}${MAGENTA}======================================================================${NC}\n"
 
+        local audacious_st="Not Installed"
+        (command -v audacious >/dev/null 2>&1 || flatpak list 2>/dev/null | grep -q "org.atheme.audacious") && audacious_st="${GREEN}Installed${NC}"
         local cliamp_st="Not Installed"
         (command -v cliamp >/dev/null 2>&1 || [ -x "$SCRIPT_DIR/bin/cliamp" ] || [ -x "$HOME/.local/bin/cliamp" ]) && cliamp_st="${GREEN}Installed${NC}"
         local straw_st="Not Installed"
@@ -5734,7 +6057,7 @@ configure_audio_player_and_startup() {
         ([ "$OS_TYPE" = "macos" ] && osascript -e 'id of application "Music"' >/dev/null 2>&1) && music_st="${GREEN}Installed${NC}"
 
         echo -e "  ${BOLD}Current Settings:${NC}"
-        echo -e "  • Default Audio Player:          ${BOLD}${GREEN}${DEFAULT_AUDIO_PLAYER:-strawberry}${NC}"
+        echo -e "  • Default Audio Player:          ${BOLD}${GREEN}${DEFAULT_AUDIO_PLAYER:-audacious}${NC}"
         
         local ap_badge="${RED}DISABLED${NC}"
         [ "${AUTO_PLAY_ON_STARTUP:-true}" = "true" ] && ap_badge="${GREEN}ENABLED${NC}"
@@ -5765,92 +6088,99 @@ configure_audio_player_and_startup() {
         echo -e "  • Config File Location:          ${DIM}${SCRIPT_DIR}/config.env${NC}\n"
 
         echo -e "${BOLD}Select Player or Setting to Change:${NC}"
-        echo -e "  ${BOLD}${CYAN} 1)${NC} Set Default Player to: ${BOLD}cliamp${NC} (Retro Terminal Player) [${cliamp_st}]"
-        echo -e "  ${BOLD}${CYAN} 2)${NC} Set Default Player to: ${BOLD}Strawberry${NC} (Music Player) [${straw_st}]"
-        echo -e "  ${BOLD}${CYAN} 3)${NC} Set Default Player to: ${BOLD}VLC Media Player${NC} [${vlc_st}]"
-        echo -e "  ${BOLD}${CYAN} 4)${NC} Set Default Player to: ${BOLD}Haruna Media Player${NC} [${haruna_st}]"
-        echo -e "  ${BOLD}${CYAN} 5)${NC} Set Default Player to: ${BOLD}Kodi Entertainment Center${NC} [${kodi_st}]"
-        echo -e "  ${BOLD}${CYAN} 6)${NC} Set Default Player to: ${BOLD}foobar2000${NC} (macOS & Windows) [${foobar_st}]"
-        echo -e "  ${BOLD}${CYAN} 7)${NC} Set Default Player to: ${BOLD}Winamp${NC} (Windows) [${winamp_st}]"
-        echo -e "  ${BOLD}${CYAN} 8)${NC} Set Default Player to: ${BOLD}Apple Music${NC} (macOS) [${music_st}]"
-        echo -e "  ${BOLD}${CYAN} 9)${NC} Set Default Player to: ${BOLD}Audacity Audio Editor${NC} [${audacity_st}]"
-        echo -e "  ${BOLD}${CYAN}10)${NC} Set Default Player to: ${BOLD}mpv Video/Audio Player${NC} [${mpv_st}]"
-        echo -e "  ${BOLD}${CYAN}11)${NC} Set Custom Audio Player Command / Binary"
+        echo -e "  ${BOLD}${CYAN} 1)${NC} Set Default Player to: ${BOLD}Audacious${NC} (Audio Player) [${audacious_st}]"
+        echo -e "  ${BOLD}${CYAN} 2)${NC} Set Default Player to: ${BOLD}cliamp${NC} (Retro Terminal Player) [${cliamp_st}]"
+        echo -e "  ${BOLD}${CYAN} 3)${NC} Set Default Player to: ${BOLD}Strawberry${NC} (Music Player) [${straw_st}]"
+        echo -e "  ${BOLD}${CYAN} 4)${NC} Set Default Player to: ${BOLD}VLC Media Player${NC} [${vlc_st}]"
+        echo -e "  ${BOLD}${CYAN} 5)${NC} Set Default Player to: ${BOLD}Haruna Media Player${NC} [${haruna_st}]"
+        echo -e "  ${BOLD}${CYAN} 6)${NC} Set Default Player to: ${BOLD}Kodi Entertainment Center${NC} [${kodi_st}]"
+        echo -e "  ${BOLD}${CYAN} 7)${NC} Set Default Player to: ${BOLD}foobar2000${NC} (macOS & Windows) [${foobar_st}]"
+        echo -e "  ${BOLD}${CYAN} 8)${NC} Set Default Player to: ${BOLD}Winamp${NC} (Windows) [${winamp_st}]"
+        echo -e "  ${BOLD}${CYAN} 9)${NC} Set Default Player to: ${BOLD}Apple Music${NC} (macOS) [${music_st}]"
+        echo -e "  ${BOLD}${CYAN}10)${NC} Set Default Player to: ${BOLD}Audacity Audio Editor${NC} [${audacity_st}]"
+        echo -e "  ${BOLD}${CYAN}11)${NC} Set Default Player to: ${BOLD}mpv Video/Audio Player${NC} [${mpv_st}]"
+        echo -e "  ${BOLD}${CYAN}12)${NC} Set Custom Audio Player Command / Binary"
         echo -e "  ${BOLD}${BLUE}──────────────────────────────────────────────────────────────────${NC}"
-        echo -e "  ${BOLD}${CYAN}12)${NC} Toggle Auto-Play Mix on Startup (${ap_badge})"
-        echo -e "  ${BOLD}${CYAN}13)${NC} Toggle Auto-Show Cover Art on Startup (${cov_badge})"
-        echo -e "  ${BOLD}${CYAN}14)${NC} Toggle Auto-Show Tracklist on Startup (${tl_badge})"
-        echo -e "  ${BOLD}${CYAN}15)${NC} Toggle Startup Mix Selection (Latest vs Random)"
-        echo -e "  ${BOLD}${CYAN}16)${NC} Test-Play Latest Mix Right Now in Default Player (${DEFAULT_AUDIO_PLAYER})"
-        echo -e "  ${BOLD}${CYAN}17)${NC} Configure Tracklist Window Viewer (${BOLD}${TRACKLIST_VIEWER:-console}${NC})"
-        echo -e "  ${BOLD}${CYAN}18)${NC} Configure Default Video Player (${BOLD}${DEFAULT_VIDEO_PLAYER:-vlc}${NC})"
-        echo -e "  ${BOLD}${CYAN}19)${NC} Configure Startup YouTube URL & Autoplay (${yt_badge})"
-        echo -e "  ${BOLD}${CYAN}20)${NC} Configure Live Weather Banner & Location (${BOLD}${WEATHER_LOCATION:-Swansea, UK}${NC})"
+        echo -e "  ${BOLD}${CYAN}13)${NC} Toggle Auto-Play Mix on Startup (${ap_badge})"
+        echo -e "  ${BOLD}${CYAN}14)${NC} Toggle Auto-Show Cover Art on Startup (${cov_badge})"
+        echo -e "  ${BOLD}${CYAN}15)${NC} Toggle Auto-Show Tracklist on Startup (${tl_badge})"
+        echo -e "  ${BOLD}${CYAN}16)${NC} Toggle Startup Mix Selection (Latest vs Random)"
+        echo -e "  ${BOLD}${CYAN}17)${NC} Test-Play Latest Mix Right Now in Default Player (${DEFAULT_AUDIO_PLAYER})"
+        echo -e "  ${BOLD}${CYAN}18)${NC} Configure Tracklist Window Viewer (${BOLD}${TRACKLIST_VIEWER:-console}${NC})"
+        echo -e "  ${BOLD}${CYAN}19)${NC} Configure Default Video Player (${BOLD}${DEFAULT_VIDEO_PLAYER:-vlc}${NC})"
+        echo -e "  ${BOLD}${CYAN}20)${NC} Configure Startup YouTube URL & Autoplay (${yt_badge})"
+        echo -e "  ${BOLD}${CYAN}21)${NC} Configure Live Weather Banner & Location (${BOLD}${WEATHER_LOCATION:-Swansea, UK}${NC})"
         echo -e "  ${BOLD}${CYAN} 0)${NC} Return to Main Menu\n"
-        read -r -p "Enter choice [0-20]: " set_choice
+        read -r -p "Enter choice [0-21]: " set_choice
 
         case "$set_choice" in
             1)
+                DEFAULT_AUDIO_PLAYER="audacious"
+                save_config_setting "DEFAULT_AUDIO_PLAYER" "audacious"
+                echo -e "\n${GREEN}✓ Default audio player set to 'audacious' and saved to config.env!${NC}"
+                sleep 1
+                ;;
+            2)
                 DEFAULT_AUDIO_PLAYER="cliamp"
                 save_config_setting "DEFAULT_AUDIO_PLAYER" "cliamp"
                 echo -e "\n${GREEN}✓ Default audio player set to 'cliamp' and saved to config.env!${NC}"
                 sleep 1
                 ;;
-            2)
+            3)
                 DEFAULT_AUDIO_PLAYER="strawberry"
                 save_config_setting "DEFAULT_AUDIO_PLAYER" "strawberry"
                 echo -e "\n${GREEN}✓ Default audio player set to 'strawberry' and saved to config.env!${NC}"
                 sleep 1
                 ;;
-            3)
+            4)
                 DEFAULT_AUDIO_PLAYER="vlc"
                 save_config_setting "DEFAULT_AUDIO_PLAYER" "vlc"
                 echo -e "\n${GREEN}✓ Default audio player set to 'vlc' and saved to config.env!${NC}"
                 sleep 1
                 ;;
-            4)
+            5)
                 DEFAULT_AUDIO_PLAYER="haruna"
                 save_config_setting "DEFAULT_AUDIO_PLAYER" "haruna"
                 echo -e "\n${GREEN}✓ Default audio player set to 'haruna' and saved to config.env!${NC}"
                 sleep 1
                 ;;
-            5)
+            6)
                 DEFAULT_AUDIO_PLAYER="kodi"
                 save_config_setting "DEFAULT_AUDIO_PLAYER" "kodi"
                 echo -e "\n${GREEN}✓ Default audio player set to 'kodi' and saved to config.env!${NC}"
                 sleep 1
                 ;;
-            6)
+            7)
                 DEFAULT_AUDIO_PLAYER="foobar2000"
                 save_config_setting "DEFAULT_AUDIO_PLAYER" "foobar2000"
                 echo -e "\n${GREEN}✓ Default audio player set to 'foobar2000' and saved to config.env!${NC}"
                 sleep 1
                 ;;
-            7)
+            8)
                 DEFAULT_AUDIO_PLAYER="winamp"
                 save_config_setting "DEFAULT_AUDIO_PLAYER" "winamp"
                 echo -e "\n${GREEN}✓ Default audio player set to 'winamp' and saved to config.env!${NC}"
                 sleep 1
                 ;;
-            8)
+            9)
                 DEFAULT_AUDIO_PLAYER="music"
                 save_config_setting "DEFAULT_AUDIO_PLAYER" "music"
                 echo -e "\n${GREEN}✓ Default audio player set to 'music' (Apple Music) and saved to config.env!${NC}"
                 sleep 1
                 ;;
-            9)
+            10)
                 DEFAULT_AUDIO_PLAYER="audacity"
                 save_config_setting "DEFAULT_AUDIO_PLAYER" "audacity"
                 echo -e "\n${GREEN}✓ Default audio player set to 'audacity' and saved to config.env!${NC}"
                 sleep 1
                 ;;
-            10)
+            11)
                 DEFAULT_AUDIO_PLAYER="mpv"
                 save_config_setting "DEFAULT_AUDIO_PLAYER" "mpv"
                 echo -e "\n${GREEN}✓ Default audio player set to 'mpv' and saved to config.env!${NC}"
                 sleep 1
                 ;;
-            11)
+            12)
                 read -r -p "Enter custom audio player executable command: " cust_p
                 if [ -n "$cust_p" ]; then
                     DEFAULT_AUDIO_PLAYER="$cust_p"
@@ -5859,7 +6189,7 @@ configure_audio_player_and_startup() {
                     sleep 1.2
                 fi
                 ;;
-            12)
+            13)
                 if [ "${AUTO_PLAY_ON_STARTUP:-true}" = "true" ]; then
                     AUTO_PLAY_ON_STARTUP="false"
                 else
@@ -5869,7 +6199,7 @@ configure_audio_player_and_startup() {
                 echo -e "\n${GREEN}✓ Startup autoplay toggled to: ${AUTO_PLAY_ON_STARTUP}!${NC}"
                 sleep 1
                 ;;
-            13)
+            14)
                 if [ "${AUTO_SHOW_COVER_ON_STARTUP:-true}" = "true" ]; then
                     AUTO_SHOW_COVER_ON_STARTUP="false"
                 else
@@ -5879,7 +6209,7 @@ configure_audio_player_and_startup() {
                 echo -e "\n${GREEN}✓ Auto-show cover art toggled to: ${AUTO_SHOW_COVER_ON_STARTUP}!${NC}"
                 sleep 1
                 ;;
-            14)
+            15)
                 if [ "${AUTO_SHOW_TRACKLIST_ON_STARTUP:-true}" = "true" ]; then
                     AUTO_SHOW_TRACKLIST_ON_STARTUP="false"
                 else
@@ -5889,7 +6219,7 @@ configure_audio_player_and_startup() {
                 echo -e "\n${GREEN}✓ Auto-show tracklist toggled to: ${AUTO_SHOW_TRACKLIST_ON_STARTUP}!${NC}"
                 sleep 1
                 ;;
-            15)
+            16)
                 if [ "${AUTO_PLAY_MIX_SELECTION:-latest}" = "latest" ]; then
                     AUTO_PLAY_MIX_SELECTION="random"
                 else
@@ -5899,12 +6229,12 @@ configure_audio_player_and_startup() {
                 echo -e "\n${GREEN}✓ Startup mix selection toggled to: ${AUTO_PLAY_MIX_SELECTION}!${NC}"
                 sleep 1
                 ;;
-            16)
+            17)
                 echo -e "\n${BOLD}${YELLOW}Testing startup playback right now with player: ${DEFAULT_AUDIO_PLAYER}...${NC}\n"
                 execute_startup_autoplay
                 press_enter
                 ;;
-            17)
+            18)
                 clear
                 echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
                 echo -e "${BOLD}${MAGENTA}             CONFIGURE DEDICATED TRACKLIST WINDOW VIEWER              ${NC}"
@@ -6042,7 +6372,19 @@ manage_audio_players() {
         echo -e "       ${BOLD}${CYAN}📅 ${current_datetime}${NC}"
         echo ""
 
-        if get_cliamp_track_info 2>/dev/null; then
+        if get_audacious_track_info 2>/dev/null; then
+            local st_badge
+            case "$AUDACIOUS_STATE" in
+                playing) st_badge="${BOLD}${GREEN}▶ PLAYING${NC}" ;;
+                paused)  st_badge="${BOLD}${YELLOW}⏸ PAUSED${NC}" ;;
+                stopped) st_badge="${BOLD}${RED}⏹ STOPPED${NC}" ;;
+                *)       st_badge="${BOLD}${CYAN}${AUDACIOUS_STATE^^}${NC}" ;;
+            esac
+            echo -e "  Audacious Player:  ${st_badge} [${AUDACIOUS_POS_FMT} / ${AUDACIOUS_DUR_FMT}] (${AUDACIOUS_PROGRESS_PCT}%)"
+            echo -e "  Current Track:     ${BOLD}${YELLOW}${AUDACIOUS_TITLE}${NC}${AUDACIOUS_ARTIST:+ - $AUDACIOUS_ARTIST}"
+            [ -n "$AUDACIOUS_RESOLVED_PATH" ] && echo -e "  Active File Path:  ${BOLD}${CYAN}${AUDACIOUS_RESOLVED_PATH}${NC}"
+            echo -e "  --------------------------------------------------"
+        elif get_cliamp_track_info 2>/dev/null; then
             local st_badge
             case "$CLIAMP_STATE" in
                 playing) st_badge="${BOLD}${GREEN}▶ PLAYING${NC}" ;;
@@ -6070,29 +6412,30 @@ manage_audio_players() {
         fi
 
         echo -e "${BOLD}Select an Audio Player to launch / manage:${NC}"
-        echo -e "  ${BOLD}${CYAN} 1)${NC} Cliamp Music Player & Current Track Info (${GREEN}Now Playing Path, Controls & Launch${NC})"
-        echo -e "  ${BOLD}${CYAN} 2)${NC} Launch Strawberry Music Player (New Window) (${GREEN}strawberry${NC})"
+        echo -e "  ${BOLD}${CYAN} 1)${NC} Launch Audacious Audio Player (New Window) (${GREEN}audacious / org.atheme.audacious${NC})"
+        echo -e "  ${BOLD}${CYAN} 2)${NC} Cliamp Music Player & Current Track Info (${GREEN}Now Playing Path, Controls & Launch${NC})"
         echo -e "  ${BOLD}${CYAN} 3)${NC} Launch VLC Media Player (${GREEN}vlc / org.videolan.VLC${NC})"
         echo -e "  ${BOLD}${CYAN} 4)${NC} Launch Haruna Media Player (${GREEN}org.kde.haruna${NC})"
         echo -e "  ${BOLD}${CYAN} 5)${NC} Launch Kodi Entertainment Center (${GREEN}tv.kodi.Kodi${NC})"
-        echo -e "  ${BOLD}${CYAN} 6)${NC} Launch foobar2000 Player (${fb_badge})"
-        echo -e "  ${BOLD}${CYAN} 7)${NC} Launch Winamp Player (${wa_badge})"
-        echo -e "  ${BOLD}${CYAN} 8)${NC} Launch Apple Music Player (${am_badge})"
-        echo -e "  ${BOLD}${CYAN} 9)${NC} Launch Apple Podcasts App (${ap_badge})"
-        echo -e "  ${BOLD}${CYAN}10)${NC} Launch Audacity Audio Editor (${GREEN}audacity${NC})"
-        echo -e "  ${BOLD}${CYAN}11)${NC} Show Connected USB MIDI Devices (${GREEN}list-midi-devices${NC})"
-        echo -e "  ${BOLD}${CYAN}12)${NC} Configure Default Audio Player & Startup Autoplay (${GREEN}Current: ${DEFAULT_AUDIO_PLAYER:-strawberry}${NC})"
-        echo -e "  ${BOLD}${CYAN}13)${NC} View Playing Mix Audio Specifications & Stream Metadata (${GREEN}Bit Depth, Sample Rate, Codec, Title${NC})"
+        echo -e "  ${BOLD}${CYAN} 6)${NC} Launch Strawberry Music Player (Legacy) (${GREEN}strawberry${NC})"
+        echo -e "  ${BOLD}${CYAN} 7)${NC} Launch foobar2000 Player (${fb_badge})"
+        echo -e "  ${BOLD}${CYAN} 8)${NC} Launch Winamp Player (${wa_badge})"
+        echo -e "  ${BOLD}${CYAN} 9)${NC} Launch Apple Music Player (${am_badge})"
+        echo -e "  ${BOLD}${CYAN}10)${NC} Launch Apple Podcasts App (${ap_badge})"
+        echo -e "  ${BOLD}${CYAN}11)${NC} Launch Audacity Audio Editor (${GREEN}audacity${NC})"
+        echo -e "  ${BOLD}${CYAN}12)${NC} Show Connected USB MIDI Devices (${GREEN}list-midi-devices${NC})"
+        echo -e "  ${BOLD}${CYAN}13)${NC} Configure Default Audio Player & Startup Autoplay (${GREEN}Current: ${DEFAULT_AUDIO_PLAYER:-audacious}${NC})"
+        echo -e "  ${BOLD}${CYAN}14)${NC} View Playing Mix Audio Specifications & Stream Metadata (${GREEN}Bit Depth, Sample Rate, Codec, Title${NC})"
         echo -e "  ${BOLD}${CYAN} 0)${NC} Return to Main Menu"
         echo ""
-        read -r -p "Enter choice [0-13]: " p_choice
+        read -r -p "Enter choice [0-14]: " p_choice
 
         case "$p_choice" in
             1)
-                manage_cliamp
+                launch_audacious
                 ;;
             2)
-                launch_strawberry
+                manage_cliamp
                 ;;
             3)
                 launch_vlc
@@ -6104,27 +6447,30 @@ manage_audio_players() {
                 launch_kodi
                 ;;
             6)
-                launch_foobar2000
+                launch_strawberry
                 ;;
             7)
-                launch_winamp
+                launch_foobar2000
                 ;;
             8)
-                launch_apple_music
+                launch_winamp
                 ;;
             9)
-                launch_apple_podcasts
+                launch_apple_music
                 ;;
             10)
-                launch_audacity
+                launch_apple_podcasts
                 ;;
             11)
-                list_usb_midi_devices
+                launch_audacity
                 ;;
             12)
-                configure_audio_player_and_startup
+                list_usb_midi_devices
                 ;;
             13)
+                configure_audio_player_and_startup
+                ;;
+            14)
                 inspect_playing_audio_file
                 ;;
             0|[qQ])
@@ -7393,8 +7739,13 @@ detect_active_music_player() {
     DETECTED_TRACK_TITLE=""
     DETECTED_PLAYER_LABEL=""
 
-    # 1. Check Strawberry (priority if running or playing)
-    if get_strawberry_track_info 2>/dev/null && [ "$STRAWBERRY_STATE" = "playing" ]; then
+    # 1. Check Audacious (priority if running or playing)
+    if get_audacious_track_info 2>/dev/null && [ "$AUDACIOUS_STATE" = "playing" ]; then
+        DETECTED_PLAYER_NAME="Audacious"
+        DETECTED_TRACK_PATH="$AUDACIOUS_RESOLVED_PATH"
+        DETECTED_TRACK_TITLE="$AUDACIOUS_TITLE"
+    # 2. Check Strawberry (if running or playing)
+    elif get_strawberry_track_info 2>/dev/null && [ "$STRAWBERRY_STATE" = "playing" ]; then
         DETECTED_PLAYER_NAME="Strawberry"
         DETECTED_TRACK_PATH="$STRAWBERRY_RESOLVED_PATH"
         DETECTED_TRACK_TITLE="$STRAWBERRY_TITLE"
@@ -7402,6 +7753,10 @@ detect_active_music_player() {
         DETECTED_PLAYER_NAME="cliamp"
         DETECTED_TRACK_PATH="$CLIAMP_RESOLVED_PATH"
         DETECTED_TRACK_TITLE="$CLIAMP_TITLE"
+    elif get_audacious_track_info 2>/dev/null && [ -n "$AUDACIOUS_TITLE" ]; then
+        DETECTED_PLAYER_NAME="Audacious"
+        DETECTED_TRACK_PATH="$AUDACIOUS_RESOLVED_PATH"
+        DETECTED_TRACK_TITLE="$AUDACIOUS_TITLE"
     elif get_strawberry_track_info 2>/dev/null && [ -n "$STRAWBERRY_TITLE" ]; then
         DETECTED_PLAYER_NAME="Strawberry"
         DETECTED_TRACK_PATH="$STRAWBERRY_RESOLVED_PATH"
@@ -7410,6 +7765,11 @@ detect_active_music_player() {
         DETECTED_PLAYER_NAME="cliamp"
         DETECTED_TRACK_PATH="$CLIAMP_RESOLVED_PATH"
         DETECTED_TRACK_TITLE="$CLIAMP_TITLE"
+    elif pgrep -i -f audacious >/dev/null 2>&1; then
+        DETECTED_PLAYER_NAME="Audacious"
+        get_audacious_track_info 2>/dev/null || true
+        DETECTED_TRACK_PATH="$AUDACIOUS_RESOLVED_PATH"
+        DETECTED_TRACK_TITLE="$AUDACIOUS_TITLE"
     elif pgrep -i -f strawberry >/dev/null 2>&1; then
         DETECTED_PLAYER_NAME="Strawberry"
         get_strawberry_track_info 2>/dev/null || true
@@ -7434,6 +7794,7 @@ detect_active_music_player() {
         local raw_p
         raw_p=$(playerctl -l 2>/dev/null | head -1 | sed 's/\..*//')
         case "${raw_p,,}" in
+            audacious*) DETECTED_PLAYER_NAME="Audacious" ;;
             strawberry*) DETECTED_PLAYER_NAME="Strawberry" ;;
             vlc*) DETECTED_PLAYER_NAME="VLC" ;;
             haruna*) DETECTED_PLAYER_NAME="Haruna" ;;
@@ -8826,7 +9187,15 @@ get_manager_uptime() {
 }
 
 detect_currently_playing_mix() {
-    # 1. Check Strawberry (MPRIS / qdbus / dbus-send)
+    # 1. Check Audacious (MPRIS / qdbus / dbus-send / audtool)
+    if get_audacious_track_info 2>/dev/null; then
+        if [ -n "$AUDACIOUS_RESOLVED_PATH" ] && [ -f "$AUDACIOUS_RESOLVED_PATH" ]; then
+            echo "$AUDACIOUS_RESOLVED_PATH"
+            return 0
+        fi
+    fi
+
+    # 2. Check Strawberry (MPRIS / qdbus / dbus-send)
     if get_strawberry_track_info 2>/dev/null; then
         if [ -n "$STRAWBERRY_RESOLVED_PATH" ] && [ -f "$STRAWBERRY_RESOLVED_PATH" ]; then
             echo "$STRAWBERRY_RESOLVED_PATH"
@@ -8834,7 +9203,7 @@ detect_currently_playing_mix() {
         fi
     fi
 
-    # 2. Check cliamp
+    # 3. Check cliamp
     if get_cliamp_track_info 2>/dev/null; then
         if [ -n "$CLIAMP_RESOLVED_PATH" ] && [ -f "$CLIAMP_RESOLVED_PATH" ]; then
             echo "$CLIAMP_RESOLVED_PATH"
@@ -8842,7 +9211,7 @@ detect_currently_playing_mix() {
         fi
     fi
 
-    # 3. Check playerctl
+    # 4. Check playerctl
     if command -v playerctl >/dev/null 2>&1; then
         local p_status p_url
         p_status=$(playerctl status 2>/dev/null | head -1)
@@ -8859,9 +9228,9 @@ detect_currently_playing_mix() {
         fi
     fi
 
-    # 4. Check strawberry/vlc/mpv open file descriptors
+    # 5. Check audacious/strawberry/vlc/mpv open file descriptors
     local target_pids
-    target_pids=$(pgrep -i -f 'strawberry|vlc|mpv|kodi|cliamp' 2>/dev/null)
+    target_pids=$(pgrep -i -f 'audacious|strawberry|vlc|mpv|kodi|cliamp' 2>/dev/null)
     for pid in $target_pids; do
         for fd in /proc/"$pid"/fd/*; do
             if [ -e "$fd" ]; then
@@ -8884,7 +9253,7 @@ detect_currently_playing_mix() {
 
 auto_show_playing_mix_assets() {
     local mix_file="$1"
-    local player_name="${2:-${DEFAULT_AUDIO_PLAYER:-strawberry}}"
+    local player_name="${2:-${DEFAULT_AUDIO_PLAYER:-audacious}}"
     [ -z "$mix_file" ] || [ ! -f "$mix_file" ] && return 0
 
     local mix_basename
@@ -10308,6 +10677,9 @@ while true; do
         # ----------------------------------------------------------------------
         # Legacy Shortcut Aliases (for direct muscle-memory compatibility)
         # ----------------------------------------------------------------------
+        audacious|audacious-launch)
+            launch_audacious
+            ;;
         audacity|audacity-launch)
             launch_audacity
             ;;

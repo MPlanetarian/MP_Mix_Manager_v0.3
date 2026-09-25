@@ -11,11 +11,6 @@ done
 SCRIPT_DIR="$(cd -P "$(dirname "$_RESOLVED_SRC")" >/dev/null 2>&1 && pwd)"
 if [ ! -f "$SCRIPT_DIR/Mix_Archive_Manager.sh" ]; then
     for _c in \
-        "/var/home/mplanetarian/MP_Mix_Manager_v0.3" \
-        "$HOME/MP_Mix_Manager_v0.3" \
-        "/var/home/mplanetarian/MP_Mix_Manager_v0.3" \
-        "$HOME/MP_Mix_Manager_v0.3" \
-        "/var/home/mplanetarian/MP_Mix_Manager_v0.1" \
         "$HOME/MP_Mix_Manager_v0.1"; do
         if [ -f "$_c/Mix_Archive_Manager.sh" ]; then
             SCRIPT_DIR="$_c"

@@ -78,9 +78,7 @@ def get_default_player():
                             val = line.split("=", 1)[1].strip().strip('"').strip("'")
                             if val:
                                 return val.lower()
-            except Exception:
-                pass
-    return "strawberry"
+    return "audacious"
 
 
 def get_archive_dir():
@@ -359,10 +357,26 @@ def set_loud_audio_volume(volume_percent=95):
 
 def dispatch_audio_playback(player, files, playlist_path=None):
     """Launch playback using the requested Default Audio Player."""
-    player = (player or "strawberry").lower()
+    player = (player or "audacious").lower()
     target_to_play = playlist_path if playlist_path else (files[0] if files else None)
     if not target_to_play and not files:
         return False
+
+    # Audacious audio player (primary)
+    if player == "audacious":
+        targets = [playlist_path] if playlist_path else files
+        if shutil.which("audtool"):
+            try:
+                subprocess.run(["audtool", "set-volume", "100"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except Exception:
+                pass
+        aud_bin = shutil.which("audacious") or "audacious"
+        cmd = [aud_bin] + targets
+        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        time.sleep(0.5)
+        if shutil.which("audtool"):
+            subprocess.run(["audtool", "playback-play"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
 
     # Send loud volume instruction to Strawberry directly if Strawberry is chosen
     if player == "strawberry":
@@ -427,8 +441,6 @@ def dispatch_audio_playback(player, files, playlist_path=None):
                 cmd.append(f"--playlist={playlist_path}")
             else:
                 cmd.extend(files)
-            subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-            return True
 
     # Fallback to system default audio opener
     if sys.platform == "darwin":

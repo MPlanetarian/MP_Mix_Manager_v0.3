@@ -88,7 +88,37 @@ def detect_playing_audio_file():
         except Exception:
             pass
 
-    # 2. Check playerctl (MPRIS)
+    # 2. Check Audacious via D-Bus MPRIS
+    try:
+        url_res = subprocess.run(["qdbus", "org.mpris.MediaPlayer2.audacious", "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player.Metadata"], capture_output=True, text=True, timeout=0.4)
+        if url_res.returncode == 0 and url_res.stdout.strip():
+            for line in url_res.stdout.splitlines():
+                if line.startswith("xesam:url:"):
+                    raw_url = line.split(": ", 1)[1].strip()
+                    if raw_url.startswith("file://"):
+                        import urllib.parse
+                        fpath = urllib.parse.unquote(raw_url[7:])
+                        if os.path.isfile(fpath):
+                            return fpath, "Audacious"
+    except Exception:
+        pass
+
+    # 3. Check Strawberry via D-Bus MPRIS
+    try:
+        url_res = subprocess.run(["qdbus", "org.mpris.MediaPlayer2.strawberry", "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player.Metadata"], capture_output=True, text=True, timeout=0.4)
+        if url_res.returncode == 0 and url_res.stdout.strip():
+            for line in url_res.stdout.splitlines():
+                if line.startswith("xesam:url:"):
+                    raw_url = line.split(": ", 1)[1].strip()
+                    if raw_url.startswith("file://"):
+                        import urllib.parse
+                        fpath = urllib.parse.unquote(raw_url[7:])
+                        if os.path.isfile(fpath):
+                            return fpath, "Strawberry"
+    except Exception:
+        pass
+
+    # 4. Check playerctl (MPRIS)
     if shutil.which("playerctl"):
         try:
             p = subprocess.run(["playerctl", "metadata", "xesam:url"], capture_output=True, text=True, timeout=0.4)
@@ -105,9 +135,9 @@ def detect_playing_audio_file():
         except Exception:
             pass
 
-    # 3. Check open file descriptors of running audio players in /proc
+    # 5. Check open file descriptors of running audio players in /proc
     try:
-        target_procs = ["cliamp", "strawberry", "vlc", "mpv", "audacity"]
+        target_procs = ["cliamp", "strawberry", "audacious", "vlc", "mpv", "audacity"]
         for tp in target_procs:
             pid_cmd = ["pgrep", "-f", tp]
             pids_res = subprocess.run(pid_cmd, capture_output=True, text=True, timeout=0.3)
@@ -161,7 +191,65 @@ def get_live_player_stats():
         except Exception:
             pass
 
-    # 2. Check playerctl
+    # 2. Check Audacious via D-Bus
+    try:
+        st_res = subprocess.run(["qdbus", "org.mpris.MediaPlayer2.audacious", "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player.PlaybackStatus"], capture_output=True, text=True, timeout=0.3)
+        if st_res.returncode == 0 and st_res.stdout.strip():
+            stats["status"] = st_res.stdout.strip().upper()
+            stats["player"] = "Audacious"
+            pos_res = subprocess.run(["qdbus", "org.mpris.MediaPlayer2.audacious", "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player.Position"], capture_output=True, text=True, timeout=0.3)
+            if pos_res.returncode == 0 and pos_res.stdout.strip():
+                try:
+                    stats["position_sec"] = float(pos_res.stdout.strip()) / 1000000.0
+                except Exception:
+                    pass
+            meta_res = subprocess.run(["qdbus", "org.mpris.MediaPlayer2.audacious", "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player.Metadata"], capture_output=True, text=True, timeout=0.3)
+            if meta_res.returncode == 0 and meta_res.stdout.strip():
+                for line in meta_res.stdout.splitlines():
+                    if line.startswith("mpris:length:"):
+                        try:
+                            l_val = line.split(": ", 1)[1].strip()
+                            stats["duration_sec"] = float(l_val) / 1000000.0
+                        except Exception:
+                            pass
+            if stats["duration_sec"] > 0:
+                stats["progress_pct"] = (stats["position_sec"] / stats["duration_sec"]) * 100.0
+                stats["position_str"] = format_seconds(stats["position_sec"]).split('.')[0]
+                stats["duration_str"] = format_seconds(stats["duration_sec"]).split('.')[0]
+            return stats
+    except Exception:
+        pass
+
+    # 3. Check Strawberry via D-Bus
+    try:
+        st_res = subprocess.run(["qdbus", "org.mpris.MediaPlayer2.strawberry", "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player.PlaybackStatus"], capture_output=True, text=True, timeout=0.3)
+        if st_res.returncode == 0 and st_res.stdout.strip():
+            stats["status"] = st_res.stdout.strip().upper()
+            stats["player"] = "Strawberry"
+            pos_res = subprocess.run(["qdbus", "org.mpris.MediaPlayer2.strawberry", "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player.Position"], capture_output=True, text=True, timeout=0.3)
+            if pos_res.returncode == 0 and pos_res.stdout.strip():
+                try:
+                    stats["position_sec"] = float(pos_res.stdout.strip()) / 1000000.0
+                except Exception:
+                    pass
+            meta_res = subprocess.run(["qdbus", "org.mpris.MediaPlayer2.strawberry", "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player.Metadata"], capture_output=True, text=True, timeout=0.3)
+            if meta_res.returncode == 0 and meta_res.stdout.strip():
+                for line in meta_res.stdout.splitlines():
+                    if line.startswith("mpris:length:"):
+                        try:
+                            l_val = line.split(": ", 1)[1].strip()
+                            stats["duration_sec"] = float(l_val) / 1000000.0
+                        except Exception:
+                            pass
+            if stats["duration_sec"] > 0:
+                stats["progress_pct"] = (stats["position_sec"] / stats["duration_sec"]) * 100.0
+                stats["position_str"] = format_seconds(stats["position_sec"]).split('.')[0]
+                stats["duration_str"] = format_seconds(stats["duration_sec"]).split('.')[0]
+            return stats
+    except Exception:
+        pass
+
+    # 4. Check playerctl
     if shutil.which("playerctl"):
         try:
             st = subprocess.run(["playerctl", "status"], capture_output=True, text=True, timeout=0.3)

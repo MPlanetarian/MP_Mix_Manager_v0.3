@@ -27,7 +27,9 @@ def get_args():
     parser = argparse.ArgumentParser(description="Mix Archive Manager Window & Display Aligner")
     parser.add_argument("--mgr-pid", type=int, default=0, help="PID of Mix Archive Manager process")
     parser.add_argument("--parent-pid", type=int, default=0, help="Parent/terminal PID of Manager")
-    parser.add_argument("--expect-strawberry", action="store_true", help="Wait for Strawberry window to appear")
+    parser.add_argument("--expect-audacious", action="store_true", help="Wait for Audacious window to appear")
+    parser.add_argument("--expect-strawberry", action="store_true", help="Wait for Strawberry window to appear (legacy)")
+    parser.add_argument("--expect-player", action="store_true", help="Wait for player window to appear")
     parser.add_argument("--expect-cover", action="store_true", help="Wait for Cover window to appear")
     parser.add_argument("--timeout", type=float, default=8.0, help="Timeout in seconds for window polling")
     return parser.parse_known_args()[0]
@@ -113,7 +115,7 @@ def get_display_priorities():
         pass
     return prim_name, sec_name
 
-def align_kwin(timeout_seconds=8.0, mgr_pid=0, parent_pid=0, expect_strawberry=False, expect_cover=False):
+def align_kwin(timeout_seconds=8.0, mgr_pid=0, parent_pid=0, expect_strawberry=False, expect_audacious=False, expect_player=False, expect_cover=False):
     """Align windows using KDE Plasma 6 KWin Scripting DBus API."""
     try:
         import dbus
@@ -136,11 +138,11 @@ def align_kwin(timeout_seconds=8.0, mgr_pid=0, parent_pid=0, expect_strawberry=F
     aligned_any = False
 
     while time.time() - start_time < timeout_seconds:
-        straw_proc = is_proc_running(['strawberry'])
+        player_proc = is_proc_running(['audacious', 'strawberry'])
         cover_proc = is_proc_running(['gwenview', 'loupe', 'eog', 'feh'])
 
-        # Expect Strawberry / Cover if flagged or if their process has launched
-        expect_straw = expect_strawberry or straw_proc
+        # Expect Player / Cover if flagged or if their process has launched
+        expect_straw = expect_strawberry or expect_audacious or expect_player or player_proc
         expect_cover = expect_cover or cover_proc
 
         try:
@@ -218,9 +220,12 @@ def align_kwin(timeout_seconds=8.0, mgr_pid=0, parent_pid=0, expect_strawberry=F
             }}
         }}
 
-        // 2. Strawberry Audio Player Window
+        // 2. Audio Player Window (Audacious / Strawberry)
         if (!strawWin) {{
-            if (rClass.indexOf('strawberry') !== -1 || 
+            if (rClass.indexOf('audacious') !== -1 || 
+                capLower.indexOf('audacious') !== -1 || 
+                dName.indexOf('audacious') !== -1 ||
+                rClass.indexOf('strawberry') !== -1 || 
                 capLower.indexOf('strawberry') !== -1 || 
                 dName.indexOf('strawberry') !== -1) {{
                 strawWin = w;
@@ -572,7 +577,7 @@ def align_x11(mgr_pid=0):
 
             if not mgr_win and ((mgr_pid > 0 and pid == mgr_pid) or 'mix archive manager' in t_lower or 'mix_archive_manager' in t_lower):
                 mgr_win = wid
-            elif not straw_win and 'strawberry' in t_lower:
+            elif not straw_win and ('audacious' in t_lower or 'strawberry' in t_lower):
                 straw_win = wid
             elif not tl_win and ('mix tracklist viewer' in t_lower or 'tracklist' in t_lower):
                 tl_win = wid
@@ -681,7 +686,8 @@ def main():
 
     if sys_name == 'linux':
         if align_kwin(timeout_seconds=args.timeout, mgr_pid=args.mgr_pid, parent_pid=args.parent_pid,
-                      expect_strawberry=args.expect_strawberry, expect_cover=args.expect_cover):
+                      expect_strawberry=args.expect_strawberry, expect_audacious=args.expect_audacious,
+                      expect_player=args.expect_player, expect_cover=args.expect_cover):
             sys.exit(0)
         align_x11(mgr_pid=args.mgr_pid)
     elif sys_name == 'darwin':

@@ -95,6 +95,68 @@ print("\t".join([
 }
 
 # Prints: state<TAB>path<TAB>title<TAB>playlist<TAB>position<TAB>duration
+get_audacious_status() {
+    python3 -c '
+import subprocess, urllib.parse, sys
+
+try:
+    status = subprocess.check_output(["qdbus", "org.mpris.MediaPlayer2.audacious", "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player.PlaybackStatus"], stderr=subprocess.DEVNULL).decode().strip()
+except Exception:
+    sys.exit(1)
+
+try:
+    meta_raw = subprocess.check_output(["qdbus", "org.mpris.MediaPlayer2.audacious", "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player.Metadata"], stderr=subprocess.DEVNULL).decode("utf-8", errors="ignore")
+except Exception:
+    meta_raw = ""
+
+meta = {}
+for line in meta_raw.splitlines():
+    if ": " in line:
+        k, v = line.split(": ", 1)
+        meta[k.strip()] = v.strip()
+
+track_url = meta.get("xesam:url", "")
+if track_url.startswith("file://"):
+    track_url = track_url[7:]
+elif track_url.startswith("file:/"):
+    track_url = track_url[6:]
+track_url = urllib.parse.unquote(track_url)
+
+title = meta.get("xesam:title", "")
+if not title and track_url:
+    import os
+    title = os.path.splitext(os.path.basename(track_url))[0]
+
+dur_us = meta.get("mpris:length", "0")
+try:
+    dur_s = int(dur_us) // 1000000
+except Exception:
+    dur_s = 0
+
+try:
+    pos_raw = subprocess.check_output(["qdbus", "org.mpris.MediaPlayer2.audacious", "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player.Position"], stderr=subprocess.DEVNULL).decode().strip()
+    pos_s = int(pos_raw) // 1000000
+except Exception:
+    pos_s = 0
+
+playlist = ""
+try:
+    playlist = subprocess.check_output(["qdbus", "org.mpris.MediaPlayer2.audacious", "/org/atheme/audacious", "org.atheme.audacious.GetActivePlaylistName"], stderr=subprocess.DEVNULL).decode("utf-8", errors="ignore").strip()
+except Exception:
+    pass
+
+print("\t".join([
+    str(status.lower()),
+    str(track_url),
+    str(title),
+    str(playlist),
+    str(pos_s),
+    str(dur_s)
+]))
+' 2>/dev/null
+}
+
+# Prints: state<TAB>path<TAB>title<TAB>playlist<TAB>position<TAB>duration
 get_cliamp_status() {
     [ -n "$CLIAMP_BIN" ] || return 1
     "$CLIAMP_BIN" status --json 2>/dev/null | python3 -c '
@@ -118,8 +180,13 @@ print("\t".join([
 }
 
 start_random_sof_mix() {
-    echo -e "${C_YELLOW}[!] No audio currently playing. Instructing Strawberry to launch Stream of Frequency...${C_RESET}"
-    qdbus org.mpris.MediaPlayer2.strawberry /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Play 2>/dev/null
+    if pgrep -i -f audacious >/dev/null 2>&1 || qdbus org.mpris.MediaPlayer2.audacious >/dev/null 2>&1; then
+        echo -e "${C_YELLOW}[!] No audio currently playing. Instructing Audacious to play...${C_RESET}"
+        audtool playback-play 2>/dev/null || qdbus org.mpris.MediaPlayer2.audacious /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Play 2>/dev/null || true
+    else
+        echo -e "${C_YELLOW}[!] No audio currently playing. Instructing music player to launch Stream of Frequency...${C_RESET}"
+        qdbus org.mpris.MediaPlayer2.strawberry /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Play 2>/dev/null || true
+    fi
 }
 
 clear_screen_header() {
@@ -426,35 +493,65 @@ while true; do
     current_pos=""
     current_dur=""
 
-    cliamp_line="$(get_cliamp_status || true)"
-    if [ -n "$cliamp_line" ]; then
-        IFS=$'\t' read -r c_state c_path c_title c_playlist c_pos c_dur <<<"$cliamp_line"
-        if [ "$c_state" = "playing" ] && [ -n "$c_path" ]; then
-            player="cliamp"
+    audacious_line="$(get_audacious_status || true)"
+    if [ -n "$audacious_line" ]; then
+        IFS=$'\t' read -r a_state a_path a_title a_playlist a_pos a_dur <<<"$audacious_line"
+        if [ "$a_state" = "playing" ] && [ -n "$a_path" ]; then
+            player="audacious"
             playback_status="Playing"
-            current_file_path="$c_path"
-            current_title="$c_title"
-            current_playlist="$c_playlist"
-            current_pos="$c_pos"
-            current_dur="$c_dur"
+            current_file_path="$a_path"
+            current_title="$a_title"
+            current_playlist="$a_playlist"
+            current_pos="$a_pos"
+            current_dur="$a_dur"
         fi
     fi
 
-    strawberry_line="$(get_strawberry_status || true)"
-    if [ -n "$strawberry_line" ]; then
-        IFS=$'\t' read -r s_state s_path s_title s_playlist s_pos s_dur <<<"$strawberry_line"
-        if [ -z "$player" ] && [ "$s_state" = "playing" ] && [ -n "$s_path" ]; then
-            player="strawberry"
-            playback_status="Playing"
-            current_file_path="$s_path"
-            current_title="$s_title"
-            current_playlist="$s_playlist"
-            current_pos="$s_pos"
-            current_dur="$s_dur"
+    if [ -z "$player" ]; then
+        cliamp_line="$(get_cliamp_status || true)"
+        if [ -n "$cliamp_line" ]; then
+            IFS=$'\t' read -r c_state c_path c_title c_playlist c_pos c_dur <<<"$cliamp_line"
+            if [ "$c_state" = "playing" ] && [ -n "$c_path" ]; then
+                player="cliamp"
+                playback_status="Playing"
+                current_file_path="$c_path"
+                current_title="$c_title"
+                current_playlist="$c_playlist"
+                current_pos="$c_pos"
+                current_dur="$c_dur"
+            fi
         fi
     fi
 
-    # Paused-but-loaded: prefer cliamp, then strawberry
+    if [ -z "$player" ]; then
+        strawberry_line="$(get_strawberry_status || true)"
+        if [ -n "$strawberry_line" ]; then
+            IFS=$'\t' read -r s_state s_path s_title s_playlist s_pos s_dur <<<"$strawberry_line"
+            if [ "$s_state" = "playing" ] && [ -n "$s_path" ]; then
+                player="strawberry"
+                playback_status="Playing"
+                current_file_path="$s_path"
+                current_title="$s_title"
+                current_playlist="$s_playlist"
+                current_pos="$s_pos"
+                current_dur="$s_dur"
+            fi
+        fi
+    fi
+
+    # Paused-but-loaded: prefer audacious, then cliamp, then strawberry
+    if [ -z "$player" ] && [ -n "$a_path" ]; then
+        player="audacious"
+        playback_status="$(echo "$a_state" | sed 's/.*/\u&/')"
+        [ "$a_state" = "paused" ] && playback_status="Paused"
+        [ "$a_state" = "stopped" ] && playback_status="Stopped"
+        current_file_path="$a_path"
+        current_title="$a_title"
+        current_playlist="$a_playlist"
+        current_pos="$a_pos"
+        current_dur="$a_dur"
+    fi
+
     if [ -z "$player" ] && [ -n "$c_path" ]; then
         player="cliamp"
         playback_status="$(echo "$c_state" | sed 's/.*/\u&/')"
@@ -482,12 +579,12 @@ while true; do
     if [ -z "$player" ]; then
         clear_screen_header
         echo -e "${C_RED}[-] No supported player is reporting a track.${C_RESET}"
-        echo -e "${C_DIM}    Start cliamp or Strawberry, then this monitor will pick it up.${C_RESET}"
+        echo -e "${C_DIM}    Start Audacious, Strawberry, or cliamp, then this monitor will pick it up.${C_RESET}"
         sleep 3
         continue
     fi
 
-    if [ "$player" = "strawberry" ] && { [ -z "$current_file_path" ] || [ "$playback_status" = "Stopped" ]; }; then
+    if { [ "$player" = "audacious" ] || [ "$player" = "strawberry" ]; } && { [ -z "$current_file_path" ] || [ "$playback_status" = "Stopped" ]; }; then
         start_random_sof_mix
         sleep 3
         continue
