@@ -1,0 +1,10 @@
+# Congen Export File
+# Imported via Congen Legacy Discovery
+# Exported : 2026-09-20 06:37:27
+[command]
+name=Restore / Unblock Internet
+script=/home/mplanetarian/KDE_CONNECT_CMDS/kc_unblock_internet.sh
+device=iPhone
+config_key=b2c35604_575e_44f9_b18b_86740a9815bc
+summary=Restore / Unblock Internet (Imported from iPhone)
+added=2026-09-20 06:37:27

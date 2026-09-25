@@ -1,0 +1,10 @@
+# Congen Export File
+# Imported via Congen Legacy Discovery
+# Exported : 2026-09-20 06:37:27
+[command]
+name=Launch XnView MP
+script=/home/mplanetarian/KDE_CONNECT_CMDS/kc_launch_xnviewmp.sh
+device=iPhone
+config_key=b8c9d0e1_2f3a_44b5_f26d_7e8f901a2b3c
+summary=Launch XnView MP (Imported from iPhone)
+added=2026-09-20 06:37:27

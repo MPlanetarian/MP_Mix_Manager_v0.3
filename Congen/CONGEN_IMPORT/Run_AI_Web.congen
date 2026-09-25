@@ -1,0 +1,10 @@
+# Congen Export File
+# Imported via Congen Legacy Discovery
+# Exported : 2026-09-20 06:37:27
+[command]
+name=Run AI Web
+script=/home/mplanetarian/KDE_CONNECT_CMDS/kc_run_ai_web.sh
+device=iPhone
+config_key=a8e4129b_15c3_4982_93d1_4982c7103ab2
+summary=Run AI Web (Imported from iPhone)
+added=2026-09-20 06:37:27

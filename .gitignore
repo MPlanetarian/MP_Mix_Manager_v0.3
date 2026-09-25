@@ -86,3 +86,4 @@ assets/weather_cache.txt
 # Generated reports
 master_tracklists.html
 
+!Congen/.congen_alert.wav

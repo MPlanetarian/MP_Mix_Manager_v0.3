@@ -9509,6 +9509,15 @@ elif [ "$1" = "--alarm" ] || [ "$1" = "--alarm-clock" ] || [ "$1" = "alarm" ] ||
     else
         exec ./alarm.sh "$@"
     fi
+elif [ "$1" = "--congen" ] || [ "$1" = "congen" ] || [ "$1" = "kdeconnect" ] || [ "$1" = "--kdeconnect" ]; then
+    shift || true
+    if [ -x "$SCRIPT_DIR/Congen/Congen" ]; then
+        exec "$SCRIPT_DIR/Congen/Congen" "$@"
+    elif [ -x "$SCRIPT_DIR/congen" ]; then
+        exec "$SCRIPT_DIR/congen" "$@"
+    else
+        exec ./congen "$@"
+    fi
 fi
 
 manage_cloud_backup_suite() {
@@ -9852,28 +9861,44 @@ manage_promo_and_syndication() {
     done
 }
 
+manage_congen() {
+    local congen_bin="$SCRIPT_DIR/Congen/Congen"
+    [ ! -x "$congen_bin" ] && congen_bin="$SCRIPT_DIR/congen"
+    [ ! -x "$congen_bin" ] && congen_bin="./congen"
+    if [ -x "$congen_bin" ]; then
+        "$congen_bin" "$@"
+    else
+        echo -e "\n${RED}Error: Congen executable not found!${NC}"
+        press_enter
+    fi
+}
+
 manage_network_and_internet() {
     while true; do
         clear
-        echo -e "${BOLD}${MAGENTA}====================================================${NC}"
-        echo -e "${BOLD}${MAGENTA}     NETWORK SERVICES & INTERNET ACCESS CONTROL     ${NC}"
-        echo -e "${BOLD}${MAGENTA}====================================================${NC}"
+        echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
+        echo -e "${BOLD}${MAGENTA}       NETWORK SERVICES, CONGEN & INTERNET ACCESS CONTROL             ${NC}"
+        echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
         echo ""
         echo -e "${BOLD}Select an operation:${NC}"
         echo -e "  ${BOLD}${CYAN}1)${NC} Manage Network Services (${GREEN}SSH, Samba, FTP - Start, Stop, Restart All${NC})"
-        echo -e "  ${BOLD}${CYAN}2)${NC} Block Internet Access (${GREEN}LAN Only - block-internet${NC})"
-        echo -e "  ${BOLD}${CYAN}3)${NC} Restore / Unblock Internet Access (${GREEN}unblock-internet${NC})"
+        echo -e "  ${BOLD}${CYAN}2)${NC} Congen - KDE Connect Commands Generator & Remote Control (${GREEN}Mobile Phone Commands${NC})"
+        echo -e "  ${BOLD}${CYAN}3)${NC} Block Internet Access (${GREEN}LAN Only - block-internet${NC})"
+        echo -e "  ${BOLD}${CYAN}4)${NC} Restore / Unblock Internet Access (${GREEN}unblock-internet${NC})"
         echo -e "  ${BOLD}${CYAN}0)${NC} Return to Main Menu"
         echo ""
-        read -r -p "Enter choice [0-3]: " net_choice
+        read -r -p "Enter choice [0-4]: " net_choice
         case "$net_choice" in
             1)
                 manage_network_services
                 ;;
             2)
-                block_internet
+                manage_congen
                 ;;
             3)
+                block_internet
+                ;;
+            4)
                 unblock_internet
                 ;;
             0|[qQ]|[eE][xX][iI][tT])
@@ -10152,7 +10177,7 @@ while true; do
     echo -e "  ${BOLD}${CYAN}23)${NC} System & Hardware Process Monitors Suite (${GREEN}btop, nvtop, top${NC})"
     echo -e "  ${BOLD}${CYAN}24)${NC} View Advanced Archive Statistics (${GREEN}SOF_Archive_Stats.sh${NC})"
     echo -e "  ${BOLD}${CYAN}25)${NC} Promotional Outreach, Syndication & Music Shopping (${GREEN}Emails, RSS/Podcasts, Beatport/Bandcamp${NC})"
-    echo -e "  ${BOLD}${CYAN}26)${NC} Network Services & Internet Access Control (${GREEN}SSH, Samba, FTP, Block/Restore Internet${NC})"
+    echo -e "  ${BOLD}${CYAN}26)${NC} Network Services, Congen & Internet Control (${GREEN}SSH, Samba, FTP, Congen KDE Connect, Block Internet${NC})"
     echo -e "  ${BOLD}${CYAN}27)${NC} Desktop Display Settings, Audio Routing & App Control (${GREEN}Wayland/X11/macOS/Windows, Close Apps${NC})"
     echo -e "  ${BOLD}${CYAN}28)${NC} Universal System Maintenance & Cleanup (${GREEN}Drive space, OS Updates, Package Clean, Logs${NC})"
     echo -e "  ${BOLD}${CYAN}29)${NC} AI Assistant & Local LLM Servers Suite (${GREEN}Claude, GPT, Ollama, DeepSeek, WAN2GP, Beszel${NC})"
@@ -10354,6 +10379,9 @@ while true; do
             ;;
         alarm|alarm-clock|alarm_clock|alarm.sh)
             manage_mix_scheduler
+            ;;
+        congen|kdeconnect|congen-launch)
+            manage_congen
             ;;
         *)
             echo -e "\n${RED}Invalid option! Please enter a number between 1 and 32 (or 'q' to exit).${NC}"

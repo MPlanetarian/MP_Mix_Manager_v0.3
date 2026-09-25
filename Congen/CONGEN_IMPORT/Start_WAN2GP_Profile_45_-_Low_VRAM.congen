@@ -1,0 +1,10 @@
+# Congen Export File
+# Imported via Congen Legacy Discovery
+# Exported : 2026-09-20 06:37:27
+[command]
+name=Start WAN2GP (Profile 4.5 - Low VRAM)
+script=/home/mplanetarian/KDE_CONNECT_CMDS/kc_start_wan2gp_profile45.sh
+device=iPhone
+config_key=f183acbc_70a3_4a48_9c57_3ba2937d9b77
+summary=Start WAN2GP (Profile 4.5 - Low VRAM) (Imported from iPhone)
+added=2026-09-20 06:37:27

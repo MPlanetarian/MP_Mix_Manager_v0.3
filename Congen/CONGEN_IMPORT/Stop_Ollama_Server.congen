@@ -1,0 +1,10 @@
+# Congen Export File
+# Imported via Congen Legacy Discovery
+# Exported : 2026-09-20 06:37:27
+[command]
+name=Stop Ollama Server
+script=/home/mplanetarian/KDE_CONNECT_CMDS/kc_stop_ollama.sh
+device=iPhone
+config_key=dec088a2_59a1_482e_b969_02d1e5697320
+summary=Stop Ollama Server (Imported from iPhone)
+added=2026-09-20 06:37:27

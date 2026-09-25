@@ -1,0 +1,10 @@
+# Congen Export File
+# Imported via Congen Legacy Discovery
+# Exported : 2026-09-20 06:37:27
+[command]
+name=Launch Visual Studio Code
+script=/home/mplanetarian/KDE_CONNECT_CMDS/kc_launch_vscode.sh
+device=iPhone
+config_key=e5f6a7b8_9c0d_41e2_cf3a_4b5c6d7e8f90
+summary=Launch Visual Studio Code (Imported from iPhone)
+added=2026-09-20 06:37:27

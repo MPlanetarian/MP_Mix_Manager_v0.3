@@ -1,0 +1,10 @@
+# Congen Export File
+# Imported via Congen Legacy Discovery
+# Exported : 2026-09-20 06:37:27
+[command]
+name=Mute Audio
+script=/home/mplanetarian/KDE_CONNECT_CMDS/kc_mute_audio.sh
+device=iPhone
+config_key=b32e7717_c22e_4b00_b159_55ea0f76757b
+summary=Mute Audio (Imported from iPhone)
+added=2026-09-20 06:37:27

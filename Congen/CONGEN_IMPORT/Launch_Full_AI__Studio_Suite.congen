@@ -1,0 +1,10 @@
+# Congen Export File
+# Imported via Congen Legacy Discovery
+# Exported : 2026-09-20 06:37:27
+[command]
+name=Launch Full AI & Studio Suite
+script=/home/mplanetarian/KDE_CONNECT_CMDS/kc_launch_ai_studio_suite.sh
+device=iPhone
+config_key=fea0feca_a15c_42cf_8224_7133d5d6b250
+summary=Launch Full AI & Studio Suite (Imported from iPhone)
+added=2026-09-20 06:37:27

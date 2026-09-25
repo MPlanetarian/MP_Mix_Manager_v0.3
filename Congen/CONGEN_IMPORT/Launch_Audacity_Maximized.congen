@@ -1,0 +1,10 @@
+# Congen Export File
+# Imported via Congen Legacy Discovery
+# Exported : 2026-09-20 06:37:27
+[command]
+name=Launch Audacity (Maximized)
+script=/home/mplanetarian/KDE_CONNECT_CMDS/kc_launch_audacity.sh
+device=iPhone
+config_key=a9488a8a_7701_4fb0_83ca_34e063047147
+summary=Launch Audacity (Maximized) (Imported from iPhone)
+added=2026-09-20 06:37:27

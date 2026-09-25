@@ -1,0 +1,10 @@
+# Congen Export File
+# Imported via Congen Legacy Discovery
+# Exported : 2026-09-20 06:37:27
+[command]
+name=Lock Desktop Screen
+script=/home/mplanetarian/KDE_CONNECT_CMDS/kc_lock_screen.sh
+device=iPhone
+config_key=876c42b6_fd29_4350_a654_d7cbb9f837ff
+summary=Lock Desktop Screen (Imported from iPhone)
+added=2026-09-20 06:37:27

@@ -1,0 +1,10 @@
+# Congen Export File
+# Imported via Congen Legacy Discovery
+# Exported : 2026-09-20 06:37:27
+[command]
+name=Open Strawberry & Play
+script=/home/mplanetarian/KDE_CONNECT_CMDS/kc_launch_strawberry_play.sh
+device=iPhone
+config_key=95dce0ef_fa5a_4257_b96c_ddfb1b387dcc
+summary=Open Strawberry & Play (Imported from iPhone)
+added=2026-09-20 06:37:27

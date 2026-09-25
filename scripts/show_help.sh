@@ -147,8 +147,8 @@ ${BOLD}AVAILABLE MENU OPTIONS (INTERACTIVE & DIRECT SHORTCUTS):${NC}
        Run SOF_Archive_Stats.sh to display detailed multi-drive archive analytics.
   ${BOLD}${CYAN}25${NC}   ${BOLD}Promotional Outreach, Syndication & Music Shopping${NC}
        Send promotional emails, syndicate RSS/podcasts, browse Bandcamp/Beatport.
-  ${BOLD}${CYAN}26${NC}   ${BOLD}Network Services & Internet Access Control${NC}
-       Manage SSH, Samba, FTP servers, or toggle internet connectivity block.
+  ${BOLD}${CYAN}26${NC}   ${BOLD}Network Services, Congen & Internet Access Control${NC}
+       Manage SSH, Samba, FTP servers, Congen KDE Connect remote control suite, or toggle internet block.
   ${BOLD}${CYAN}27${NC}   ${BOLD}Desktop Display Settings, Audio Routing & App Control${NC}
        Configure Wayland/X11, display scaling, audio routing, or kill audio apps.
   ${BOLD}${CYAN}28${NC}   ${BOLD}Universal System Maintenance & Cleanup${NC}
@@ -183,6 +183,7 @@ ${BOLD}DIRECT COMMAND SHORTCUTS:${NC}
     ${CYAN}geexlab${NC}           Launch GeeXLab 3D demos
     ${CYAN}gpu-screen-recorder${NC}  Record a DJ mix with GPU Screen Recorder (Linux)
     ${CYAN}alarm${NC} | ${CYAN}alarm-clock${NC}   Launch MPlanetarians Alarm Clock (Wake Up Edition)
+    ${CYAN}congen${NC} | ${CYAN}kdeconnect${NC}    Launch Congen KDE Connect Commands Generator & Remote Control
 
 ${BOLD}EXAMPLES:${NC}
   ${DIM}# Launch interactive terminal UI:${NC}
@@ -190,6 +191,9 @@ ${BOLD}EXAMPLES:${NC}
 
   ${DIM}# Launch morning alarm clock control:${NC}
   ${GREEN}mix-archive-manager alarm${NC}
+
+  ${DIM}# Launch Congen KDE Connect commands suite:${NC}
+  ${GREEN}mix-archive-manager congen${NC}
 
   ${DIM}# Display help usage and all available options:${NC}
   ${GREEN}mix-archive-manager --help${NC}

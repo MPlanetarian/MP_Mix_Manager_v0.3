@@ -1,0 +1,10 @@
+# Congen Export File
+# Imported via Congen Legacy Discovery
+# Exported : 2026-09-20 06:37:27
+[command]
+name=Launch Beszel Hub & Agent
+script=/home/mplanetarian/KDE_CONNECT_CMDS/kc_launch_beszel_hub_and_agent.sh
+device=iPhone
+config_key=21a88c44_867b_4933_8525_3afb1177faec
+summary=Launch Beszel Hub & Agent (Imported from iPhone)
+added=2026-09-20 06:37:27

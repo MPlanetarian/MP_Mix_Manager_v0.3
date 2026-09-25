@@ -1,0 +1,10 @@
+# Congen Export File
+# Imported via Congen Legacy Discovery
+# Exported : 2026-09-20 06:37:27
+[command]
+name=Launch Aider (Qwen2.5 7B)
+script=/home/mplanetarian/KDE_CONNECT_CMDS/kc_run_aider_qwen.sh
+device=iPhone
+config_key=bd9c4580_dd30_469a_a201_ba25a64738ec
+summary=Launch Aider (Qwen2.5 7B) (Imported from iPhone)
+added=2026-09-20 06:37:27

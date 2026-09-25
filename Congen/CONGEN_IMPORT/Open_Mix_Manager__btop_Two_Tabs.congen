@@ -1,0 +1,10 @@
+# Congen Export File
+# Imported via Congen Legacy Discovery
+# Exported : 2026-09-20 06:37:27
+[command]
+name=Open Mix Manager & btop (Two Tabs)
+script=/home/mplanetarian/KDE_CONNECT_CMDS/kc_launch_manager_and_btop.sh
+device=iPhone
+config_key=9f1812ed_4f66_4c11_a546_b7793a349fa6
+summary=Open Mix Manager & btop (Two Tabs) (Imported from iPhone)
+added=2026-09-20 06:37:27

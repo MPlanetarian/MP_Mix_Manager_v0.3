@@ -1,0 +1,10 @@
+# Congen Export File
+# Imported via Congen Legacy Discovery
+# Exported : 2026-09-20 06:37:27
+[command]
+name=Stop WAN2GP Server
+script=/home/mplanetarian/KDE_CONNECT_CMDS/kc_stop_wan2gp.sh
+device=iPhone
+config_key=38d5d443_5bc8_4db0_9b00_b8c9d12457f8
+summary=Stop WAN2GP Server (Imported from iPhone)
+added=2026-09-20 06:37:27

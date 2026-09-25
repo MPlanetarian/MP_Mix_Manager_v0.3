@@ -1,0 +1,10 @@
+# Congen Export File
+# Imported via Congen Legacy Discovery
+# Exported : 2026-09-20 06:37:27
+[command]
+name=Launch Bazzite Portal
+script=/home/mplanetarian/KDE_CONNECT_CMDS/kc_launch_bazzite_portal.sh
+device=iPhone
+config_key=f6a7b8c9_0d1e_42f3_d04b_5c6d7e8f901a
+summary=Launch Bazzite Portal (Imported from iPhone)
+added=2026-09-20 06:37:27

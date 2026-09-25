@@ -1,0 +1,10 @@
+# Congen Export File
+# Imported via Congen Legacy Discovery
+# Exported : 2026-09-20 06:37:27
+[command]
+name=Launch VLC (NFT Videos)
+script=/home/mplanetarian/KDE_CONNECT_CMDS/kc_launch_vlc_nft_videos.sh
+device=iPhone
+config_key=c9d0e1f2_3a4b_45c6_837e_8f901a2b3c4d
+summary=Launch VLC (NFT Videos) (Imported from iPhone)
+added=2026-09-20 06:37:27

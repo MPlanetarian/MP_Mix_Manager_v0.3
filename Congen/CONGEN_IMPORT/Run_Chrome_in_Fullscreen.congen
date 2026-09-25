@@ -1,0 +1,10 @@
+# Congen Export File
+# Imported via Congen Legacy Discovery
+# Exported : 2026-09-20 06:37:27
+[command]
+name=Run Chrome in Fullscreen
+script=/home/mplanetarian/KDE_CONNECT_CMDS/kc_run_chrome_fullscreen.sh
+device=iPhone
+config_key=33713d43_f31e_477f_a09b_c53fa707434f
+summary=Run Chrome in Fullscreen (Imported from iPhone)
+added=2026-09-20 06:37:27

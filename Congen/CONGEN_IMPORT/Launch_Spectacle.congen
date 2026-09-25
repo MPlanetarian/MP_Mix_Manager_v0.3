@@ -1,0 +1,10 @@
+# Congen Export File
+# Imported via Congen Legacy Discovery
+# Exported : 2026-09-20 06:37:27
+[command]
+name=Launch Spectacle
+script=/home/mplanetarian/KDE_CONNECT_CMDS/kc_launch_spectacle.sh
+device=iPhone
+config_key=b2c3d4e5_6f7a_48b9_9c0d_1e2f3a4b5c6d
+summary=Launch Spectacle (Imported from iPhone)
+added=2026-09-20 06:37:27

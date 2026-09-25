@@ -68,6 +68,13 @@ elif [ "${1:-}" = "alarm" ] || [ "${1:-}" = "--alarm" ] || [ "${1:-}" = "alarm-c
     elif [ -x "$CODEBASE_DIR/alarm.sh" ]; then
         exec bash "$CODEBASE_DIR/alarm.sh" "$@"
     fi
+elif [ "${1:-}" = "congen" ] || [ "${1:-}" = "--congen" ] || [ "${1:-}" = "kdeconnect" ] || [ "${1:-}" = "--kdeconnect" ]; then
+    shift
+    if [ -x "$CODEBASE_DIR/Congen/Congen" ]; then
+        exec bash "$CODEBASE_DIR/Congen/Congen" "$@"
+    elif [ -x "$CODEBASE_DIR/congen" ]; then
+        exec bash "$CODEBASE_DIR/congen" "$@"
+    fi
 fi
 
 # If an external drive was specified in config, wait briefly for mount

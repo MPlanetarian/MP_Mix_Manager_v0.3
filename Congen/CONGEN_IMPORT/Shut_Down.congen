@@ -1,0 +1,10 @@
+# Congen Export File
+# Imported via Congen Legacy Discovery
+# Exported : 2026-09-20 06:37:27
+[command]
+name=Shut Down
+script=/home/mplanetarian/KDE_CONNECT_CMDS/kc_shutdown.sh
+device=iPhone
+config_key=7f14b620_91b2_4c58_b291_8231a47df123
+summary=Shut Down (Imported from iPhone)
+added=2026-09-20 06:37:27

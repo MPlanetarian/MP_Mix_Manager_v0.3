@@ -1,0 +1,10 @@
+# Congen Export File
+# Imported via Congen Legacy Discovery
+# Exported : 2026-09-20 06:37:27
+[command]
+name=Unmute Audio
+script=/home/mplanetarian/KDE_CONNECT_CMDS/kc_unmute_audio.sh
+device=iPhone
+config_key=5ba3794c_8d3b_4436_a2ec_d19b81162304
+summary=Unmute Audio (Imported from iPhone)
+added=2026-09-20 06:37:27

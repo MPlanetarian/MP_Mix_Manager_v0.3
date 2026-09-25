@@ -1,0 +1,10 @@
+# Congen Export File
+# Imported via Congen Legacy Discovery
+# Exported : 2026-09-20 06:37:27
+[command]
+name=Launch Steam
+script=/home/mplanetarian/KDE_CONNECT_CMDS/kc_launch_steam.sh
+device=iPhone
+config_key=d4e5f6a7_8b9c_40d1_be2f_3a4b5c6d7e8f
+summary=Launch Steam (Imported from iPhone)
+added=2026-09-20 06:37:27

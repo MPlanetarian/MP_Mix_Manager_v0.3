@@ -1,0 +1,10 @@
+# Congen Export File
+# Imported via Congen Legacy Discovery
+# Exported : 2026-09-20 06:37:27
+[command]
+name=Run Ollama Server (distrobox)
+script=/home/mplanetarian/KDE_CONNECT_CMDS/kc_run_ollama_serve.sh
+device=iPhone
+config_key=2fb4f76a_2ef1_4fa3_8d97_4404a29c9b16
+summary=Run Ollama Server (distrobox) (Imported from iPhone)
+added=2026-09-20 06:37:27

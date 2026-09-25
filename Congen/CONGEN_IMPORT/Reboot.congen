@@ -1,0 +1,10 @@
+# Congen Export File
+# Imported via Congen Legacy Discovery
+# Exported : 2026-09-20 06:37:27
+[command]
+name=Reboot
+script=/home/mplanetarian/KDE_CONNECT_CMDS/kc_reboot.sh
+device=iPhone
+config_key=2b9b6fc6_78d2_4257_8ae1_b2cf1ea98ec7
+summary=Reboot (Imported from iPhone)
+added=2026-09-20 06:37:27

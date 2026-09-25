@@ -1,0 +1,10 @@
+# Congen Export File
+# Imported via Congen Legacy Discovery
+# Exported : 2026-09-20 06:37:27
+[command]
+name=Launch dsh-mobile (DeepSeek Harness)
+script=/home/mplanetarian/KDE_CONNECT_CMDS/kc_launch_dsh_mobile.sh
+device=iPhone
+config_key=4fe9e0d2_b40a_4187_9664_636d1f3c7e8b
+summary=Launch dsh-mobile (DeepSeek Harness) (Imported from iPhone)
+added=2026-09-20 06:37:27

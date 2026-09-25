@@ -1,0 +1,10 @@
+# Congen Export File
+# Imported via Congen Legacy Discovery
+# Exported : 2026-09-20 06:37:27
+[command]
+name=Launch Kate
+script=/home/mplanetarian/KDE_CONNECT_CMDS/kc_launch_kate.sh
+device=iPhone
+config_key=d0e1f2a3_4b5c_46d7_948f_901a2b3c4d5e
+summary=Launch Kate (Imported from iPhone)
+added=2026-09-20 06:37:27

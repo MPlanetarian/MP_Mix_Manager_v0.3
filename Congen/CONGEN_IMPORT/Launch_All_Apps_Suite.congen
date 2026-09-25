@@ -1,0 +1,10 @@
+# Congen Export File
+# Imported via Congen Legacy Discovery
+# Exported : 2026-09-20 06:37:27
+[command]
+name=Launch All Apps Suite
+script=/home/mplanetarian/KDE_CONNECT_CMDS/kc_launch_all_apps.sh
+device=iPhone
+config_key=e1d45a70_8f91_4a23_b6e7_1c8d4e9f0123
+summary=Launch All Apps Suite (Imported from iPhone)
+added=2026-09-20 06:37:27

@@ -1,0 +1,10 @@
+# Congen Export File
+# Imported via Congen Legacy Discovery
+# Exported : 2026-09-20 06:37:27
+[command]
+name=Block Internet (LAN Only)
+script=/home/mplanetarian/KDE_CONNECT_CMDS/kc_block_internet.sh
+device=iPhone
+config_key=1dfc2b83_a26e_41d0_bcbd_35de055fad2f
+summary=Block Internet (LAN Only) (Imported from iPhone)
+added=2026-09-20 06:37:27

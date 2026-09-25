@@ -1,0 +1,10 @@
+# Congen Export File
+# Imported via Congen Legacy Discovery
+# Exported : 2026-09-20 06:37:27
+[command]
+name=Launch Sublime Text
+script=/home/mplanetarian/KDE_CONNECT_CMDS/kc_launch_sublime_text.sh
+device=iPhone
+config_key=e1f2a3b4_5c6d_47e8_a590_01a2b3c4d5e6
+summary=Launch Sublime Text (Imported from iPhone)
+added=2026-09-20 06:37:27
