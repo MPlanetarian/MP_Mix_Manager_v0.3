@@ -129,8 +129,8 @@ ${BOLD}AVAILABLE MENU OPTIONS (INTERACTIVE & DIRECT SHORTCUTS):${NC}
        Manage PipeWire/ALSA sound cards, buffer latency, MIDI devices, and levels.
   ${BOLD}${CYAN}17${NC}   ${BOLD}Spectrogram Generation & Audio Frequency Analysis${NC}
        Generate Spek spectrograms, SoX frequency plots, and Praat acoustic analysis.
-  ${BOLD}${CYAN}18${NC}   ${BOLD}Schedule DJ Mix Playback Suite${NC}
-       Automate scheduled timed mix playback with background notification daemon.
+  ${BOLD}${CYAN}18${NC}   ${BOLD}Morning Alarm Clock & DJ Mix Playback Suite${NC}
+       Wake up to random archive mixes, 3-min volume ramp, Steam breakfast games, daily brief & DJ playback scheduler.
   ${BOLD}${CYAN}19${NC}   ${BOLD}YouTube Video Generation Suite${NC}
        Render 4K UHD, 1080p, or 720p companion YouTube videos with hardware NVENC.
   ${BOLD}${CYAN}20${NC}   ${BOLD}Visual Media, Cover Art & Companion Video Suite${NC}
@@ -182,10 +182,14 @@ ${BOLD}DIRECT COMMAND SHORTCUTS:${NC}
     ${CYAN}electricsheep${NC}     Launch Electric Sheep screensaver
     ${CYAN}geexlab${NC}           Launch GeeXLab 3D demos
     ${CYAN}gpu-screen-recorder${NC}  Record a DJ mix with GPU Screen Recorder (Linux)
+    ${CYAN}alarm${NC} | ${CYAN}alarm-clock${NC}   Launch MPlanetarians Alarm Clock (Wake Up Edition)
 
 ${BOLD}EXAMPLES:${NC}
   ${DIM}# Launch interactive terminal UI:${NC}
   ${GREEN}mix-archive-manager${NC}
+
+  ${DIM}# Launch morning alarm clock control:${NC}
+  ${GREEN}mix-archive-manager alarm${NC}
 
   ${DIM}# Display help usage and all available options:${NC}
   ${GREEN}mix-archive-manager --help${NC}

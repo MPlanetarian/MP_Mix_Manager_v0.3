@@ -61,6 +61,13 @@ elif [ "${1:-}" = "help" ] || [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; th
     elif [ -x "$CODEBASE_DIR/show_help.sh" ]; then
         exec bash "$CODEBASE_DIR/show_help.sh" "$@"
     fi
+elif [ "${1:-}" = "alarm" ] || [ "${1:-}" = "--alarm" ] || [ "${1:-}" = "alarm-clock" ] || [ "${1:-}" = "--alarm-clock" ]; then
+    shift
+    if [ -x "$CODEBASE_DIR/mplanetarians-alarm-clock/alarm.sh" ]; then
+        exec bash "$CODEBASE_DIR/mplanetarians-alarm-clock/alarm.sh" "$@"
+    elif [ -x "$CODEBASE_DIR/alarm.sh" ]; then
+        exec bash "$CODEBASE_DIR/alarm.sh" "$@"
+    fi
 fi
 
 # If an external drive was specified in config, wait briefly for mount

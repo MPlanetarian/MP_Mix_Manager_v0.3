@@ -6522,6 +6522,16 @@ get_active_audio_interface_display() {
     return 1
 }
 
+get_alarm_clock_status_display() {
+    local script_py="$SCRIPT_DIR/scripts/get_alarm_clock_status.py"
+    [ ! -f "$script_py" ] && script_py="$PWD/scripts/get_alarm_clock_status.py"
+    if [ -f "$script_py" ] && command -v python3 >/dev/null 2>&1; then
+        python3 "$script_py" 2>/dev/null
+    elif [ -x "$SCRIPT_DIR/scripts/get_alarm_clock_status.sh" ]; then
+        "$SCRIPT_DIR/scripts/get_alarm_clock_status.sh" 2>/dev/null
+    fi
+}
+
 get_playing_audio_spec_summary() {
     local target_file="$1"
     local script_py="$SCRIPT_DIR/scripts/inspect_playing_audio.py"
@@ -8564,22 +8574,217 @@ toggle_audio_mute() {
 }
 
 manage_mix_scheduler() {
-    echo -e "\n${BOLD}${BLUE}=== DJ MIX SCHEDULER (PLAYS LOUDLY VIA DEFAULT AUDIO PLAYER) ===${NC}\n"
-    local py_script="$SCRIPT_DIR/scripts/schedule_mix_playback.py"
-    if [ ! -f "$py_script" ]; then
-        py_script="$SCRIPT_DIR/schedule_mix_playback.py"
-    fi
-    if [ ! -f "$py_script" ]; then
-        py_script="./scripts/schedule_mix_playback.py"
-    fi
-    if [ -x "$SCRIPT_DIR/scripts/schedule_mix_playback.sh" ]; then
-        "$SCRIPT_DIR/scripts/schedule_mix_playback.sh" --player "${DEFAULT_AUDIO_PLAYER:-strawberry}"
-    elif command -v python3 >/dev/null 2>&1 && [ -f "$py_script" ]; then
-        python3 "$py_script" --player "${DEFAULT_AUDIO_PLAYER:-strawberry}"
-    else
-        echo -e "${RED}Error: schedule_mix_playback script not found!${NC}"
-        press_enter
-    fi
+    local alarm_bin="$SCRIPT_DIR/mplanetarians-alarm-clock/alarm.sh"
+    [ ! -x "$alarm_bin" ] && alarm_bin="$SCRIPT_DIR/alarm.sh"
+    [ ! -x "$alarm_bin" ] && alarm_bin="./alarm.sh"
+
+    while true; do
+        clear
+        echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
+        echo -e "${BOLD}${MAGENTA}       MORNING ALARM CLOCK & DJ MIX PLAYBACK SCHEDULER SUITE          ${NC}"
+        echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
+        local alarm_summary
+        alarm_summary=$(get_alarm_clock_status_display)
+        if [ -n "$alarm_summary" ]; then
+            echo -e "${alarm_summary}"
+            echo -e "${BOLD}${MAGENTA}----------------------------------------------------------------------${NC}"
+        fi
+        echo ""
+        echo -e "${BOLD}Select an operation:${NC}"
+        echo -e "  ${BOLD}${BLUE}─── [ MPLANETARIANS ALARM CLOCK (WAKE UP EDITION) ] ───────────${NC}"
+        echo -e "  ${BOLD}${CYAN} 1)${NC} Morning Screen & Daily Brief (${GREEN}Animated Clock, Weather, Steam Games${NC})"
+        echo -e "  ${BOLD}${CYAN} 2)${NC} Alarm Clock Interactive Menu (${GREEN}Full TUI Alarm Interface${NC})"
+        echo -e "  ${BOLD}${CYAN} 3)${NC} Set New Morning Alarm (${GREEN}Time, Daily/Once, Volume, Mix Path${NC})"
+        echo -e "  ${BOLD}${CYAN} 4)${NC} List All Saved Alarms & Timers (${GREEN}systemd user timers & status${NC})"
+        echo -e "  ${BOLD}${CYAN} 5)${NC} Silence / Stop Ringing Alarm (${GREEN}Move mouse or manual stop${NC})"
+        echo -e "  ${BOLD}${CYAN} 6)${NC} Snooze Ringing Alarm (${GREEN}Ramp volume, custom snooze minutes${NC})"
+        echo -e "  ${BOLD}${CYAN} 7)${NC} Cancel / Delete Saved Alarms (${GREEN}Cancel single alarm or all${NC})"
+        echo -e "  ${BOLD}${CYAN} 8)${NC} Toggle Alarm Clock (${GREEN}Enable / Disable all alarms${NC})"
+        echo -e "  ${BOLD}${CYAN} 9)${NC} Change Alarm Theme (${GREEN}Midnight Ink, Warm Brass, Forest Hour, Porcelain${NC})"
+        echo -e "  ${BOLD}${CYAN}10)${NC} Configure Wake-Up Action (${GREEN}Browser on right screen / Console / URL${NC})"
+        echo -e "  ${BOLD}${CYAN}11)${NC} Manage Morning Notes & Reminders (${GREEN}View / Add / Remove wake notes${NC})"
+        echo -e "  ${BOLD}${CYAN}12)${NC} Test Morning Alarm Now (${RED}Loud Playback Test, Mouse Tracking & Steam Prompt${NC})"
+        echo ""
+        echo -e "  ${BOLD}${BLUE}─── [ DJ MIX AUTOMATED PLAYBACK SCHEDULER ] ───────────────────${NC}"
+        echo -e "  ${BOLD}${CYAN}13)${NC} Schedule Single Mix / Playlist for Specific Date & Time (${GREEN}schedule_mix_playback.py${NC})"
+        echo ""
+        echo -e "  ${BOLD}${CYAN} 0)${NC} Return to Main Menu"
+        echo ""
+        read -r -p "Enter choice [0-13]: " ac_choice
+        case "$ac_choice" in
+            1)
+                clear
+                if [ -x "$alarm_bin" ]; then
+                    "$alarm_bin" brief
+                else
+                    echo -e "${RED}Error: alarm.sh not found!${NC}"
+                fi
+                press_enter
+                ;;
+            2)
+                if [ -x "$alarm_bin" ]; then
+                    "$alarm_bin" menu
+                else
+                    echo -e "${RED}Error: alarm.sh not found!${NC}"
+                    press_enter
+                fi
+                ;;
+            3)
+                clear
+                echo -e "${BOLD}${MAGENTA}=== SET NEW MORNING ALARM ===${NC}\n"
+                read -r -p "Enter alarm time (e.g. 07:30, 6:45am, 1930): " a_time
+                if [ -n "$a_time" ]; then
+                    read -r -p "Repeat daily? [y/N]: " a_daily
+                    read -r -p "Volume percentage [1-100, default 100]: " a_vol
+                    read -r -p "Specific mix path (leave empty for random archive mix): " a_mus
+                    local set_args=("$a_time")
+                    [[ "$a_daily" =~ ^[Yy] ]] && set_args+=("--daily")
+                    [ -n "$a_vol" ] && set_args+=("--volume" "$a_vol")
+                    [ -n "$a_mus" ] && set_args+=("--music" "$a_mus")
+                    if [ -x "$alarm_bin" ]; then
+                        "$alarm_bin" set "${set_args[@]}"
+                    fi
+                fi
+                press_enter
+                ;;
+            4)
+                clear
+                echo -e "${BOLD}${MAGENTA}=== SAVED ALARMS & TIMERS ===${NC}\n"
+                if [ -x "$alarm_bin" ]; then
+                    "$alarm_bin" list
+                fi
+                press_enter
+                ;;
+            5)
+                echo -e "\n${YELLOW}Silencing alarm...${NC}"
+                if [ -x "$alarm_bin" ]; then
+                    "$alarm_bin" stop
+                fi
+                press_enter
+                ;;
+            6)
+                read -r -p "Enter snooze minutes (default 5): " sn_min
+                if [ -x "$alarm_bin" ]; then
+                    "$alarm_bin" snooze "${sn_min:-5}"
+                fi
+                press_enter
+                ;;
+            7)
+                clear
+                echo -e "${BOLD}${MAGENTA}=== CANCEL SAVED ALARMS ===${NC}\n"
+                if [ -x "$alarm_bin" ]; then
+                    "$alarm_bin" list
+                    echo ""
+                    read -r -p "Enter Alarm ID to cancel (or 'all' to cancel all): " c_id
+                    if [ -n "$c_id" ]; then
+                        "$alarm_bin" cancel "$c_id"
+                    fi
+                fi
+                press_enter
+                ;;
+            8)
+                if [ -x "$alarm_bin" ]; then
+                    local cur_en
+                    cur_en=$("$alarm_bin" list 2>/dev/null | grep -i "enabled" || true)
+                    if [ -n "$cur_en" ]; then
+                        "$alarm_bin" disable
+                    else
+                        "$alarm_bin" enable
+                    fi
+                fi
+                sleep 1.2
+                ;;
+            9)
+                clear
+                echo -e "${BOLD}${MAGENTA}=== CHANGE ALARM CLOCK THEME ===${NC}\n"
+                echo -e "  ${BOLD}${CYAN}1)${NC} Midnight Ink (${DIM}navy and silver${NC})"
+                echo -e "  ${BOLD}${CYAN}2)${NC} Warm Brass (${DIM}amber lamp-light${NC})"
+                echo -e "  ${BOLD}${CYAN}3)${NC} Forest Hour (${DIM}deep green and gold${NC})"
+                echo -e "  ${BOLD}${CYAN}4)${NC} Porcelain (${DIM}warm grey and rose${NC})"
+                read -r -p "Enter choice [1-4]: " th_ch
+                case "$th_ch" in
+                    1) "$alarm_bin" theme midnight-ink ;;
+                    2) "$alarm_bin" theme warm-brass ;;
+                    3) "$alarm_bin" theme forest-hour ;;
+                    4) "$alarm_bin" theme porcelain ;;
+                esac
+                sleep 1
+                ;;
+            10)
+                clear
+                echo -e "${BOLD}${MAGENTA}=== CONFIGURE WAKE-UP ACTION ===${NC}\n"
+                echo -e "Current action:"
+                "$alarm_bin" task
+                echo ""
+                echo -e "  ${BOLD}${CYAN}1)${NC} Browser on Display to the Right (Default)"
+                echo -e "  ${BOLD}${CYAN}2)${NC} Browser with Custom URL"
+                echo -e "  ${BOLD}${CYAN}3)${NC} Dedicated Console Window"
+                echo -e "  ${BOLD}${CYAN}4)${NC} Clear / None"
+                read -r -p "Enter choice [1-4]: " wk_ch
+                case "$wk_ch" in
+                    1) "$alarm_bin" task browser ;;
+                    2)
+                        read -r -p "Enter URL (e.g. https://news.ycombinator.com): " wk_url
+                        "$alarm_bin" task browser "$wk_url"
+                        ;;
+                    3) "$alarm_bin" task console ;;
+                    4) "$alarm_bin" task clear ;;
+                esac
+                sleep 1
+                ;;
+            11)
+                clear
+                echo -e "${BOLD}${MAGENTA}=== MORNING WAKE-UP NOTES ===${NC}\n"
+                "$alarm_bin" note list
+                echo ""
+                echo -e "  ${BOLD}${CYAN}1)${NC} Add Note"
+                echo -e "  ${BOLD}${CYAN}2)${NC} Remove Note by ID"
+                echo -e "  ${BOLD}${CYAN}0)${NC} Done"
+                read -r -p "Enter choice [0-2]: " nt_ch
+                case "$nt_ch" in
+                    1)
+                        read -r -p "Enter note text: " nt_txt
+                        [ -n "$nt_txt" ] && "$alarm_bin" note add "$nt_txt"
+                        ;;
+                    2)
+                        read -r -p "Enter note ID to remove: " nt_id
+                        [ -n "$nt_id" ] && "$alarm_bin" note rm "$nt_id"
+                        ;;
+                esac
+                sleep 1
+                ;;
+            12)
+                clear
+                echo -e "${BOLD}${RED}=== TESTING MORNING ALARM (LOUD PLAYBACK & STEAM PROMPT) ===${NC}\n"
+                echo -e "${YELLOW}Starting alarm test. Press Ctrl+C or move mouse to stop.${NC}\n"
+                if [ -x "$alarm_bin" ]; then
+                    "$alarm_bin" test
+                fi
+                press_enter
+                ;;
+            13)
+                echo -e "\n${BOLD}${BLUE}=== DJ MIX SCHEDULER (PLAYS LOUDLY VIA DEFAULT AUDIO PLAYER) ===${NC}\n"
+                local py_script="$SCRIPT_DIR/scripts/schedule_mix_playback.py"
+                [ ! -f "$py_script" ] && py_script="$SCRIPT_DIR/schedule_mix_playback.py"
+                [ ! -f "$py_script" ] && py_script="./scripts/schedule_mix_playback.py"
+                if [ -x "$SCRIPT_DIR/scripts/schedule_mix_playback.sh" ]; then
+                    "$SCRIPT_DIR/scripts/schedule_mix_playback.sh" --player "${DEFAULT_AUDIO_PLAYER:-strawberry}"
+                elif command -v python3 >/dev/null 2>&1 && [ -f "$py_script" ]; then
+                    python3 "$py_script" --player "${DEFAULT_AUDIO_PLAYER:-strawberry}"
+                else
+                    echo -e "${RED}Error: schedule_mix_playback script not found!${NC}"
+                fi
+                press_enter
+                ;;
+            0|[qQ]|[eE][xX][iI][tT])
+                return 0
+                ;;
+            *)
+                echo -e "\n${RED}Invalid option!${NC}"
+                sleep 1
+                ;;
+        esac
+    done
 }
 
 get_manager_uptime() {
@@ -9295,6 +9500,15 @@ elif [ "$1" = "--backup" ] || [ "$1" = "--cloud-backup" ] || { [ "$1" = "9" ] &&
     shift || true
     run_sub_script "backup_mix_archive.sh" "$@"
     exit 0
+elif [ "$1" = "--alarm" ] || [ "$1" = "--alarm-clock" ] || [ "$1" = "alarm" ] || [ "$1" = "alarm-clock" ] || { [ "$1" = "18" ] && [ -n "${2:-}" ]; }; then
+    shift || true
+    if [ -x "$SCRIPT_DIR/mplanetarians-alarm-clock/alarm.sh" ]; then
+        exec "$SCRIPT_DIR/mplanetarians-alarm-clock/alarm.sh" "$@"
+    elif [ -x "$SCRIPT_DIR/alarm.sh" ]; then
+        exec "$SCRIPT_DIR/alarm.sh" "$@"
+    else
+        exec ./alarm.sh "$@"
+    fi
 fi
 
 manage_cloud_backup_suite() {
@@ -9894,6 +10108,8 @@ while true; do
         current_planets=$(get_planets_above_horizon)
         [ -n "$current_planets" ] && echo -e "${current_planets}"
     fi
+    alarm_clock_status=$(get_alarm_clock_status_display)
+    [ -n "$alarm_clock_status" ] && echo -e "${alarm_clock_status}"
     echo -e "${BOLD}${MAGENTA}-----------------------------------------------------------------------------------${NC}"
     if ! is_mix_archive_configured; then
         echo -e "\n  ${BOLD}${RED}⚠️  Please be advised you have not configured your Mix Archive Folder, Please use Option 13 or 10 to Configure this now.${NC}"
@@ -9926,7 +10142,7 @@ while true; do
     echo -e "  ${BOLD}${CYAN}15)${NC} Digital Audio Workstations (DAWs) & Mix Dispatch (${GREEN}Reaper, Logic, FL Studio, Ardour, Traktor${NC})"
     echo -e "  ${BOLD}${CYAN}16)${NC} Studio Hardware, Audio Interfaces & Master Volume Control (${GREEN}PipeWire, ALSA, MIDI, Mute${NC})"
     echo -e "  ${BOLD}${CYAN}17)${NC} Spectrogram Generation & Audio Frequency Analysis (${GREEN}Single & Multiple Spek, SoX, Praat${NC})"
-    echo -e "  ${BOLD}${CYAN}18)${NC} Schedule DJ Mix Playback Suite (${GREEN}Timed Automated Mix Playback${NC})"
+    echo -e "  ${BOLD}${CYAN}18)${NC} Morning Alarm Clock & DJ Mix Playback Suite (${GREEN}Steam Games, Wake-Up Mixes, Scheduler${NC})"
     echo -e "  ${BOLD}${CYAN}19)${NC} YouTube Video Generation Suite (${GREEN}4K UHD, 1080p, 720p with NVENC/Hardware${NC})"
     echo -e "  ${BOLD}${CYAN}20)${NC} Visual Media, Cover Art & Companion Video Suite (${GREEN}Cut/Split Video, Converters, PPM, Launchers${NC})"
     echo -e "  ${BOLD}${CYAN}21)${NC} Record Video of DJ Mix using GPU Screen Recorder (Linux) (${GREEN}New Desktop Window${NC})"
@@ -10136,8 +10352,11 @@ while true; do
             manage_dsh_mobile
             press_enter
             ;;
+        alarm|alarm-clock|alarm_clock|alarm.sh)
+            manage_mix_scheduler
+            ;;
         *)
-            echo -e "\n${RED}Invalid option! Please enter a number between 1 and 31 (or 'q' to exit).${NC}"
+            echo -e "\n${RED}Invalid option! Please enter a number between 1 and 32 (or 'q' to exit).${NC}"
             sleep 2
             ;;
     esac

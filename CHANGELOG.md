@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.0] - 2026-09-24
 
+- **MPlanetarians Alarm Clock (Wake Up Edition) Integration & Live Dashboard Status**:
+  - Fully integrated `mplanetarians-alarm-clock/` into the manager codebase with executable launchers in root, `bin/`, and `scripts/`.
+  - Added live Alarm Clock Status Banner to the Main Page dashboard showing arm state (`Armed & Ready` / `Disabled`), next alarm countdown with systemd timer integration, sound source, Steam library breakfast readiness, morning wake-up action, and active theme.
+  - Upgraded Main Menu Option 18 to **Morning Alarm Clock & DJ Mix Playback Suite** with an interactive 14-point control menu: daily brief morning screen, full TUI alarm control, alarm scheduling, timer listing, silence/snooze, theme switcher, wake actions, and notes.
+  - Added direct CLI shortcuts: `mix-archive-manager alarm`, `./Mix_Archive_Manager.sh --alarm`, and main menu shortcut `alarm`.
+  - Featured prominent spotlight on GitHub README advertising random mix wake-up, 3-minute volume ramp, mouse motion wake detection, secondary right-monitor browser launch, and 3 random Steam video games for breakfast (Linux only).
+
 - **Master HTML Tracklist no longer hangs on the Google Drive archive**:
   - The generator was opening tracklists and FLAC headers through the rclone mount. Those reads blocked forever in uninterruptible sleep while scanning Additional Storage #2.
   - Cloud archives are now read from the local rclone VFS cache, with `rclone cat` timeouts for anything not cached. Local disks are unchanged.

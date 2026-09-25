@@ -6,9 +6,53 @@
 [![FreeBSD](https://img.shields.io/badge/FreeBSD-14.x%20%7C%2015--CURRENT%20%7C%20Ports%20%26%20Pkg-red.svg)]()
 [![Shell](https://img.shields.io/badge/Language-Bash%20%7C%20Python%20%7C%20PowerShell-orange.svg)]()
 [![Audio](https://img.shields.io/badge/Audio-32bit%20Lossless%20FLAC-green.svg)]()
+[![Alarm Clock](https://img.shields.io/badge/Alarm%20Clock-Steam%20%26%20FLAC%20Mix%20(Linux)-FF5722.svg)](mplanetarians-alarm-clock/README.md)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
 
 An enterprise-grade workstation orchestration console and media management suite designed for high-resolution audio production, multi-hour DJ mix archiving, automated FLAC mastering, Traktor Pro playlist extraction, live tracklist tracking, YouTube video synthesis, system maintenance, and AI workflow control across **Linux (Bazzite / SteamOS / Fedora / Ubuntu)**, **macOS (Latest Sequoia / Sonoma, Apple Silicon M1-M4 & Intel)**, **Microsoft Windows 10 & 11**, and **FreeBSD (14.x / 15-CURRENT)**.
+
+---
+
+## ⏰ Brand New Feature: MPlanetarians Alarm Clock (Wake Up Edition) — Wake Up with a Random Mix & a Random Steam Video Game (Linux Only Support at the Moment)
+
+> [!IMPORTANT]
+> **Tired of boring buzzer alarms?** Mix Archive Manager now includes **MPlanetarians Alarm Clock (Wake Up Edition)** — an invigorating morning wake-up system that blasts a random mix from your local FLAC archive through Strawberry or cliamp, unmuting and ramping volume up over 3 minutes. It tracks your mouse to detect when you're truly awake, opens your default web browser on your secondary right-hand monitor, and queries your Steam library to offer **3 random video games to play for breakfast**! *(Linux Only Support at the Moment)*.
+
+```mermaid
+flowchart TD
+    A["⏰ Morning Alarm Triggers (systemd User Timer)"] --> B["🔊 Unmute Audio & 3-Minute Volume Ramp (0% → 100%)"]
+    B --> C["🎶 Random Archive FLAC Mix on Strawberry / cliamp"]
+    C --> D{"🖱️ Mouse Motion Detected?"}
+    D -- "No (Mouse Idle for 10 Min)" --> C2["🔀 Switch to Different Local Archive Mix"]
+    C2 --> D
+    D -- "Yes (Woke Up!)" --> E["🛑 Silence Alarm & Record Wake-Up Time"]
+    E --> F["🌐 Open Web Browser on Right Display"]
+    E --> G["🎮 Query Steam Library (libraryfolders.vdf)"]
+    G --> H["🕹️ Offer 3 Random Steam Games to Play for Breakfast"]
+    E --> I["📰 Display Morning Brief: Weather, News, Hardware & Daily Phrase"]
+```
+
+### 🌟 Why This Morning Wake-Up Experience Is Game-Changing:
+- 🎵 **High-Energy Lossless Wake-Up**: Randomly selects between **Strawberry** and **cliamp**, pulls a random high-resolution mix from your local archive disks (safely skipping cloud mounts), starts softly, and steadily ramps up the volume over 3 minutes until full alarm volume.
+- 🖱️ **Active Movement Wake Detection**: Move the mouse to silence the alarm. If your mouse stays still for 10 minutes, the clock knows you fell back asleep and starts playing a completely different archive mix!
+- 🎮 **Steam Video Game for Breakfast**: Automatically parses your Steam library (`libraryfolders.vdf`), filters out developer tools and runtimes, and presents 3 random games from your collection, asking: *"Would you like to play a game for breakfast?"* Launch any chosen title directly into Steam with a single keypress!
+- 🖥️ **Smart Dual-Screen Browser Placement**: Automatically calculates your monitor coordinates and opens your morning browser window on the display directly to the right of your primary screen.
+- ☀️ **Morning Screen & Daily Brief**: Features an animated clock, daily weather forecast, rain alerts, exercise routine, healthy breakfast ideas, system hardware vitals, manual page of the day, and internet word/phrase of the day.
+- 🎨 **4 Elegant Color Themes**: Midnight Ink (navy and silver), Warm Brass (amber lamp-light), Forest Hour (deep green and gold), and Porcelain (warm grey and rose).
+- 📊 **Main Page Live Status Banner**: The Mix Archive Manager main dashboard directly displays your alarm arm state, next alarm countdown, active sound target, Steam library readiness, and morning wake-up action at a glance.
+- 🐧 **Linux-Native System Integration**: Powered by systemd user timers, PipeWire `wpctl`, `xdotool`, and Steam Linux desktop protocols.
+
+### 🕹️ How It Works in 3 Quick Steps:
+1. **Launch from Main Menu or CLI**:
+   ```bash
+   ./Mix_Archive_Manager.sh --alarm
+   # or press Option 18 on the Main Menu, or run directly:
+   mix-archive-manager alarm
+   ```
+2. **Set Your Morning Alarm**:
+   Use Option 3 to schedule your wake-up time (e.g. `07:30`, `6:45am`), choose repeat frequency (daily or once), volume, and audio player preference.
+3. **Wake Up, Game & Start Your Day**:
+   When the alarm rings, move your mouse to silence it. Your web browser immediately opens on your right display, and 3 random Steam games are offered to launch directly for breakfast!
 
 ---
 
@@ -286,6 +330,13 @@ MP_Mix_Manager_v0.3/
 │   ├── Check_Find_Tracklists.sh # Traktor Pro history XML parser
 │   ├── generate_traktor_playlist_from_history.py # Traktor Pro history parser, harmonic key sorter & 4-deck full-screen stage loader (macOS)
 │   ├── generate_traktor_playlist_from_history.sh # Traktor history playlist generator shell launcher
+│   ├── mplanetarians-alarm-clock/ # MPlanetarians Alarm Clock (Wake Up Edition)
+│   │   ├── alarm.sh             # Morning alarm clock with Steam breakfast game selector
+│   │   ├── README.md            # Standalone alarm clock documentation
+│   │   └── VERSION              # Alarm Clock version (v0.1)
+│   ├── alarm.sh                 # Alarm Clock launcher symlink
+│   ├── get_alarm_clock_status.py# Alarm Clock status inspector & main dashboard generator
+│   ├── get_alarm_clock_status.sh# Shell wrapper for alarm status inspector
 │   ├── schedule_mix_playback.py # DJ mix & playlist playback scheduler (date/time in future)
 │   ├── schedule_mix_playback.sh # Mix playback scheduler shell launcher
 │   ├── MOVE_NOT_CONVERTED_WAVS.sh # Unconverted WAV retrieval engine
@@ -393,7 +444,7 @@ MP_Mix_Manager_v0.3/
 | **35**| **Show Connected USB MIDI Devices** | Inspects connected synthesizers, DJ controllers, and keyboards (`list-midi-devices`). |
 | **36**| **Studio Hardware & Software Inspector** | Deep audio diagnostic inspector (`inspect_audio_studio.sh`): surveys active PipeWire / PulseAudio / ALSA soundcards, sinks, sample rates, latencies, connected MIDI controllers & control surfaces (AKAI MPKmini2, Arturia MiniLab mkII, Valve), and installed studio DAWs. |
 | **37**| **Toggle Audio Mute / Unmute & Master Volume Control** | Instant live audio mute toggle via PipeWire (`wpctl`), PulseAudio (`pactl`), ALSA, or macOS AppleScript without leaving the manager. |
-| **38**| **Schedule DJ Mix or Multiple DJ Mixes to Play Loudly** | Mix playback scheduler (`scripts/schedule_mix_playback.py`): schedules single audio files (WAV/MP3/FLAC), custom M3U playlists, or selection from the last 10 recorded mixes to play at any exact date and time in the future using the user's default audio player. |
+| **38**| **Morning Alarm Clock & DJ Mix Playback Scheduler** | Alarm Clock & Playback Suite (`alarm.sh` & `scripts/schedule_mix_playback.py`): Wake up to random lossless archive mixes with 3-minute volume ramp, mouse motion wake detection, dual-screen browser opening, and 3 random Steam video games offered for breakfast; also schedules future DJ mix playback events. |
 
 ### ─── [ SECTION 4: VIDEO PRODUCTION, ART & VISUAL MEDIA ] ──────
 | # | Operation | Description |
