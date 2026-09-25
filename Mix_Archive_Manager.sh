@@ -7673,7 +7673,11 @@ manage_tracklists() {
                 press_enter
                 ;;
             8)
-                run_sub_script "Generate_Master_Tracklist.sh"
+                if [ -f "$SCRIPT_DIR/Generate_Master_Tracklist.sh" ]; then
+                    bash "$SCRIPT_DIR/Generate_Master_Tracklist.sh"
+                else
+                    run_sub_script "Generate_Master_Tracklist.sh"
+                fi
                 press_enter
                 ;;
             9|[qQ])
@@ -9412,7 +9416,11 @@ manage_tracklist_suite() {
                 ;;
             4)
                 echo -e "\n${BOLD}${YELLOW}Starting Master Tracklist HTML Generation...${NC}\n"
-                run_sub_script "Generate_Master_Tracklist.sh"
+                if [ -f "$SCRIPT_DIR/Generate_Master_Tracklist.sh" ]; then
+                    bash "$SCRIPT_DIR/Generate_Master_Tracklist.sh"
+                else
+                    run_sub_script "Generate_Master_Tracklist.sh"
+                fi
                 press_enter
                 ;;
             5)

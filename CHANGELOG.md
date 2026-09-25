@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.0] - 2026-09-24
 
+- **Master HTML Tracklist no longer hangs on the Google Drive archive**:
+  - The generator was opening tracklists and FLAC headers through the rclone mount. Those reads blocked forever in uninterruptible sleep while scanning Additional Storage #2.
+  - Cloud archives are now read from the local rclone VFS cache, with `rclone cat` timeouts for anything not cached. Local disks are unchanged.
+  - The manager launches the repository copy of `Generate_Master_Tracklist.sh` so an older copy inside the mix archive cannot shadow the fix.
+
 - **Record Video of DJ Mix using GPU Screen Recorder (Linux)**:
   - Added main menu Section 2, option 21 in [`Mix_Archive_Manager.sh`](file:///var/home/mplanetarian/MP_Mix_Manager_v0.3/Mix_Archive_Manager.sh).
   - Launches GPU Screen Recorder in a new desktop window (`gpu-screen-recorder-gtk`, or Flatpak `com.dec05eba.gpu_screen_recorder`) and returns to the menu.

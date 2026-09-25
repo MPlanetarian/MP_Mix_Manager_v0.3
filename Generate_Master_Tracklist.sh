@@ -28,7 +28,7 @@ echo -e "${BOLD}${BLUE}==================================================${NC}"
 echo -e "${YELLOW}Parsing tracklist files across all archives and building HTML...${NC}\n"
 
 py_script=""
-for cand in "$PWD/generate_master_tracklist.py" "$SCRIPT_DIR/generate_master_tracklist.py" "$SCRIPT_DIR/scripts/generate_master_tracklist.py" "$PARENT_DIR/scripts/generate_master_tracklist.py"; do
+for cand in "$SCRIPT_DIR/generate_master_tracklist.py" "$SCRIPT_DIR/scripts/generate_master_tracklist.py" "$PARENT_DIR/generate_master_tracklist.py" "$PARENT_DIR/scripts/generate_master_tracklist.py" "$PWD/generate_master_tracklist.py"; do
     if [ -f "$cand" ]; then
         py_script="$cand"
         break
@@ -36,7 +36,7 @@ for cand in "$PWD/generate_master_tracklist.py" "$SCRIPT_DIR/generate_master_tra
 done
 
 if [ -n "$py_script" ]; then
-    python3 "$py_script"
+    python3 -u "$py_script"
     STATUS=$?
 else
     echo -e "${BOLD}${RED}Error: generate_master_tracklist.py not found!${NC}"
