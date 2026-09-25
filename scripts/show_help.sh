@@ -137,29 +137,31 @@ ${BOLD}AVAILABLE MENU OPTIONS (INTERACTIVE & DIRECT SHORTCUTS):${NC}
        Split/cut videos, create PPM banners, and manage visual art assets.
   ${BOLD}${CYAN}21${NC}   ${BOLD}Record Video of DJ Mix using GPU Screen Recorder (Linux)${NC}
        Open GPU Screen Recorder in a new desktop window, then return to the menu.
+  ${BOLD}${CYAN}22${NC}   ${BOLD}Listen to Your Top 5 Tracks Right Now (Special Option)${NC}
+       Select Top 5 tracks from Master HTML, import from Traktor (Local/SMB/NFS/Mac), playlist, & export continuous mix.
 
   ${BOLD}${BLUE}─── [ SECTION 3: SYSTEM, NETWORK, AI & SETTINGS ] ────────────────────────────${NC}
-  ${BOLD}${CYAN}22${NC}   ${BOLD}Live Session, Stream & Transfer Monitors Suite${NC}
+  ${BOLD}${CYAN}23${NC}   ${BOLD}Live Session, Stream & Transfer Monitors Suite${NC}
        Monitor active audio streams, live tracklists, Traktor logs, and uploads.
-  ${BOLD}${CYAN}23${NC}   ${BOLD}System & Hardware Process Monitors Suite${NC}
+  ${BOLD}${CYAN}24${NC}   ${BOLD}System & Hardware Process Monitors Suite${NC}
        Launch btop resource monitor, nvtop GPU monitor, or top process monitor.
-  ${BOLD}${CYAN}24${NC}   ${BOLD}View Advanced Archive Statistics${NC}
+  ${BOLD}${CYAN}25${NC}   ${BOLD}View Advanced Archive Statistics${NC}
        Run SOF_Archive_Stats.sh to display detailed multi-drive archive analytics.
-  ${BOLD}${CYAN}25${NC}   ${BOLD}Promotional Outreach, Syndication & Music Shopping${NC}
+  ${BOLD}${CYAN}26${NC}   ${BOLD}Promotional Outreach, Syndication & Music Shopping${NC}
        Send promotional emails, syndicate RSS/podcasts, browse Bandcamp/Beatport.
-  ${BOLD}${CYAN}26${NC}   ${BOLD}Network Services, Congen & Internet Access Control${NC}
+  ${BOLD}${CYAN}27${NC}   ${BOLD}Network Services, Congen & Internet Access Control${NC}
        Manage SSH, Samba, FTP servers, Congen KDE Connect remote control suite, or toggle internet block.
-  ${BOLD}${CYAN}27${NC}   ${BOLD}Desktop Display Settings, Audio Routing & App Control${NC}
+  ${BOLD}${CYAN}28${NC}   ${BOLD}Desktop Display Settings, Audio Routing & App Control${NC}
        Configure Wayland/X11, display scaling, audio routing, or kill audio apps.
-  ${BOLD}${CYAN}28${NC}   ${BOLD}Universal System Maintenance & Cleanup${NC}
+  ${BOLD}${CYAN}29${NC}   ${BOLD}Universal System Maintenance & Cleanup${NC}
        Reclaim drive space, clean package manager caches, update OS packages.
-  ${BOLD}${CYAN}29${NC}   ${BOLD}AI Assistant & Local LLM Servers Suite${NC}
+  ${BOLD}${CYAN}30${NC}   ${BOLD}AI Assistant & Local LLM Servers Suite${NC}
        Manage Claude, GPT, Ollama (:11434), DeepSeek (:3080), WAN2GP, and Beszel (:8090).
-  ${BOLD}${CYAN}30${NC}   ${BOLD}Dynamic MOTD Banner Manager & Drive Burner${NC}
+  ${BOLD}${CYAN}31${NC}   ${BOLD}Dynamic MOTD Banner Manager & Drive Burner${NC}
        Generate custom login MOTDs with recent mixes, or burn ISO images to USB.
-  ${BOLD}${CYAN}31${NC}   ${BOLD}Manager Settings, Themes, Shell CLI & Reboot${NC}
+  ${BOLD}${CYAN}32${NC}   ${BOLD}Manager Settings, Themes, Shell CLI & Reboot${NC}
        Switch color themes (Dracula, Nord, Cyberpunk, etc.), migrate paths, reboot.
-  ${BOLD}${CYAN}32${NC}   ${BOLD}Exit Manager${NC} (or 0 / q)
+  ${BOLD}${CYAN}33${NC}   ${BOLD}Exit Manager${NC} (or 0 / q)
        Exit the application cleanly.
 
 ${BOLD}DIRECT COMMAND SHORTCUTS:${NC}

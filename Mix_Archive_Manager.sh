@@ -1822,7 +1822,16 @@ elif [ "$1" = "update" ] || [ "$1" = "--update" ]; then
         exec bash "$SCRIPT_DIR/update_manager.sh" "$@"
     fi
     exit 0
+elif [ "$1" = "--top5" ] || [ "$1" = "--top-5" ] || [ "$1" = "top5" ] || [ "$1" = "top-5" ]; then
+    shift
+    if [ -x "$SCRIPT_DIR/scripts/manage_top_5_tracks.sh" ]; then
+        exec bash "$SCRIPT_DIR/scripts/manage_top_5_tracks.sh" "$@"
+    elif [ -f "$SCRIPT_DIR/scripts/top_5_tracks_manager.py" ]; then
+        exec python3 "$SCRIPT_DIR/scripts/top_5_tracks_manager.py" "$@"
+    fi
+    exit 0
 fi
+
 
 CLI_INITIAL_ACTION="${1:-}"
 
@@ -10061,9 +10070,10 @@ manage_playlists_and_history() {
         else
             echo -e "  ${BOLD}${CYAN}3)${NC} Generate Playlist from History Files on Traktor 3 (${GREEN}Key Sorted / Decks Ready${NC})"
         fi
+        echo -e "  ${BOLD}${CYAN}4)${NC} Listen to Your Top 5 Tracks Right Now (Special Option) $(get_top_5_status_badge)"
         echo -e "  ${BOLD}${CYAN}0)${NC} Return to Main Menu"
         echo ""
-        read -r -p "Enter choice [0-3]: " ph_choice
+        read -r -p "Enter choice [0-4]: " ph_choice
         case "$ph_choice" in
             1)
                 manage_playlists_menu
@@ -10073,6 +10083,9 @@ manage_playlists_and_history() {
                 ;;
             3)
                 generate_traktor_playlist_from_history
+                ;;
+            4|top5|top-5|top|special)
+                manage_top_5_tracks
                 ;;
             0|[qQ]|[eE][xX][iI][tT])
                 return 0
@@ -10084,6 +10097,32 @@ manage_playlists_and_history() {
         esac
     done
 }
+
+get_top_5_status_badge() {
+    local py_script="$SCRIPT_DIR/scripts/top_5_tracks_manager.py"
+    [ ! -f "$py_script" ] && py_script="$SCRIPT_DIR/top_5_tracks_manager.py"
+    if [ -f "$py_script" ]; then
+        python3 "$py_script" --badge 2>/dev/null || echo -e "${YELLOW}[Unlock Mystery / Ready]${NC}"
+    else
+        echo -e "${YELLOW}[Unlock Mystery / Ready]${NC}"
+    fi
+}
+
+manage_top_5_tracks() {
+    local py_script="$SCRIPT_DIR/scripts/top_5_tracks_manager.py"
+    [ ! -f "$py_script" ] && py_script="$SCRIPT_DIR/top_5_tracks_manager.py"
+    if [ -f "$py_script" ]; then
+        python3 "$py_script"
+    elif [ -x "$SCRIPT_DIR/scripts/manage_top_5_tracks.sh" ]; then
+        bash "$SCRIPT_DIR/scripts/manage_top_5_tracks.sh"
+    elif [ -x "$SCRIPT_DIR/manage_top_5_tracks.sh" ]; then
+        bash "$SCRIPT_DIR/manage_top_5_tracks.sh"
+    else
+        echo -e "\n${RED}Error: top_5_tracks_manager.py was not found in scripts/!${NC}\n"
+        press_enter
+    fi
+}
+
 
 manage_daws_suite() {
     while true; do
@@ -10540,28 +10579,29 @@ while true; do
     echo -e "  ${BOLD}${CYAN}19)${NC} YouTube Video Generation Suite (${GREEN}4K UHD, 1080p, 720p with NVENC/Hardware${NC})"
     echo -e "  ${BOLD}${CYAN}20)${NC} Visual Media, Cover Art & Companion Video Suite (${GREEN}Cut/Split Video, Converters, PPM, Launchers${NC})"
     echo -e "  ${BOLD}${CYAN}21)${NC} Record Video of DJ Mix using GPU Screen Recorder (Linux) (${GREEN}New Desktop Window${NC})"
+    echo -e "  ${BOLD}${CYAN}22)${NC} Listen to Your Top 5 Tracks Right Now (Pre-Selected - Special Option) $(get_top_5_status_badge)"
     
     echo -e "\n  ${BOLD}${BLUE}─── [ SECTION 3: SYSTEM, NETWORK, AI & SETTINGS ] ────────────${NC}"
-    echo -e "  ${BOLD}${CYAN}22)${NC} Live Session, Stream & Transfer Monitors Suite (${GREEN}Tracklist, Traktor, Transfers, Uploads, Tasks${NC})"
-    echo -e "  ${BOLD}${CYAN}23)${NC} System & Hardware Process Monitors Suite (${GREEN}btop, nvtop, top${NC})"
-    echo -e "  ${BOLD}${CYAN}24)${NC} View Advanced Archive Statistics (${GREEN}SOF_Archive_Stats.sh${NC})"
-    echo -e "  ${BOLD}${CYAN}25)${NC} Promotional Outreach, Syndication & Music Shopping (${GREEN}Emails, RSS/Podcasts, Beatport/Bandcamp${NC})"
-    echo -e "  ${BOLD}${CYAN}26)${NC} Network Services, Congen & Internet Control (${GREEN}SSH, Samba, FTP, Congen KDE Connect, Block Internet${NC})"
-    echo -e "  ${BOLD}${CYAN}27)${NC} Desktop Display Settings, Audio Routing & App Control (${GREEN}Wayland/X11/macOS/Windows, Close Apps${NC})"
-    echo -e "  ${BOLD}${CYAN}28)${NC} Universal System Maintenance & Cleanup (${GREEN}Drive space, OS Updates, Package Clean, Logs${NC})"
-    echo -e "  ${BOLD}${CYAN}29)${NC} AI Assistant & Local LLM Servers Suite (${GREEN}Claude, GPT, Ollama, DeepSeek, WAN2GP, Beszel${NC})"
-    echo -e "  ${BOLD}${CYAN}30)${NC} Dynamic MOTD Banner Manager & Drive Burner (${GREEN}Last 3 Mixes, Netpbm, ISO USB Burner${NC})"
-    echo -e "  ${BOLD}${CYAN}31)${NC} Manager Settings, Themes, Shell CLI & Reboot (${GREEN}Themes, Migration, Bash CLI, Reboot${NC})"
+    echo -e "  ${BOLD}${CYAN}23)${NC} Live Session, Stream & Transfer Monitors Suite (${GREEN}Tracklist, Traktor, Transfers, Uploads, Tasks${NC})"
+    echo -e "  ${BOLD}${CYAN}24)${NC} System & Hardware Process Monitors Suite (${GREEN}btop, nvtop, top${NC})"
+    echo -e "  ${BOLD}${CYAN}25)${NC} View Advanced Archive Statistics (${GREEN}SOF_Archive_Stats.sh${NC})"
+    echo -e "  ${BOLD}${CYAN}26)${NC} Promotional Outreach, Syndication & Music Shopping (${GREEN}Emails, RSS/Podcasts, Beatport/Bandcamp${NC})"
+    echo -e "  ${BOLD}${CYAN}27)${NC} Network Services, Congen & Internet Control (${GREEN}SSH, Samba, FTP, Congen KDE Connect, Block Internet${NC})"
+    echo -e "  ${BOLD}${CYAN}28)${NC} Desktop Display Settings, Audio Routing & App Control (${GREEN}Wayland/X11/macOS/Windows, Close Apps${NC})"
+    echo -e "  ${BOLD}${CYAN}29)${NC} Universal System Maintenance & Cleanup (${GREEN}Drive space, OS Updates, Package Clean, Logs${NC})"
+    echo -e "  ${BOLD}${CYAN}30)${NC} AI Assistant & Local LLM Servers Suite (${GREEN}Claude, GPT, Ollama, DeepSeek, WAN2GP, Beszel${NC})"
+    echo -e "  ${BOLD}${CYAN}31)${NC} Dynamic MOTD Banner Manager & Drive Burner (${GREEN}Last 3 Mixes, Netpbm, ISO USB Burner${NC})"
+    echo -e "  ${BOLD}${CYAN}32)${NC} Manager Settings, Themes, Shell CLI & Reboot (${GREEN}Themes, Migration, Bash CLI, Reboot${NC})"
     
     echo -e "\n  ${BOLD}${BLUE}──────────────────────────────────────────────────────────────${NC}"
     get_manager_uptime
-    echo -e "  ${BOLD}${CYAN}32)${NC} Exit Manager ${DIM}(or 0 / q)${NC}"
+    echo -e "  ${BOLD}${CYAN}33)${NC} Exit Manager ${DIM}(or 0 / q)${NC}"
     echo ""
     if [ -n "$CLI_INITIAL_ACTION" ]; then
         choice="$CLI_INITIAL_ACTION"
         CLI_INITIAL_ACTION=""
     else
-        read -r -p "Enter choice [1-32, or q to exit]: " choice
+        read -r -p "Enter choice [1-33, or q to exit]: " choice
     fi
     
     case $choice in
@@ -10637,40 +10677,43 @@ while true; do
             launch_gpu_screen_recorder
             press_enter
             ;;
-        22|manage-live-monitors|live-monitors)
+        22|top5|top-5|top_5|top|mystery|special)
+            manage_top_5_tracks
+            ;;
+        23|manage-live-monitors|live-monitors)
             manage_live_monitors
             ;;
-        23|manage-process-monitors|process-monitors)
+        24|manage-process-monitors|process-monitors)
             manage_system_process_monitors
             ;;
-        24)
+        25)
             echo -e "\n${BOLD}${YELLOW}Loading Advanced Archive Statistics...${NC}\n"
             sleep 0.5
             run_sub_script "SOF_Archive_Stats.sh"
             press_enter
             ;;
-        25)
+        26)
             manage_promo_and_syndication
             ;;
-        26)
+        27)
             manage_network_and_internet
             ;;
-        27)
+        28)
             manage_desktop_and_display
             ;;
-        28)
+        29)
             manage_system_maintenance
             ;;
-        29)
+        30)
             manage_ai_and_servers
             ;;
-        30)
+        31)
             manage_motd_and_tools
             ;;
-        31)
+        32)
             manage_settings_and_system
             ;;
-        32|77|0|[qQ]|[eE][xX][iI][tT])
+        33|77|0|[qQ]|[eE][xX][iI][tT])
             echo -e "\n${BOLD}${GREEN}Exiting Mix Archive Manager. Goodbye!${NC}\n"
             exit 0
             ;;
@@ -10756,7 +10799,7 @@ while true; do
             manage_congen
             ;;
         *)
-            echo -e "\n${RED}Invalid option! Please enter a number between 1 and 32 (or 'q' to exit).${NC}"
+            echo -e "\n${RED}Invalid option! Please enter a number between 1 and 33 (or 'q' to exit).${NC}"
             sleep 2
             ;;
     esac

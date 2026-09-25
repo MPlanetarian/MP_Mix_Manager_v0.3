@@ -75,7 +75,15 @@ elif [ "${1:-}" = "congen" ] || [ "${1:-}" = "--congen" ] || [ "${1:-}" = "kdeco
     elif [ -x "$CODEBASE_DIR/congen" ]; then
         exec bash "$CODEBASE_DIR/congen" "$@"
     fi
+elif [ "${1:-}" = "top5" ] || [ "${1:-}" = "--top5" ] || [ "${1:-}" = "top-5" ] || [ "${1:-}" = "--top-5" ]; then
+    shift
+    if [ -x "$CODEBASE_DIR/scripts/manage_top_5_tracks.sh" ]; then
+        exec bash "$CODEBASE_DIR/scripts/manage_top_5_tracks.sh" "$@"
+    elif [ -f "$CODEBASE_DIR/scripts/top_5_tracks_manager.py" ]; then
+        exec python3 "$CODEBASE_DIR/scripts/top_5_tracks_manager.py" "$@"
+    fi
 fi
+
 
 # If an external drive was specified in config, wait briefly for mount
 if [ -n "${MIX_ARCHIVE_DIR:-}" ] && [ ! -d "$MIX_ARCHIVE_DIR" ]; then

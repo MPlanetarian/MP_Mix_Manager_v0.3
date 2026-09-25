@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.1] - 2026-09-25
+
+- **Listen to Your Top 5 Tracks Right Now (Pre-Selected - Special Option) [Unlock Mystery / Ready]**:
+  - Added dedicated Main Menu Option 22 in Section 2 with dynamic custom menu status badge (`[Unlock Mystery]` vs `[Ready]`).
+  - Added Option 4 to Custom Mix Playlists & Traktor History Suite (Option 14).
+  - Requirement Gates & Alert: Requires Master HTML Tracklist (`master_tracklists.html`) and at least one processed mix in the archive. Automatically alerts user upon completing their first mix conversion in `Make_SOF_FLAC_CONVERSION.sh` about unlocking this special feature.
+  - Top 5 Tracks Selector: Intelligently parses `master_tracklists.html` across all combined archives (1,033+ plays, 656+ unique tracks) with search by artist, title, and mix source.
+  - Traktor Database & Multi-Protocol Remote Mac Import: Searches Traktor collections (`collection.nml` and `History/*.nml`) for exact `AUDIO_ID`, title, and artist matches. Resolves and transfers physical audio tracks from local drives, SMB network shares, NFS mounts, or remote macOS workstations via SSH/rsync into `TOP_5_TRACKS/`.
+  - Instant Playlist & Immediate Playback: Automatically generates `Mix_Archive_Top_5_Tracks_Traktor_Playlist.m3u8`, `.m3u`, and `.xspf` in `PLAYLISTS_GENERATED/` and immediately triggers Track #1 playback in the configured audio player (`audacious`, `strawberry`, `cliamp`, `vlc`, etc.).
+  - Continuous Joined Mix Export Suite: Joins the 5 tracks into a continuous mix file with custom artist, title, and cover image metadata, automatically named `Mix_Archive_Top_5_Tracks_[Date]_Auto_Generated_by_MP_Mix.FLAC`. Generates matching master WAV, 320kbps MP3 with embedded artwork, high-resolution Spek spectrogram PNG, and timestamped Tracklist (.txt) & Cue sheet (.cue).
+  - CLI and Fast-Path Dispatch: Added `--top5`, `--top-5`, and `top5` shortcuts to `Mix_Archive_Manager.sh`, `bin/mix-archive-manager`, and created `scripts/manage_top_5_tracks.sh`.
+
 ## [0.3.0] - 2026-09-24
 
 - **Congen (KDE Connect Commands Generator) Full Integration**:

@@ -617,3 +617,16 @@ fi
 echo "=================================================="
 echo "CONVERSION COMPLETE"
 echo "=================================================="
+
+# Check and alert about the Special Top 5 Tracks Feature
+FIRST_MIX_MARKER="$SCRIPT_DIR/.first_mix_processed"
+if [ ! -f "$FIRST_MIX_MARKER" ]; then
+    touch "$FIRST_MIX_MARKER"
+    echo -e "\n\033[1;35m═══════════════════════════════════════════════════════════════════════════════════\033[0m"
+    echo -e "\033[1;33m  🎉 SPECIAL FEATURE UNLOCKED: LISTEN TO YOUR TOP 5 TRACKS RIGHT NOW! 🎉\033[0m"
+    echo -e "\033[1;36m  Congratulations! You have recorded and processed a mix for the first time with the Manager.\033[0m"
+    echo -e "\033[1;37m  You can now access the special option from the Main Menu:\033[0m"
+    echo -e "\033[1;32m  ★ Listen to Your Top 5 Tracks Right Now (Pre-Selected - Special Option) [Unlock Mystery / Ready]\033[0m"
+    echo -e "\033[1;35m═══════════════════════════════════════════════════════════════════════════════════\033[0m\n"
+fi
+
