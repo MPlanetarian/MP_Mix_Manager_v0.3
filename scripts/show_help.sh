@@ -135,29 +135,31 @@ ${BOLD}AVAILABLE MENU OPTIONS (INTERACTIVE & DIRECT SHORTCUTS):${NC}
        Render 4K UHD, 1080p, or 720p companion YouTube videos with hardware NVENC.
   ${BOLD}${CYAN}20${NC}   ${BOLD}Visual Media, Cover Art & Companion Video Suite${NC}
        Split/cut videos, create PPM banners, and manage visual art assets.
+  ${BOLD}${CYAN}21${NC}   ${BOLD}Record Video of DJ Mix using GPU Screen Recorder (Linux)${NC}
+       Open GPU Screen Recorder in a new desktop window, then return to the menu.
 
   ${BOLD}${BLUE}─── [ SECTION 3: SYSTEM, NETWORK, AI & SETTINGS ] ────────────────────────────${NC}
-  ${BOLD}${CYAN}21${NC}   ${BOLD}Live Session, Stream & Transfer Monitors Suite${NC}
+  ${BOLD}${CYAN}22${NC}   ${BOLD}Live Session, Stream & Transfer Monitors Suite${NC}
        Monitor active audio streams, live tracklists, Traktor logs, and uploads.
-  ${BOLD}${CYAN}22${NC}   ${BOLD}System & Hardware Process Monitors Suite${NC}
+  ${BOLD}${CYAN}23${NC}   ${BOLD}System & Hardware Process Monitors Suite${NC}
        Launch btop resource monitor, nvtop GPU monitor, or top process monitor.
-  ${BOLD}${CYAN}23${NC}   ${BOLD}View Advanced Archive Statistics${NC}
+  ${BOLD}${CYAN}24${NC}   ${BOLD}View Advanced Archive Statistics${NC}
        Run SOF_Archive_Stats.sh to display detailed multi-drive archive analytics.
-  ${BOLD}${CYAN}24${NC}   ${BOLD}Promotional Outreach, Syndication & Music Shopping${NC}
+  ${BOLD}${CYAN}25${NC}   ${BOLD}Promotional Outreach, Syndication & Music Shopping${NC}
        Send promotional emails, syndicate RSS/podcasts, browse Bandcamp/Beatport.
-  ${BOLD}${CYAN}25${NC}   ${BOLD}Network Services & Internet Access Control${NC}
+  ${BOLD}${CYAN}26${NC}   ${BOLD}Network Services & Internet Access Control${NC}
        Manage SSH, Samba, FTP servers, or toggle internet connectivity block.
-  ${BOLD}${CYAN}26${NC}   ${BOLD}Desktop Display Settings, Audio Routing & App Control${NC}
+  ${BOLD}${CYAN}27${NC}   ${BOLD}Desktop Display Settings, Audio Routing & App Control${NC}
        Configure Wayland/X11, display scaling, audio routing, or kill audio apps.
-  ${BOLD}${CYAN}27${NC}   ${BOLD}Universal System Maintenance & Cleanup${NC}
+  ${BOLD}${CYAN}28${NC}   ${BOLD}Universal System Maintenance & Cleanup${NC}
        Reclaim drive space, clean package manager caches, update OS packages.
-  ${BOLD}${CYAN}28${NC}   ${BOLD}AI Assistant & Local LLM Servers Suite${NC}
+  ${BOLD}${CYAN}29${NC}   ${BOLD}AI Assistant & Local LLM Servers Suite${NC}
        Manage Claude, GPT, Ollama (:11434), DeepSeek (:3080), WAN2GP, and Beszel (:8090).
-  ${BOLD}${CYAN}29${NC}   ${BOLD}Dynamic MOTD Banner Manager & Drive Burner${NC}
+  ${BOLD}${CYAN}30${NC}   ${BOLD}Dynamic MOTD Banner Manager & Drive Burner${NC}
        Generate custom login MOTDs with recent mixes, or burn ISO images to USB.
-  ${BOLD}${CYAN}30${NC}   ${BOLD}Manager Settings, Themes, Shell CLI & Reboot${NC}
+  ${BOLD}${CYAN}31${NC}   ${BOLD}Manager Settings, Themes, Shell CLI & Reboot${NC}
        Switch color themes (Dracula, Nord, Cyberpunk, etc.), migrate paths, reboot.
-  ${BOLD}${CYAN}31${NC}   ${BOLD}Exit Manager${NC} (or 0 / q)
+  ${BOLD}${CYAN}32${NC}   ${BOLD}Exit Manager${NC} (or 0 / q)
        Exit the application cleanly.
 
 ${BOLD}DIRECT COMMAND SHORTCUTS:${NC}
@@ -179,6 +181,7 @@ ${BOLD}DIRECT COMMAND SHORTCUTS:${NC}
     ${CYAN}gimp${NC}              Launch GIMP image editor
     ${CYAN}electricsheep${NC}     Launch Electric Sheep screensaver
     ${CYAN}geexlab${NC}           Launch GeeXLab 3D demos
+    ${CYAN}gpu-screen-recorder${NC}  Record a DJ mix with GPU Screen Recorder (Linux)
 
 ${BOLD}EXAMPLES:${NC}
   ${DIM}# Launch interactive terminal UI:${NC}

@@ -4293,6 +4293,38 @@ launch_electricsheep() {
     launch_gui_app "Electric Sheep" "electricsheep" "" "Electric Sheep" "" "ElectricSheep/electricsheep.exe" ""
 }
 
+launch_gpu_screen_recorder() {
+    echo -e "\n${BOLD}${YELLOW}Launching GPU Screen Recorder in a new window...${NC}\n"
+
+    if [ "$OS_TYPE" != "linux" ]; then
+        echo -e "${RED}GPU Screen Recorder is available on Linux only.${NC}"
+        return 1
+    fi
+
+    if command -v gpu-screen-recorder-gtk >/dev/null 2>&1; then
+        nohup gpu-screen-recorder-gtk >/dev/null 2>&1 &
+        disown 2>/dev/null || true
+        echo -e "${GREEN}✓ GPU Screen Recorder launched in a new window.${NC}"
+        return 0
+    fi
+
+    if command -v flatpak >/dev/null 2>&1 && flatpak info com.dec05eba.gpu_screen_recorder >/dev/null 2>&1; then
+        nohup flatpak run --command=gpu-screen-recorder-gtk com.dec05eba.gpu_screen_recorder >/dev/null 2>&1 &
+        disown 2>/dev/null || true
+        echo -e "${GREEN}✓ GPU Screen Recorder launched in a new window.${NC}"
+        return 0
+    fi
+
+    if command -v gtk-launch >/dev/null 2>&1 && gtk-launch com.dec05eba.gpu_screen_recorder >/dev/null 2>&1; then
+        echo -e "${GREEN}✓ GPU Screen Recorder launched in a new window.${NC}"
+        return 0
+    fi
+
+    echo -e "${RED}Error: GPU Screen Recorder is not installed.${NC}"
+    echo -e "${YELLOW}Install it on Linux with: flatpak install flathub com.dec05eba.gpu_screen_recorder${NC}"
+    return 1
+}
+
 launch_or_install_flatpak_app() {
     local app_id="$1"
     local bin_name="$2"
@@ -9889,28 +9921,29 @@ while true; do
     echo -e "  ${BOLD}${CYAN}18)${NC} Schedule DJ Mix Playback Suite (${GREEN}Timed Automated Mix Playback${NC})"
     echo -e "  ${BOLD}${CYAN}19)${NC} YouTube Video Generation Suite (${GREEN}4K UHD, 1080p, 720p with NVENC/Hardware${NC})"
     echo -e "  ${BOLD}${CYAN}20)${NC} Visual Media, Cover Art & Companion Video Suite (${GREEN}Cut/Split Video, Converters, PPM, Launchers${NC})"
+    echo -e "  ${BOLD}${CYAN}21)${NC} Record Video of DJ Mix using GPU Screen Recorder (Linux) (${GREEN}New Desktop Window${NC})"
     
     echo -e "\n  ${BOLD}${BLUE}─── [ SECTION 3: SYSTEM, NETWORK, AI & SETTINGS ] ────────────${NC}"
-    echo -e "  ${BOLD}${CYAN}21)${NC} Live Session, Stream & Transfer Monitors Suite (${GREEN}Tracklist, Traktor, Transfers, Uploads, Tasks${NC})"
-    echo -e "  ${BOLD}${CYAN}22)${NC} System & Hardware Process Monitors Suite (${GREEN}btop, nvtop, top${NC})"
-    echo -e "  ${BOLD}${CYAN}23)${NC} View Advanced Archive Statistics (${GREEN}SOF_Archive_Stats.sh${NC})"
-    echo -e "  ${BOLD}${CYAN}24)${NC} Promotional Outreach, Syndication & Music Shopping (${GREEN}Emails, RSS/Podcasts, Beatport/Bandcamp${NC})"
-    echo -e "  ${BOLD}${CYAN}25)${NC} Network Services & Internet Access Control (${GREEN}SSH, Samba, FTP, Block/Restore Internet${NC})"
-    echo -e "  ${BOLD}${CYAN}26)${NC} Desktop Display Settings, Audio Routing & App Control (${GREEN}Wayland/X11/macOS/Windows, Close Apps${NC})"
-    echo -e "  ${BOLD}${CYAN}27)${NC} Universal System Maintenance & Cleanup (${GREEN}Drive space, OS Updates, Package Clean, Logs${NC})"
-    echo -e "  ${BOLD}${CYAN}28)${NC} AI Assistant & Local LLM Servers Suite (${GREEN}Claude, GPT, Ollama, DeepSeek, WAN2GP, Beszel${NC})"
-    echo -e "  ${BOLD}${CYAN}29)${NC} Dynamic MOTD Banner Manager & Drive Burner (${GREEN}Last 3 Mixes, Netpbm, ISO USB Burner${NC})"
-    echo -e "  ${BOLD}${CYAN}30)${NC} Manager Settings, Themes, Shell CLI & Reboot (${GREEN}Themes, Migration, Bash CLI, Reboot${NC})"
+    echo -e "  ${BOLD}${CYAN}22)${NC} Live Session, Stream & Transfer Monitors Suite (${GREEN}Tracklist, Traktor, Transfers, Uploads, Tasks${NC})"
+    echo -e "  ${BOLD}${CYAN}23)${NC} System & Hardware Process Monitors Suite (${GREEN}btop, nvtop, top${NC})"
+    echo -e "  ${BOLD}${CYAN}24)${NC} View Advanced Archive Statistics (${GREEN}SOF_Archive_Stats.sh${NC})"
+    echo -e "  ${BOLD}${CYAN}25)${NC} Promotional Outreach, Syndication & Music Shopping (${GREEN}Emails, RSS/Podcasts, Beatport/Bandcamp${NC})"
+    echo -e "  ${BOLD}${CYAN}26)${NC} Network Services & Internet Access Control (${GREEN}SSH, Samba, FTP, Block/Restore Internet${NC})"
+    echo -e "  ${BOLD}${CYAN}27)${NC} Desktop Display Settings, Audio Routing & App Control (${GREEN}Wayland/X11/macOS/Windows, Close Apps${NC})"
+    echo -e "  ${BOLD}${CYAN}28)${NC} Universal System Maintenance & Cleanup (${GREEN}Drive space, OS Updates, Package Clean, Logs${NC})"
+    echo -e "  ${BOLD}${CYAN}29)${NC} AI Assistant & Local LLM Servers Suite (${GREEN}Claude, GPT, Ollama, DeepSeek, WAN2GP, Beszel${NC})"
+    echo -e "  ${BOLD}${CYAN}30)${NC} Dynamic MOTD Banner Manager & Drive Burner (${GREEN}Last 3 Mixes, Netpbm, ISO USB Burner${NC})"
+    echo -e "  ${BOLD}${CYAN}31)${NC} Manager Settings, Themes, Shell CLI & Reboot (${GREEN}Themes, Migration, Bash CLI, Reboot${NC})"
     
     echo -e "\n  ${BOLD}${BLUE}──────────────────────────────────────────────────────────────${NC}"
     get_manager_uptime
-    echo -e "  ${BOLD}${CYAN}31)${NC} Exit Manager ${DIM}(or 0 / q)${NC}"
+    echo -e "  ${BOLD}${CYAN}32)${NC} Exit Manager ${DIM}(or 0 / q)${NC}"
     echo ""
     if [ -n "$CLI_INITIAL_ACTION" ]; then
         choice="$CLI_INITIAL_ACTION"
         CLI_INITIAL_ACTION=""
     else
-        read -r -p "Enter choice [1-31, or q to exit]: " choice
+        read -r -p "Enter choice [1-32, or q to exit]: " choice
     fi
     
     case $choice in
@@ -9982,40 +10015,44 @@ while true; do
         20|manage-visual-media|visual-launchers|video-launchers)
             manage_visual_media_suite
             ;;
-        21|manage-live-monitors|live-monitors)
+        21|gpu-screen-recorder|record-mix)
+            launch_gpu_screen_recorder
+            press_enter
+            ;;
+        22|manage-live-monitors|live-monitors)
             manage_live_monitors
             ;;
-        22|manage-process-monitors|process-monitors)
+        23|manage-process-monitors|process-monitors)
             manage_system_process_monitors
             ;;
-        23)
+        24)
             echo -e "\n${BOLD}${YELLOW}Loading Advanced Archive Statistics...${NC}\n"
             sleep 0.5
             run_sub_script "SOF_Archive_Stats.sh"
             press_enter
             ;;
-        24)
+        25)
             manage_promo_and_syndication
             ;;
-        25)
+        26)
             manage_network_and_internet
             ;;
-        26)
+        27)
             manage_desktop_and_display
             ;;
-        27)
+        28)
             manage_system_maintenance
             ;;
-        28)
+        29)
             manage_ai_and_servers
             ;;
-        29)
+        30)
             manage_motd_and_tools
             ;;
-        30)
+        31)
             manage_settings_and_system
             ;;
-        31|77|0|[qQ]|[eE][xX][iI][tT])
+        32|77|0|[qQ]|[eE][xX][iI][tT])
             echo -e "\n${BOLD}${GREEN}Exiting Mix Archive Manager. Goodbye!${NC}\n"
             exit 0
             ;;

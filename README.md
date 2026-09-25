@@ -57,7 +57,7 @@ flowchart LR
 
 ## 🎧 Overview
 
-The **Stream of Frequency Mix Archive Manager** provides an interactive, terminal-driven control center (**77 operations** across **7 logical relational sections**) that automates the entire lifecycle of professional DJ mixes and audio recordings:
+The **Stream of Frequency Mix Archive Manager** provides an interactive, terminal-driven control center (**78 operations** across **7 logical relational sections**) that automates the entire lifecycle of professional DJ mixes and audio recordings:
 
 1. **Ingestion & Concatenation**: Auto-detects split multi-hour WAV recordings (e.g. 3-hour chunks from Traktor / external recorders), normalizes filenames, and concatenates them into single pristine tracks.
 2. **Lossless FLAC Mastering & Acoustic Spectrograms**: Encodes to 32-bit sample depth FLAC (`-sample_fmt s32 -compression_level 12`), optimizes and embeds cover art (`scale='min(1400,iw)':-1`), and outputs high-resolution 1080p acoustic spectrograms across an expanded acoustic suite (Spek, Sonic Visualiser, SoX 24-bit multi-colormap spectrograms, Praat, Kwave, Audacity).
@@ -68,7 +68,7 @@ The **Stream of Frequency Mix Archive Manager** provides an interactive, termina
 7. **Audio Specification Inspector & Stream Metadata**: Comprehensive technical stream analysis (`inspect_playing_audio.sh` & `bin/view-mix-specs`) inspecting currently playing audio or archive mixes: Container/Format (`WAV`, `FLAC`), Bit Depth (`24-Bit`, `16-Bit`, `32-Bit`), Sampling Rate (`48,000 Hz / 48.0 kHz`), File Path, File Name, Duration, Size, Title, Artist, Codec, Bitrate, Compression Ratio, Drive Free Space, and Companion Assets (Covers, Tracklist, Spectrogram, Video).
 8. **Active Audio Interface & Latency Display**: Real-time probe of default audio output device and hardware buffer latency (`scripts/get_audio_interface.py`) across PipeWire, ALSA, PulseAudio, macOS CoreAudio, Windows WASAPI, and FreeBSD OSS, displayed on boot and in live status.
 9. **Master Audio Control & Retro Playback**: Instant live master audio mute/unmute toggle directly from the manager menu, custom `.m3u` / `.m3u8` / `.xspf` playlist suite (`manage_playlists.sh`), live MPRIS and retro console audio player with real-time playback progress, track metadata, active filesystem paths, and instant cross-platform clipboard copy (`pbcopy` on macOS, `clip.exe` on Windows, `wl-copy`/`xclip` on Linux). Launches cliamp, Strawberry, VLC, foobar2000 (macOS & Windows), Winamp (Windows), Apple Music (macOS), Apple Podcasts (macOS), Haruna, and Kodi.
-10. **Video Production & Procedural Netpbm Art**: Generates 4K UHD, 1080p Full HD, and 720p HD YouTube videos with NVENC/Hardware/VideoToolbox acceleration, 320kbps AAC, and smooth 5s audio fading (`generate_youtube_video.sh`), looping MP4-to-MP4 video production with segment fades and intro/outro thumbnail title cards (`Make_SOF_Episode_From_MP4_Audio_Output_MP4_1080p_Video.sh`), synchronized mix-video companion daemon (`sync_video_companion.sh`), procedural gradient binary Netpbm P6 `.PPM` cover art generator with mathematical palettes and typography overlays (`generate_ppm_cover.sh`), video clip cutter (`Cut_Video.sh`), and Electric Sheep screensaver.
+10. **Video Production & Procedural Netpbm Art**: Generates 4K UHD, 1080p Full HD, and 720p HD YouTube videos with NVENC/Hardware/VideoToolbox acceleration, 320kbps AAC, and smooth 5s audio fading (`generate_youtube_video.sh`), looping MP4-to-MP4 video production with segment fades and intro/outro thumbnail title cards (`Make_SOF_Episode_From_MP4_Audio_Output_MP4_1080p_Video.sh`), synchronized mix-video companion daemon (`sync_video_companion.sh`), procedural gradient binary Netpbm P6 `.PPM` cover art generator with mathematical palettes and typography overlays (`generate_ppm_cover.sh`), video clip cutter (`Cut_Video.sh`), and Electric Sheep screensaver. On Linux, **Record Video of DJ Mix using GPU Screen Recorder (Linux)** (main menu Section 2, option 21) opens GPU Screen Recorder in a new desktop window (`gpu-screen-recorder-gtk` or Flatpak `com.dec05eba.gpu_screen_recorder`) and returns to the menu.
 11. **Dynamic System MOTD & Diagnostics**: Auto-updating Message Of The Day banner generator (`update_system_motd.sh`) highlighting the last 3 mixes, dates, times, sizes, formats, full file names, and audio specs. Automated rclone mirroring to Google Drive, SMB network share ingestion, multi-platform network services manager (SSH, Samba, FTP), real-time file transfer monitors, and comprehensive archive statistics.
 12. **Multi-Platform System Maintenance**: OS-tailored system cleaning (Bazzite `ujust`, macOS Homebrew caches & RAM purge, Windows `winget` update & TRIM, FreeBSD `pkg` cleanup & audit), display configuration, reboot control, and live manager & system uptime tracking.
 13. **Themes & CLI Engine**: 9 custom retro terminal color themes (Cyberpunk, Dracula, Nord, Matrix, Solarized, Tokyo Night, Monokai, Gruvbox, Emerald) and an integrated interactive Bash CLI runner.
@@ -343,7 +343,7 @@ MP_Mix_Manager_v0.3/
 
 ---
 
-## 🎛️ Feature Matrix (77 Core Operations in 7 Logical Sections)
+## 🎛️ Feature Matrix (78 Core Operations in 7 Logical Sections)
 
 ### ─── [ SECTION 1: MIX ARCHIVE WORKFLOW & INGESTION ] ──────────
 | # | Operation | Description |
@@ -408,47 +408,48 @@ MP_Mix_Manager_v0.3/
 | **46**| **Procedural Gradient .PPM Cover Art Generator** | Pure mathematical Netpbm P6 binary `.PPM` cover art generator (`generate_ppm_cover.sh`): renders linear, radial, plasma, and angular gradients, composites typography overlays (Artist, Title, Episode, Tags), and exports high-res lossless PNGs. |
 | **47**| **Launch Electric Sheep Screensaver** | Launches Electric Sheep generative screensaver. |
 | **48**| **Synchronized Mix-Video Companion Player Daemon** | Intelligent background watcher (`sync_video_companion.sh`): automatically discovers matching companion video for the currently playing mix and launches it in VLC / Haruna / MPV, closing the player when audio stops. |
+| **49**| **Record Video of DJ Mix using GPU Screen Recorder (Linux)** | Main menu Section 2, option 21. Opens GPU Screen Recorder in a new desktop window on Linux (`gpu-screen-recorder-gtk`, or Flatpak `com.dec05eba.gpu_screen_recorder`) and returns to the menu. Direct shortcut: `gpu-screen-recorder`. |
 
 ### ─── [ SECTION 5: LIVE MONITORS & SYSTEM DIAGNOSTICS ] ────────
 | # | Operation | Description |
 |---|---|---|
-| **49**| **Launch Live Tracklist Monitor** | Real-time CLI display connecting to Strawberry MPRIS and `cliamp` with live progress and track info (`SOF_Live_Tracker.sh`). |
-| **50**| **Launch Traktor Live Monitor & Audio Recorder** | Cross-platform live terminal dashboard (`scripts/traktor_monitor.py` / `traktor_monitor.sh`): monitors Traktor CPU %, RSS RAM, deck playback/loaded tracks, active WAV recording locks, real-time file size growth, and audio interface hardware. Features direct recording controls (start, stop, toggle) via AppleScript and Windows Automation. |
-| **51**| **Launch Live File Transfer Monitor** | Inspects transfer speeds, byte positions, and percentage for huge files (`transfer-monitor`). |
-| **52**| **Launch Chrome Upload Monitor** | Monitors web uploads (e.g. Apple Podcasts Connect, YouTube Studio) in real-time (`chrome_upload_monitor.py`). |
-| **53**| **View Advanced Archive Statistics** | Deep inventory scan calculating total duration, file sizes, GB footprint, and tracklist completeness (`SOF_Archive_Stats.sh`). |
-| **54**| **View Running Background Tasks** | Scans process table for active encoding, syncing, or AI batch jobs. |
-| **55**| **Launch Resource Monitor** | Launches `btop` for deep multi-core CPU and memory profiling. |
-| **56**| **Launch GPU Process Monitor** | Launches `nvtop` for real-time monitoring of NVIDIA GPU clock, VRAM, and power draw. |
-| **57**| **Launch System Process Monitor** | Quick-launches `top` inside manager session. |
+| **50**| **Launch Live Tracklist Monitor** | Real-time CLI display connecting to Strawberry MPRIS and `cliamp` with live progress and track info (`SOF_Live_Tracker.sh`). |
+| **51**| **Launch Traktor Live Monitor & Audio Recorder** | Cross-platform live terminal dashboard (`scripts/traktor_monitor.py` / `traktor_monitor.sh`): monitors Traktor CPU %, RSS RAM, deck playback/loaded tracks, active WAV recording locks, real-time file size growth, and audio interface hardware. Features direct recording controls (start, stop, toggle) via AppleScript and Windows Automation. |
+| **52**| **Launch Live File Transfer Monitor** | Inspects transfer speeds, byte positions, and percentage for huge files (`transfer-monitor`). |
+| **53**| **Launch Chrome Upload Monitor** | Monitors web uploads (e.g. Apple Podcasts Connect, YouTube Studio) in real-time (`chrome_upload_monitor.py`). |
+| **54**| **View Advanced Archive Statistics** | Deep inventory scan calculating total duration, file sizes, GB footprint, and tracklist completeness (`SOF_Archive_Stats.sh`). |
+| **55**| **View Running Background Tasks** | Scans process table for active encoding, syncing, or AI batch jobs. |
+| **56**| **Launch Resource Monitor** | Launches `btop` for deep multi-core CPU and memory profiling. |
+| **57**| **Launch GPU Process Monitor** | Launches `nvtop` for real-time monitoring of NVIDIA GPU clock, VRAM, and power draw. |
+| **58**| **Launch System Process Monitor** | Quick-launches `top` inside manager session. |
 
 ### ─── [ SECTION 6: SYSTEM, NETWORK & HARDWARE MANAGEMENT ] ─────
 | # | Operation | Description |
 |---|---|---|
-| **58**| **Manage WAN2GP Server** | Controls WAN2GP AI video server (Profile 2 / 4.5, Flux Klein 9B batch, LTX Video 2B/13B). Accessible via KDE Connect shortcuts, desktop entries, and CLI (`--wan2gp-start-4.5` / `--wan2gp-stop` / `58 2` / `58 3`). |
-| **59**| **Manage Beszel Monitoring Suite** | Controls Beszel server monitoring hub (Web Dashboard on port 8090) and hardware/NVIDIA GPU/Podman agent. Supports starting Hub, Agent, or both, live status, logs, browser dashboard dispatch, and CLI (`--beszel-start` / `--beszel-hub` / `--beszel-agent` / `--beszel-stop` / `59 1` / `59 2` / `59 3`). |
-| **60**| **Manage Ollama Server** | Controls Ollama LLM server (`ollama serve` inside distrobox container `ollama-container` on port 11434). Supports background daemon mode, interactive terminal window mode (live logs), server stop/restart, hardware acceleration status (NVIDIA RTX CUDA), local models listing (`qwen2.5`, `llama3.1`, `nemotron`, etc.), and interactive CLI chat. Accessible via CLI (`--ollama-serve`, `--ollama-start`, `--ollama-stop`, `--ollama-status`, `60 1`, `60 2`, `60 3`, `60 4`, `60 5`, `60 6`). |
-| **61**| **Manage DeepSeek Harness Server (`dsh-mobile`)** | Controls DeepSeek Harness web server (`pnpm dsh web` with `--trusted-host 192.168.1.11:3080 --trusted-host 192.168.1.11 --no-open` on port 3080). Supports launching in a dedicated terminal window or background daemon, one-click browser opening (`http://192.168.1.11:3080`), server stop/restart, process inspection, and live server logs (`/tmp/dsh-mobile.log`). Accessible via CLI (`--dsh-mobile`, `--dsh`, `--dsh-start`, `--dsh-bg`, `--dsh-web`, `--dsh-stop`, `--dsh-status`, `61 1`, `61 2`, `61 3`, `61 4`, `61 5`, `61 6`). |
-| **62**| **Manage Network Services** | Bulk and individual start, stop, restart, and status for SSH (`sshd`), Samba (`smb`), and FTP (`vsftpd`) across Linux (`systemctl`), FreeBSD (`service`), macOS (`launchctl`/`systemsetup`), and Windows (PowerShell). |
-| **63**| **Block Internet Access (LAN Only)** | Activates an isolated firewall table blocking WAN while keeping LAN open (`block-internet`). |
-| **64**| **Restore / Unblock Internet Access** | Restores immediate full internet connectivity (`unblock-internet`). |
-| **65**| **Display Settings (OS Tailored)** | Opens Plasma Wayland on Linux, macOS Display Settings, or Windows Display Settings (`ms-settings:display`). |
-| **66**| **Audio / Sound Settings (OS Tailored)** | Opens Plasma X11 on Linux, Audio MIDI Setup on macOS, or Windows Sound Panel (`control.exe mmsys.cpl`). |
-| **67**| **Close All Desktop Applications** | Gracefully closes external desktop windows using AppleScript (macOS), PowerShell (Windows), or `wmctrl` (Linux) while shielding the manager. |
-| **68**| **System Maintenance & Cleanup** | Executes platform maintenance (Linux `ujust clean-system`, macOS `brew cleanup` & RAM purge, Windows `winget upgrade` & temp cleanup, FreeBSD `pkg clean`, `pkg upgrade`, `pkg autoremove`). |
-| **69**| **Launch GeeXLab Demo Launcher** | Runs 3D/OpenGL shader demos and GPU stress tests via GeeXLab/FurMark. |
-| **70**| **Burn ISO Image to USB Drive** | Writes bootable ISO files directly to removable USB storage with safety checks and dd progress (macOS `diskutil` / Linux `lsblk`). |
-| **71**| **Dynamic System MOTD Banner Manager** | Dynamic Message Of The Day generator (`update_system_motd.sh`): renders stylized ANSI MOTD table summarizing the last 3 created mixes, dates, times, sizes, formats, and full file names. |
+| **59**| **Manage WAN2GP Server** | Controls WAN2GP AI video server (Profile 2 / 4.5, Flux Klein 9B batch, LTX Video 2B/13B). Accessible via KDE Connect shortcuts, desktop entries, and CLI (`--wan2gp-start-4.5` / `--wan2gp-stop` / `58 2` / `58 3`). |
+| **60**| **Manage Beszel Monitoring Suite** | Controls Beszel server monitoring hub (Web Dashboard on port 8090) and hardware/NVIDIA GPU/Podman agent. Supports starting Hub, Agent, or both, live status, logs, browser dashboard dispatch, and CLI (`--beszel-start` / `--beszel-hub` / `--beszel-agent` / `--beszel-stop` / `59 1` / `59 2` / `59 3`). |
+| **61**| **Manage Ollama Server** | Controls Ollama LLM server (`ollama serve` inside distrobox container `ollama-container` on port 11434). Supports background daemon mode, interactive terminal window mode (live logs), server stop/restart, hardware acceleration status (NVIDIA RTX CUDA), local models listing (`qwen2.5`, `llama3.1`, `nemotron`, etc.), and interactive CLI chat. Accessible via CLI (`--ollama-serve`, `--ollama-start`, `--ollama-stop`, `--ollama-status`, `60 1`, `60 2`, `60 3`, `60 4`, `60 5`, `60 6`). |
+| **62**| **Manage DeepSeek Harness Server (`dsh-mobile`)** | Controls DeepSeek Harness web server (`pnpm dsh web` with `--trusted-host 192.168.1.11:3080 --trusted-host 192.168.1.11 --no-open` on port 3080). Supports launching in a dedicated terminal window or background daemon, one-click browser opening (`http://192.168.1.11:3080`), server stop/restart, process inspection, and live server logs (`/tmp/dsh-mobile.log`). Accessible via CLI (`--dsh-mobile`, `--dsh`, `--dsh-start`, `--dsh-bg`, `--dsh-web`, `--dsh-stop`, `--dsh-status`, `61 1`, `61 2`, `61 3`, `61 4`, `61 5`, `61 6`). |
+| **63**| **Manage Network Services** | Bulk and individual start, stop, restart, and status for SSH (`sshd`), Samba (`smb`), and FTP (`vsftpd`) across Linux (`systemctl`), FreeBSD (`service`), macOS (`launchctl`/`systemsetup`), and Windows (PowerShell). |
+| **64**| **Block Internet Access (LAN Only)** | Activates an isolated firewall table blocking WAN while keeping LAN open (`block-internet`). |
+| **65**| **Restore / Unblock Internet Access** | Restores immediate full internet connectivity (`unblock-internet`). |
+| **66**| **Display Settings (OS Tailored)** | Opens Plasma Wayland on Linux, macOS Display Settings, or Windows Display Settings (`ms-settings:display`). |
+| **67**| **Audio / Sound Settings (OS Tailored)** | Opens Plasma X11 on Linux, Audio MIDI Setup on macOS, or Windows Sound Panel (`control.exe mmsys.cpl`). |
+| **68**| **Close All Desktop Applications** | Gracefully closes external desktop windows using AppleScript (macOS), PowerShell (Windows), or `wmctrl` (Linux) while shielding the manager. |
+| **69**| **System Maintenance & Cleanup** | Executes platform maintenance (Linux `ujust clean-system`, macOS `brew cleanup` & RAM purge, Windows `winget upgrade` & temp cleanup, FreeBSD `pkg clean`, `pkg upgrade`, `pkg autoremove`). |
+| **70**| **Launch GeeXLab Demo Launcher** | Runs 3D/OpenGL shader demos and GPU stress tests via GeeXLab/FurMark. |
+| **71**| **Burn ISO Image to USB Drive** | Writes bootable ISO files directly to removable USB storage with safety checks and dd progress (macOS `diskutil` / Linux `lsblk`). |
+| **72**| **Dynamic System MOTD Banner Manager** | Dynamic Message Of The Day generator (`update_system_motd.sh`): renders stylized ANSI MOTD table summarizing the last 3 created mixes, dates, times, sizes, formats, and full file names. |
 
 ### ─── [ SECTION 7: AI, SHELL CLI & SETTINGS ] ───────────────────
 | # | Operation | Description |
 |---|---|---|
-| **72**| **Launch AI Assistant / Models (AGY)** | Starts Antigravity CLI AI sessions (Claude Sonnet, Claude Opus, GPT-OSS, Gemini), manages local Ollama models, or launches DeepSeek Harness (`dsh-mobile`). |
-| **73**| **Run Bash CLI Commands** | Built-in interactive Bash shell and direct command execution runner. |
-| **74**| **Manager Themes & Color Palette Switcher** | Switch between 9 terminal themes (Cyberpunk, Dracula, Nord, Matrix, Solarized, Tokyo Night, Monokai, Gruvbox, Emerald, Classic). |
-| **75**| **Manage Installation & Configuration** | Comprehensive installation migration wizard (relocates codebase path and auto-repoints all CLI wrappers and desktop entries), instant timestamped config backups, portable `.tar.gz` config bundle export, safe bundle import, rollback/restore of historical snapshots, and automated system update (`mix-archive-manager update` / `update_manager.sh`). |
-| **76**| **Reboot System** | Cross-platform system reboot with safety confirmation dialog (`systemctl reboot`, macOS `osascript`, Windows `shutdown.exe /r`, FreeBSD `shutdown -r now`). |
-| **77**| **Exit Manager** | Cleans up and exits the console session. |
+| **73**| **Launch AI Assistant / Models (AGY)** | Starts Antigravity CLI AI sessions (Claude Sonnet, Claude Opus, GPT-OSS, Gemini), manages local Ollama models, or launches DeepSeek Harness (`dsh-mobile`). |
+| **74**| **Run Bash CLI Commands** | Built-in interactive Bash shell and direct command execution runner. |
+| **75**| **Manager Themes & Color Palette Switcher** | Switch between 9 terminal themes (Cyberpunk, Dracula, Nord, Matrix, Solarized, Tokyo Night, Monokai, Gruvbox, Emerald, Classic). |
+| **76**| **Manage Installation & Configuration** | Comprehensive installation migration wizard (relocates codebase path and auto-repoints all CLI wrappers and desktop entries), instant timestamped config backups, portable `.tar.gz` config bundle export, safe bundle import, rollback/restore of historical snapshots, and automated system update (`mix-archive-manager update` / `update_manager.sh`). |
+| **77**| **Reboot System** | Cross-platform system reboot with safety confirmation dialog (`systemctl reboot`, macOS `osascript`, Windows `shutdown.exe /r`, FreeBSD `shutdown -r now`). |
+| **78**| **Exit Manager** | Cleans up and exits the console session. |
 
 ---
 

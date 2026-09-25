@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.0] - 2026-09-24
 
+- **Record Video of DJ Mix using GPU Screen Recorder (Linux)**:
+  - Added main menu Section 2, option 21 in [`Mix_Archive_Manager.sh`](file:///var/home/mplanetarian/MP_Mix_Manager_v0.3/Mix_Archive_Manager.sh).
+  - Launches GPU Screen Recorder in a new desktop window (`gpu-screen-recorder-gtk`, or Flatpak `com.dec05eba.gpu_screen_recorder`) and returns to the menu.
+  - Direct shortcut: `mix-archive-manager gpu-screen-recorder` (or `record-mix`).
+  - Section 3 menu numbers moved from 21–31 to 22–32. Exit is option 32 (`0`, `q`, and legacy `77` still exit).
+
 - **CLI Help & Options Reference (`mix-archive-manager --help` / `-h`)**:
   - Added `-h`, `--help`, and `help` launch flags to [`bin/mix-archive-manager`](file:///var/home/mplanetarian/MP_Mix_Manager_v0.3/bin/mix-archive-manager) and [`Mix_Archive_Manager.sh`](file:///var/home/mplanetarian/MP_Mix_Manager_v0.3/Mix_Archive_Manager.sh).
   - Built dedicated help engine in [`scripts/show_help.sh`](file:///var/home/mplanetarian/MP_Mix_Manager_v0.3/scripts/show_help.sh) displaying full usage instructions, launch flags, direct shortcuts, and exhaustive listings of all 31 main menu options across all 3 sections.
