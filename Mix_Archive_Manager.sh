@@ -11054,7 +11054,7 @@ while true; do
     echo -e "${BOLD}Select an operation:${NC}"
     
     echo -e "\n  ${BOLD}${BLUE}─── [ SECTION 1: MIX ARCHIVE WORKFLOW & INGESTION ] ─────────${NC}"
-    echo -e "  ${BOLD}${MAGENTA} 0)${NC} Run Any Desktop Shortcuts — Linux (${GREEN}Games, Audio, Files, Tools, AI Servers — KDE Plasma${NC})"
+    echo -e "  ${BOLD}${CYAN} 0)${NC} Run Any Desktop Shortcuts — Linux (${GREEN}Games, Audio, Files, Tools, AI Servers — KDE Plasma${NC})"
     echo -e "  ${BOLD}${CYAN} 1)${NC} Run FLAC Conversion Process (${GREEN}Make_SOF_FLAC_CONVERSION.sh${NC})"
     echo -e "  ${BOLD}${CYAN} 2)${NC} Convert Audio Formats, Bit Depths & Split FLACs (${GREEN}WAV, MP3, AAC, FLAC Splitter${NC})"
     echo -e "  ${BOLD}${CYAN} 3)${NC} Retrieve Unconverted WAVs from Archive (${GREEN}MOVE_NOT_CONVERTED_WAVS.sh${NC})"
