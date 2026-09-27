@@ -10186,6 +10186,504 @@ manage_studio_hardware_and_volume() {
     done
 }
 
+# ─── [ RUN ANY DESKTOP SHORTCUTS - LINUX (MANUAL MODE) ] ─────────────────────
+manage_desktop_shortcuts() {
+    while true; do
+        clear
+        echo -e "${BOLD}${MAGENTA}========================================================================${NC}"
+        echo -e "${BOLD}${MAGENTA}   🖥️  RUN ANY DESKTOP SHORTCUTS — LINUX (KDE Plasma / kioclient)      ${NC}"
+        echo -e "${BOLD}${MAGENTA}========================================================================${NC}"
+        echo ""
+        echo -e "  ${DIM}Launch and automate Desktop Shortcuts on KDE Plasma (Linux).${NC}"
+        echo ""
+        echo -e "  ${BOLD}${CYAN}1)${NC} Run Any Desktop Shortcut Manually ${DIM}(Games, Audio, Files, Tools, AI Servers)${NC}"
+        echo -e "  ${BOLD}${CYAN}2)${NC} Generate Keyboard Shortcut for a Desktop Shortcut ${DIM}(e.g. Ctrl+Alt+Enter)${NC}"
+        echo -e "  ${BOLD}${CYAN}0)${NC} Return to Main Menu"
+        echo ""
+        read -r -p "Enter choice [0-2]: " dsk_top_choice
+        case "$dsk_top_choice" in
+            1)
+                _run_desktop_shortcut_manual
+                ;;
+            2)
+                _bind_desktop_shortcut_keyboard
+                ;;
+            0|[qQ]|[eE][xX][iI][tT])
+                return 0
+                ;;
+            *)
+                echo -e "\n${RED}Invalid option!${NC}"
+                sleep 1
+                ;;
+        esac
+    done
+}
+
+# ─── Internal helper: parse and launch a desktop shortcut ────────────────────
+_run_desktop_shortcut_manual() {
+    # ── Collect .desktop file paths from Desktop & local applications ──────
+    local -a desktop_paths=()
+    local -a search_dirs=(
+        "$HOME/Desktop/DESKTOP"
+        "$HOME/Desktop"
+        "$HOME/.local/share/applications"
+    )
+
+    for _dir in "${search_dirs[@]}"; do
+        if [ -d "$_dir" ]; then
+            while IFS= read -r -d '' _f; do
+                desktop_paths+=("$_f")
+            done < <(find "$_dir" -maxdepth 1 -name "*.desktop" -print0 2>/dev/null | sort -z)
+        fi
+    done
+
+    if [ ${#desktop_paths[@]} -eq 0 ]; then
+        echo -e "\n${RED}No .desktop shortcuts found in standard locations.${NC}"
+        echo -e "${DIM}Searched: ${search_dirs[*]}${NC}"
+        press_enter
+        return 0
+    fi
+
+    # ── Parse each file and build display arrays ───────────────────────────
+    local -a shortcut_names=()
+    local -a shortcut_files=()
+    local -a shortcut_comments=()
+    local -a shortcut_categories=()
+
+    for _f in "${desktop_paths[@]}"; do
+        local _name="" _comment="" _cats="" _type=""
+        _name="$(grep -m1 '^Name=' "$_f" 2>/dev/null | cut -d'=' -f2-)"
+        _comment="$(grep -m1 '^Comment=' "$_f" 2>/dev/null | cut -d'=' -f2-)"
+        _cats="$(grep -m1 '^Categories=' "$_f" 2>/dev/null | cut -d'=' -f2-)"
+        _type="$(grep -m1 '^Type=' "$_f" 2>/dev/null | cut -d'=' -f2-)"
+        # Skip non-Application entries (e.g. Directory, Link)
+        [ -z "$_type" ] || [ "$_type" = "Application" ] || continue
+        [ -z "$_name" ] && _name="$(basename "$_f" .desktop)"
+        shortcut_names+=("$_name")
+        shortcut_files+=("$_f")
+        shortcut_comments+=("$_comment")
+        shortcut_categories+=("$_cats")
+    done
+
+    if [ ${#shortcut_names[@]} -eq 0 ]; then
+        echo -e "\n${RED}No valid Application .desktop shortcuts found.${NC}"
+        press_enter
+        return 0
+    fi
+
+    # ── Category emoji helper ──────────────────────────────────────────────
+    _cat_emoji() {
+        local cats="$1"
+        case "$cats" in
+            *Game*)                      echo "🎮" ;;
+            *AudioVideo*|*Audio*|*Music*) echo "🎵" ;;
+            *AI*)                        echo "🤖" ;;
+            *Development*)               echo "🛠️ " ;;
+            *Network*)                   echo "🌐" ;;
+            *System*|*Settings*)         echo "⚙️ " ;;
+            *Graphics*|*Screensaver*)    echo "🎨" ;;
+            *Utility*)                   echo "🔧" ;;
+            *)                           echo "📌" ;;
+        esac
+    }
+
+    # ── Display the shortcut list ──────────────────────────────────────────
+    while true; do
+        clear
+        echo -e "${BOLD}${MAGENTA}========================================================================${NC}"
+        echo -e "${BOLD}${MAGENTA}   🖥️  RUN ANY DESKTOP SHORTCUT MANUALLY — KDE Plasma (kioclient)     ${NC}"
+        echo -e "${BOLD}${MAGENTA}========================================================================${NC}"
+        echo -e "  ${DIM}All available Desktop Shortcuts are listed below.${NC}"
+        echo -e "  ${DIM}Select a number to launch the shortcut. Press 0 to go back.${NC}"
+        echo ""
+
+        local _i=1
+        local idx
+        for (( idx=0; idx<${#shortcut_names[@]}; idx++ )); do
+            local _name="${shortcut_names[$idx]}"
+            local _comment="${shortcut_comments[$idx]}"
+            local _cats="${shortcut_categories[$idx]}"
+            local _emoji
+            _emoji="$(_cat_emoji "$_cats")"
+
+            # Right-pad index for alignment
+            local _idx_str
+            printf -v _idx_str "%3d" "$_i"
+
+            if [ -n "$_comment" ]; then
+                echo -e "  ${BOLD}${CYAN}${_idx_str})${NC} ${_emoji} ${BOLD}${_name}${NC}"
+                echo -e "       ${DIM}${_comment}${NC}"
+            else
+                echo -e "  ${BOLD}${CYAN}${_idx_str})${NC} ${_emoji} ${BOLD}${_name}${NC}"
+            fi
+            _i=$(( _i + 1 ))
+        done
+
+        echo ""
+        echo -e "  ${BOLD}${CYAN}  0)${NC} Return to Desktop Shortcuts Menu"
+        echo ""
+        read -r -p "Enter shortcut number to launch [0-$(( ${#shortcut_names[@]} ))]: " sc_choice
+
+        if [[ "$sc_choice" == "0" ]] || [[ "$sc_choice" =~ ^[qQ]$ ]]; then
+            return 0
+        fi
+
+        # Validate numeric selection
+        if ! [[ "$sc_choice" =~ ^[0-9]+$ ]] || \
+           [ "$sc_choice" -lt 1 ] || [ "$sc_choice" -gt "${#shortcut_names[@]}" ]; then
+            echo -e "\n${RED}Invalid selection — please enter a number between 1 and ${#shortcut_names[@]}.${NC}"
+            sleep 1.5
+            continue
+        fi
+
+        local _sel_idx=$(( sc_choice - 1 ))
+        local _sel_name="${shortcut_names[$_sel_idx]}"
+        local _sel_file="${shortcut_files[$_sel_idx]}"
+
+        echo ""
+        echo -e "${BOLD}${YELLOW}▶  Launching: ${GREEN}${_sel_name}${NC}"
+        echo -e "   ${DIM}File: ${_sel_file}${NC}"
+        echo -e "   ${DIM}Command: kioclient exec \"${_sel_file}\"${NC}"
+        echo ""
+
+        # Check kioclient is available
+        local _kioclient
+        if command -v kioclient >/dev/null 2>&1; then
+            _kioclient="kioclient"
+        elif command -v kioclient5 >/dev/null 2>&1; then
+            _kioclient="kioclient5"
+        elif command -v kioclient6 >/dev/null 2>&1; then
+            _kioclient="kioclient6"
+        else
+            echo -e "${RED}Error: kioclient is not installed. Cannot launch desktop shortcut.${NC}"
+            echo -e "${DIM}Install it via: sudo dnf install kio-extras  OR  sudo apt install kio${NC}"
+            press_enter
+            continue
+        fi
+
+        # Launch the shortcut in background (detached)
+        "$_kioclient" exec "$_sel_file" >/dev/null 2>&1 &
+        disown
+
+        echo -e "${GREEN}✔  Shortcut launched successfully!${NC}"
+        echo -e "${DIM}The application is opening. When you are done, return here to launch another.${NC}"
+        echo ""
+        press_enter
+        # Loop back to the list so the user can launch another shortcut
+    done
+}
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ─── Bind a Desktop Shortcut to a Global Keyboard Shortcut (KDE Plasma) ───────
+_bind_desktop_shortcut_keyboard() {
+    # ── Step 1: collect & parse desktop files (reuse same logic as _run_desktop_shortcut_manual)
+    local -a desktop_paths=()
+    local -a search_dirs=(
+        "$HOME/Desktop/DESKTOP"
+        "$HOME/Desktop"
+        "$HOME/.local/share/applications"
+    )
+    for _dir in "${search_dirs[@]}"; do
+        [ -d "$_dir" ] || continue
+        while IFS= read -r -d '' _f; do
+            desktop_paths+=("$_f")
+        done < <(find "$_dir" -maxdepth 1 -name "*.desktop" -print0 2>/dev/null | sort -z)
+    done
+
+    local -a shortcut_names=()
+    local -a shortcut_files=()
+    local -a shortcut_comments=()
+    local -a shortcut_categories=()
+    local -a shortcut_existing_keys=()   # any existing X-KDE-Shortcuts value
+
+    for _f in "${desktop_paths[@]}"; do
+        local _name="" _comment="" _cats="" _type="" _existing_key=""
+        _name="$(grep -m1 '^Name=' "$_f" 2>/dev/null | cut -d'=' -f2-)"
+        _comment="$(grep -m1 '^Comment=' "$_f" 2>/dev/null | cut -d'=' -f2-)"
+        _cats="$(grep -m1 '^Categories=' "$_f" 2>/dev/null | cut -d'=' -f2-)"
+        _type="$(grep -m1 '^Type=' "$_f" 2>/dev/null | cut -d'=' -f2-)"
+        _existing_key="$(grep -m1 '^X-KDE-Shortcuts=' "$_f" 2>/dev/null | cut -d'=' -f2-)"
+        [ -z "$_type" ] || [ "$_type" = "Application" ] || continue
+        [ -z "$_name" ] && _name="$(basename "$_f" .desktop)"
+        shortcut_names+=("$_name")
+        shortcut_files+=("$_f")
+        shortcut_comments+=("$_comment")
+        shortcut_categories+=("$_cats")
+        shortcut_existing_keys+=("$_existing_key")
+    done
+
+    if [ ${#shortcut_names[@]} -eq 0 ]; then
+        echo -e "\n${RED}No valid Application .desktop shortcuts found.${NC}"
+        press_enter; return 0
+    fi
+
+    _cat_emoji_bind() {
+        local cats="$1"
+        case "$cats" in
+            *Game*)                       echo "🎮" ;;
+            *AudioVideo*|*Audio*|*Music*) echo "🎵" ;;
+            *AI*)                         echo "🤖" ;;
+            *Development*)                echo "🛠️ " ;;
+            *Network*)                    echo "🌐" ;;
+            *System*|*Settings*)          echo "⚙️ " ;;
+            *Graphics*|*Screensaver*)     echo "🎨" ;;
+            *Utility*)                    echo "🔧" ;;
+            *)                            echo "📌" ;;
+        esac
+    }
+
+    # ── Step 2: display shortcut list ─────────────────────────────────────────
+    while true; do
+        clear
+        echo -e "${BOLD}${MAGENTA}========================================================================${NC}"
+        echo -e "${BOLD}${MAGENTA}   ⌨️  GENERATE KEYBOARD SHORTCUT FOR DESKTOP SHORTCUT (KDE Plasma)    ${NC}"
+        echo -e "${BOLD}${MAGENTA}========================================================================${NC}"
+        echo -e "  ${DIM}Select a Desktop Shortcut and assign a global keyboard shortcut.${NC}"
+        echo -e "  ${DIM}The shortcut will be registered in KDE Plasma and fire instantly.${NC}"
+        echo ""
+
+        local _i=1
+        local idx
+        for (( idx=0; idx<${#shortcut_names[@]}; idx++ )); do
+            local _emoji
+            _emoji="$(_cat_emoji_bind "${shortcut_categories[$idx]}")"
+            local _idx_str
+            printf -v _idx_str "%3d" "$_i"
+            local _existing="${shortcut_existing_keys[$idx]}"
+            local _key_badge=""
+            [ -n "$_existing" ] && _key_badge=" ${CYAN}[${_existing}]${NC}"
+            if [ -n "${shortcut_comments[$idx]}" ]; then
+                echo -e "  ${BOLD}${CYAN}${_idx_str})${NC} ${_emoji} ${BOLD}${shortcut_names[$idx]}${NC}${_key_badge}"
+                echo -e "       ${DIM}${shortcut_comments[$idx]}${NC}"
+            else
+                echo -e "  ${BOLD}${CYAN}${_idx_str})${NC} ${_emoji} ${BOLD}${shortcut_names[$idx]}${NC}${_key_badge}"
+            fi
+            _i=$(( _i + 1 ))
+        done
+
+        echo ""
+        echo -e "  ${BOLD}${CYAN}  0)${NC} Return to Desktop Shortcuts Menu"
+        echo ""
+        read -r -p "Enter shortcut number to bind [0-$(( ${#shortcut_names[@]} ))]: " sc_choice
+
+        [[ "$sc_choice" == "0" ]] || [[ "$sc_choice" =~ ^[qQ]$ ]] && return 0
+
+        if ! [[ "$sc_choice" =~ ^[0-9]+$ ]] || \
+           [ "$sc_choice" -lt 1 ] || [ "$sc_choice" -gt "${#shortcut_names[@]}" ]; then
+            echo -e "\n${RED}Invalid selection.${NC}"; sleep 1.5; continue
+        fi
+
+        local _sel_idx=$(( sc_choice - 1 ))
+        local _sel_name="${shortcut_names[$_sel_idx]}"
+        local _sel_file="${shortcut_files[$_sel_idx]}"
+        local _sel_comment="${shortcut_comments[$_sel_idx]}"
+        local _existing_shortcut="${shortcut_existing_keys[$_sel_idx]}"
+
+        # ── Step 3: Keyboard shortcut input ───────────────────────────────────
+        clear
+        echo -e "${BOLD}${MAGENTA}========================================================================${NC}"
+        echo -e "${BOLD}${MAGENTA}   ⌨️  ASSIGN KEYBOARD SHORTCUT — ${_sel_name}${NC}"
+        echo -e "${BOLD}${MAGENTA}========================================================================${NC}"
+        echo ""
+        echo -e "  ${BOLD}Selected shortcut:${NC} ${GREEN}${_sel_name}${NC}"
+        [ -n "$_sel_comment" ] && echo -e "  ${DIM}${_sel_comment}${NC}"
+        echo -e "  ${DIM}File: ${_sel_file}${NC}"
+        echo ""
+        if [ -n "$_existing_shortcut" ]; then
+            echo -e "  ${YELLOW}⚠️  Currently bound to: ${BOLD}${_existing_shortcut}${NC}"
+            echo -e "  ${DIM}  Entering a new shortcut will replace the existing binding.${NC}"
+            echo ""
+        fi
+        echo -e "  ${BOLD}${CYAN}Enter a keyboard shortcut combination:${NC}"
+        echo -e "  ${DIM}  Use + to combine modifiers. Examples:${NC}"
+        echo -e "  ${DIM}    Ctrl+Alt+G       Meta+Shift+A     Ctrl+Alt+Return${NC}"
+        echo -e "  ${DIM}    Ctrl+Alt+1       Meta+F5          Ctrl+Shift+S${NC}"
+        echo ""
+        echo -e "  ${DIM}  Common modifiers: Ctrl  Alt  Meta (Win key)  Shift${NC}"
+        echo -e "  ${DIM}  Keys: A-Z, F1-F12, Return, Space, Tab, Insert, Delete, etc.${NC}"
+        echo ""
+        echo -e "  ${BOLD}${CYAN}  Known taken shortcuts on your system:${NC}"
+        # Show a few taken shortcuts from kglobalshortcutsrc for reference
+        if [ -f "$HOME/.config/kglobalshortcutsrc" ]; then
+            grep -hE "^[A-Za-z].*=Ctrl\+Alt\+|=Meta\+[A-Z]" \
+                "$HOME/.config/kglobalshortcutsrc" 2>/dev/null \
+                | grep -v "^_k_" | head -8 \
+                | while IFS='=' read -r kname kval; do
+                    local _first_binding
+                    _first_binding="$(echo "$kval" | cut -d',' -f1)"
+                    printf "  ${DIM}    %-35s → %s${NC}\n" \
+                        "$(echo "$kname" | sed 's/_/ /g')" "$_first_binding"
+                done
+        fi
+        echo ""
+
+        local new_shortcut
+        read -r -p "  Keyboard shortcut (or 0 to cancel): " new_shortcut
+        [[ "$new_shortcut" == "0" ]] || [[ -z "$new_shortcut" ]] && continue
+
+        # ── Normalise: strip surrounding spaces, ensure Title case modifiers ──
+        # Accept input like "ctrl+alt+g" → "Ctrl+Alt+G"
+        local norm_shortcut
+        norm_shortcut="$(echo "$new_shortcut" | sed \
+            -e 's/\bctrl\b/Ctrl/gi' \
+            -e 's/\balt\b/Alt/gi' \
+            -e 's/\bmeta\b/Meta/gi' \
+            -e 's/\bshift\b/Shift/gi' \
+            -e 's/\breturn\b/Return/gi' \
+            -e 's/\bspace\b/Space/gi' \
+            -e 's/\btab\b/Tab/gi' \
+            -e 's/\binsert\b/Insert/gi' \
+            -e 's/\bdelete\b/Delete/gi' \
+            -e 's/\bescape\b/Escape/gi' \
+            -e 's/\bhome\b/Home/gi' \
+            -e 's/\bend\b/End/gi' \
+            -e 's/ //g')"
+
+        echo ""
+        echo -e "  ${BOLD}Confirming shortcut:${NC} ${CYAN}${BOLD}${norm_shortcut}${NC}"
+        echo -e "  ${BOLD}For application:${NC}   ${GREEN}${_sel_name}${NC}"
+        echo ""
+        read -r -p "  Apply this keyboard shortcut? [Y/n]: " confirm_bind
+        [[ "$confirm_bind" =~ ^[Nn]$ ]] && continue
+
+        # ── Step 4: Write the binding ──────────────────────────────────────────
+        # KDE Plasma keyboard shortcut binding strategy:
+        # 1. Copy .desktop to ~/.local/share/applications/ (if not already there)
+        # 2. Add/update X-KDE-GlobalAccel-CommandShortcut=true
+        # 3. Add/update X-KDE-Shortcuts=<shortcut>
+        # 4. Write entry to ~/.config/kglobalshortcutsrc under [services][<basename>]
+        # 5. Notify kglobalaccel via D-Bus to reload
+
+        local local_apps_dir="$HOME/.local/share/applications"
+        local desktop_basename
+        desktop_basename="$(basename "$_sel_file")"
+        local target_desktop="${local_apps_dir}/${desktop_basename}"
+
+        echo ""
+        echo -e "  ${DIM}Writing keyboard shortcut binding...${NC}"
+
+        # Ensure the .desktop lives in ~/.local/share/applications/
+        if [ "$_sel_file" != "$target_desktop" ]; then
+            cp -f "$_sel_file" "$target_desktop" 2>/dev/null || {
+                echo -e "  ${RED}Error: Could not copy .desktop to ${local_apps_dir}/ — check permissions.${NC}"
+                press_enter; continue
+            }
+        fi
+
+        # Remove any old X-KDE-* lines from the target desktop file
+        local tmp_desktop
+        tmp_desktop="$(mktemp /tmp/congen_dsk_bind_XXXXXX.desktop)"
+        grep -v '^X-KDE-GlobalAccel-CommandShortcut=' \
+             "$target_desktop" > "$tmp_desktop" 2>/dev/null || true
+        grep -v '^X-KDE-Shortcuts=' "$tmp_desktop" > "${tmp_desktop}.2" 2>/dev/null || true
+        mv "${tmp_desktop}.2" "$tmp_desktop"
+
+        # Append KDE shortcut keys under [Desktop Entry]
+        echo "X-KDE-GlobalAccel-CommandShortcut=true" >> "$tmp_desktop"
+        echo "X-KDE-Shortcuts=${norm_shortcut}" >> "$tmp_desktop"
+        mv -f "$tmp_desktop" "$target_desktop"
+
+        # ── Write/update kglobalshortcutsrc ───────────────────────────────────
+        local kglobal_cfg="$HOME/.config/kglobalshortcutsrc"
+        local section_key="[services][${desktop_basename}]"
+        # Action key name = same as desktop file basename without extension
+        local action_name="${desktop_basename%.desktop}"
+
+        # Remove old entry for this app from kglobalshortcutsrc if it exists
+        if [ -f "$kglobal_cfg" ]; then
+            local tmp_kg
+            tmp_kg="$(mktemp /tmp/congen_kglobal_XXXXXX.rc)"
+            python3 - "$kglobal_cfg" "$section_key" "$action_name" "$norm_shortcut" "$_sel_name" \
+                > "$tmp_kg" << 'PYEOF'
+import sys, re
+
+cfg_file   = sys.argv[1]
+section    = sys.argv[2]   # e.g. [services][foo.desktop]
+action     = sys.argv[3]   # e.g. foo
+shortcut   = sys.argv[4]   # e.g. Ctrl+Alt+G
+app_name   = sys.argv[5]   # e.g. My App
+
+with open(cfg_file, 'r', encoding='utf-8', errors='replace') as f:
+    content = f.read()
+
+# Remove existing section block for this service
+pattern = re.compile(
+    r'^\[services\]\[' + re.escape(action) + r'\.desktop\][^\[]*',
+    re.MULTILINE
+)
+content = pattern.sub('', content)
+content = re.sub(r'\n{3,}', '\n\n', content)   # collapse blank lines
+
+# Build the new section entry
+# Format: actionname=shortcut,shortcut,Friendly Description
+new_block = (
+    f'\n{section}\n'
+    f'_k_friendly_name={app_name}\n'
+    f'{action}={shortcut},{shortcut},Launch {app_name}\n'
+)
+
+content = content.rstrip('\n') + '\n' + new_block + '\n'
+print(content, end='')
+PYEOF
+
+            if [ -s "$tmp_kg" ]; then
+                mv -f "$tmp_kg" "$kglobal_cfg"
+            else
+                rm -f "$tmp_kg"
+            fi
+        else
+            # Create fresh kglobalshortcutsrc with this entry
+            {
+                echo "${section_key}"
+                echo "_k_friendly_name=${_sel_name}"
+                echo "${action_name}=${norm_shortcut},${norm_shortcut},Launch ${_sel_name}"
+                echo ""
+            } >> "$kglobal_cfg"
+        fi
+
+        # ── Step 5: Notify KDE to reload shortcuts ─────────────────────────────
+        # kglobalaccel D-Bus reload (Plasma 6)
+        if command -v qdbus >/dev/null 2>&1; then
+            qdbus org.kde.kglobalaccel /kglobalaccel org.kde.KGlobalAccel.reloadConfig \
+                >/dev/null 2>&1 || true
+        fi
+        # kbuildsycoca to rebuild service database (Plasma 5/6)
+        if command -v kbuildsycoca6 >/dev/null 2>&1; then
+            kbuildsycoca6 --noincremental >/dev/null 2>&1 &
+            disown
+        elif command -v kbuildsycoca5 >/dev/null 2>&1; then
+            kbuildsycoca5 --noincremental >/dev/null 2>&1 &
+            disown
+        fi
+
+        # ── Step 6: Confirmation screen ────────────────────────────────────────
+        clear
+        echo -e "${BOLD}${MAGENTA}========================================================================${NC}"
+        echo -e "${BOLD}${GREEN}   ✔  Keyboard Shortcut Successfully Bound!${NC}"
+        echo -e "${BOLD}${MAGENTA}========================================================================${NC}"
+        echo ""
+        echo -e "  ${BOLD}Application:${NC}       ${GREEN}${BOLD}${_sel_name}${NC}"
+        echo -e "  ${BOLD}Keyboard Shortcut:${NC} ${CYAN}${BOLD}${norm_shortcut}${NC}"
+        echo -e "  ${BOLD}Desktop File:${NC}      ${DIM}${target_desktop}${NC}"
+        echo ""
+        echo -e "  ${DIM}What was updated:${NC}"
+        echo -e "  ${GREEN}✔${NC}  ${DIM}X-KDE-GlobalAccel-CommandShortcut=true added to .desktop file${NC}"
+        echo -e "  ${GREEN}✔${NC}  ${DIM}X-KDE-Shortcuts=${norm_shortcut} written to .desktop file${NC}"
+        echo -e "  ${GREEN}✔${NC}  ${DIM}~/.config/kglobalshortcutsrc updated${NC}"
+        echo -e "  ${GREEN}✔${NC}  ${DIM}KDE kglobalaccel daemon notified to reload${NC}"
+        echo ""
+        echo -e "  ${BOLD}${YELLOW}Note:${NC} ${DIM}You may need to log out and back in, or right-click the${NC}"
+        echo -e "  ${DIM}Desktop Shortcut → Properties → Keyboard Shortcut to confirm.${NC}"
+        echo -e "  ${DIM}Alternatively run: qdbus org.kde.kglobalaccel /kglobalaccel org.kde.KGlobalAccel.reloadConfig${NC}"
+        echo ""
+        press_enter
+
+        # Update cached value in our arrays for the next display
+        shortcut_existing_keys[$_sel_idx]="$norm_shortcut"
+    done
+}
+# ─────────────────────────────────────────────────────────────────────────────
+
 manage_visual_media_suite() {
     while true; do
         clear
@@ -10556,6 +11054,7 @@ while true; do
     echo -e "${BOLD}Select an operation:${NC}"
     
     echo -e "\n  ${BOLD}${BLUE}─── [ SECTION 1: MIX ARCHIVE WORKFLOW & INGESTION ] ─────────${NC}"
+    echo -e "  ${BOLD}${MAGENTA} 0)${NC} Run Any Desktop Shortcuts — Linux (${GREEN}Games, Audio, Files, Tools, AI Servers — KDE Plasma${NC})"
     echo -e "  ${BOLD}${CYAN} 1)${NC} Run FLAC Conversion Process (${GREEN}Make_SOF_FLAC_CONVERSION.sh${NC})"
     echo -e "  ${BOLD}${CYAN} 2)${NC} Convert Audio Formats, Bit Depths & Split FLACs (${GREEN}WAV, MP3, AAC, FLAC Splitter${NC})"
     echo -e "  ${BOLD}${CYAN} 3)${NC} Retrieve Unconverted WAVs from Archive (${GREEN}MOVE_NOT_CONVERTED_WAVS.sh${NC})"
@@ -10797,6 +11296,9 @@ while true; do
             ;;
         congen|kdeconnect|congen-launch)
             manage_congen
+            ;;
+        [Ss]|shortcuts|desktop-shortcuts|ds|kioclient|run-shortcuts|desktop_shortcuts)
+            manage_desktop_shortcuts
             ;;
         *)
             echo -e "\n${RED}Invalid option! Please enter a number between 1 and 33 (or 'q' to exit).${NC}"

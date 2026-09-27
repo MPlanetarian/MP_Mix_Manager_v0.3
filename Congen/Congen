@@ -4148,6 +4148,566 @@ PYEOF
     press_enter
 }
 
+# ===========================================================================
+# Desktop Shortcut Management — KDE Plasma (kioclient + Congen Scheduling)
+# ===========================================================================
+
+# ── Shared helper: collect and parse all .desktop files ─────────────────────
+# Populates global arrays: DSK_NAMES DSK_FILES DSK_COMMENTS DSK_CATS DSK_KEYS
+collect_desktop_shortcuts() {
+    DSK_NAMES=()
+    DSK_FILES=()
+    DSK_COMMENTS=()
+    DSK_CATS=()
+    DSK_KEYS=()
+
+    local -a _search_dirs=(
+        "$HOME/Desktop/DESKTOP"
+        "$HOME/Desktop"
+        "$HOME/.local/share/applications"
+    )
+
+    local -a _all_paths=()
+    local _d
+    for _d in "${_search_dirs[@]}"; do
+        [ -d "$_d" ] || continue
+        local _f
+        while IFS= read -r -d '' _f; do
+            _all_paths+=("$_f")
+        done < <(find "$_d" -maxdepth 1 -name "*.desktop" -print0 2>/dev/null | sort -z)
+    done
+
+    local _f
+    for _f in "${_all_paths[@]}"; do
+        local _n="" _c="" _k="" _t="" _ek=""
+        _n="$(grep -m1 '^Name='             "$_f" 2>/dev/null | cut -d'=' -f2-)"
+        _c="$(grep -m1 '^Comment='          "$_f" 2>/dev/null | cut -d'=' -f2-)"
+        _k="$(grep -m1 '^Categories='       "$_f" 2>/dev/null | cut -d'=' -f2-)"
+        _t="$(grep -m1 '^Type='             "$_f" 2>/dev/null | cut -d'=' -f2-)"
+        _ek="$(grep -m1 '^X-KDE-Shortcuts=' "$_f" 2>/dev/null | cut -d'=' -f2-)"
+        [ -z "$_t" ] || [ "$_t" = "Application" ] || continue
+        [ -z "$_n" ] && _n="$(basename "$_f" .desktop)"
+        DSK_NAMES+=("$_n")
+        DSK_FILES+=("$_f")
+        DSK_COMMENTS+=("$_c")
+        DSK_CATS+=("$_k")
+        DSK_KEYS+=("$_ek")
+    done
+}
+
+# ── Category emoji helper (shared) ──────────────────────────────────────────
+_dsk_emoji() {
+    case "$1" in
+        *Game*)                       echo "🎮" ;;
+        *AudioVideo*|*Audio*|*Music*) echo "🎵" ;;
+        *AI*)                         echo "🤖" ;;
+        *Development*)                echo "🛠️ " ;;
+        *Network*)                    echo "🌐" ;;
+        *System*|*Settings*)          echo "⚙️ " ;;
+        *Graphics*|*Screensaver*)     echo "🎨" ;;
+        *Utility*)                    echo "🔧" ;;
+        *)                            echo "📌" ;;
+    esac
+}
+
+# ── Print numbered desktop shortcut list ────────────────────────────────────
+_dsk_print_list() {
+    local _i=1
+    local _idx
+    for (( _idx=0; _idx<${#DSK_NAMES[@]}; _idx++ )); do
+        local _em
+        _em="$(_dsk_emoji "${DSK_CATS[$_idx]}")"
+        local _is
+        printf -v _is "%3d" "$_i"
+        local _kb="${DSK_KEYS[$_idx]}"
+        local _badge=""
+        [ -n "$_kb" ] && _badge=" ${CYAN}[${_kb}]${RESET}"
+        if [ -n "${DSK_COMMENTS[$_idx]}" ]; then
+            printf "  ${YELLOW}%s)${RESET} %s ${BOLD}%s${RESET}%s\n" \
+                "$_is" "$_em" "${DSK_NAMES[$_idx]}" "$_badge"
+            printf "       ${DIM}%s${RESET}\n" "${DSK_COMMENTS[$_idx]}"
+        else
+            printf "  ${YELLOW}%s)${RESET} %s ${BOLD}%s${RESET}%s\n" \
+                "$_is" "$_em" "${DSK_NAMES[$_idx]}" "$_badge"
+        fi
+        _i=$(( _i + 1 ))
+    done
+}
+
+# ---------------------------------------------------------------------------
+# 1. Run Any Desktop Shortcut (Congen Desktop Shortcut Menu)
+# ---------------------------------------------------------------------------
+congen_run_desktop_shortcut() {
+    collect_desktop_shortcuts
+
+    if [ ${#DSK_NAMES[@]} -eq 0 ]; then
+        echo -e "\n  ${RED}No .desktop shortcuts found in standard locations.${RESET}"
+        press_enter; return
+    fi
+
+    while true; do
+        clear
+        echo ""
+        echo -e "${CYAN}$(hr '═')${RESET}"
+        echo -e "${CYAN}║${RESET}  ${BOLD}${WHITE}🖥️  Run Any Desktop Shortcut — KDE Plasma (kioclient)${RESET}"
+        echo -e "${CYAN}$(hr '═')${RESET}"
+        echo ""
+        echo -e "  ${DIM}All available Desktop Shortcuts on your system:${RESET}"
+        echo ""
+        _dsk_print_list
+        echo ""
+        echo -e "  ${YELLOW}  0)${RESET}  Return to Desktop Shortcut Management"
+        echo ""
+        read -rp "  $(echo -e "${BOLD}Select shortcut to launch [0-${#DSK_NAMES[@]}]: ${RESET}")" sc_ch
+
+        [[ "$sc_ch" == "0" ]] || [[ "$sc_ch" =~ ^[qQbB]$ ]] && return
+
+        if ! [[ "$sc_ch" =~ ^[0-9]+$ ]] || \
+           [ "$sc_ch" -lt 1 ] || [ "$sc_ch" -gt "${#DSK_NAMES[@]}" ]; then
+            echo -e "\n  ${RED}Invalid selection.${RESET}"; sleep 1; continue
+        fi
+
+        local _si=$(( sc_ch - 1 ))
+        local _sn="${DSK_NAMES[$_si]}"
+        local _sf="${DSK_FILES[$_si]}"
+
+        # Detect kioclient binary
+        local _kio=""
+        if   command -v kioclient  >/dev/null 2>&1; then _kio="kioclient"
+        elif command -v kioclient5 >/dev/null 2>&1; then _kio="kioclient5"
+        elif command -v kioclient6 >/dev/null 2>&1; then _kio="kioclient6"
+        else
+            echo -e "\n  ${RED}kioclient not found. Install kio-extras (dnf) or kio (apt).${RESET}"
+            press_enter; continue
+        fi
+
+        echo ""
+        echo -e "  ${BOLD}${YELLOW}▶  Launching: ${GREEN}${_sn}${RESET}"
+        echo -e "     ${DIM}${_sf}${RESET}"
+        echo ""
+
+        "$_kio" exec "$_sf" >/dev/null 2>&1 &
+        disown
+
+        log_entry "DESKTOP SHORTCUT LAUNCHED | name='${_sn}' | file='${_sf}' | tool='${_kio}'"
+
+        echo -e "  ${GREEN}✔  ${_sn} launched successfully!${RESET}"
+        echo -e "  ${DIM}The application is opening. You can launch another below.${RESET}"
+        echo ""
+        press_enter
+    done
+}
+
+# ---------------------------------------------------------------------------
+# 2. Bind a Desktop Shortcut to a Global Keyboard Shortcut (KDE Plasma)
+# ---------------------------------------------------------------------------
+congen_bind_desktop_keyboard() {
+    collect_desktop_shortcuts
+
+    if [ ${#DSK_NAMES[@]} -eq 0 ]; then
+        echo -e "\n  ${RED}No .desktop shortcuts found.${RESET}"
+        press_enter; return
+    fi
+
+    while true; do
+        clear
+        echo ""
+        echo -e "${CYAN}$(hr '═')${RESET}"
+        echo -e "${CYAN}║${RESET}  ${BOLD}${WHITE}⌨️  Bind Desktop Shortcut to Keyboard Shortcut — KDE Plasma${RESET}"
+        echo -e "${CYAN}$(hr '═')${RESET}"
+        echo ""
+        echo -e "  ${DIM}Select a Desktop Shortcut then assign a global keyboard combo.${RESET}"
+        echo -e "  ${DIM}Existing bindings shown in ${CYAN}[brackets]${RESET}."
+        echo ""
+        _dsk_print_list
+        echo ""
+        echo -e "  ${YELLOW}  0)${RESET}  Return to Desktop Shortcut Management"
+        echo ""
+        read -rp "  $(echo -e "${BOLD}Select shortcut to bind [0-${#DSK_NAMES[@]}]: ${RESET}")" sc_ch
+
+        [[ "$sc_ch" == "0" ]] || [[ "$sc_ch" =~ ^[qQbB]$ ]] && return
+
+        if ! [[ "$sc_ch" =~ ^[0-9]+$ ]] || \
+           [ "$sc_ch" -lt 1 ] || [ "$sc_ch" -gt "${#DSK_NAMES[@]}" ]; then
+            echo -e "\n  ${RED}Invalid selection.${RESET}"; sleep 1; continue
+        fi
+
+        local _si=$(( sc_ch - 1 ))
+        local _sn="${DSK_NAMES[$_si]}"
+        local _sf="${DSK_FILES[$_si]}"
+        local _sc="${DSK_COMMENTS[$_si]}"
+        local _sk="${DSK_KEYS[$_si]}"
+
+        # ── Shortcut input ─────────────────────────────────────────────────
+        clear
+        echo ""
+        echo -e "${CYAN}$(hr '═')${RESET}"
+        echo -e "${CYAN}║${RESET}  ${BOLD}${WHITE}⌨️  Assign Keyboard Shortcut — ${_sn}${RESET}"
+        echo -e "${CYAN}$(hr '═')${RESET}"
+        echo ""
+        echo -e "  ${BOLD}Application :${RESET} ${GREEN}${_sn}${RESET}"
+        [ -n "$_sc" ] && echo -e "  ${DIM}${_sc}${RESET}"
+        echo ""
+        if [ -n "$_sk" ]; then
+            echo -e "  ${YELLOW}⚠  Currently bound to: ${BOLD}${_sk}${RESET}"
+            echo -e "  ${DIM}  Entering a new shortcut will replace this.${RESET}"
+            echo ""
+        fi
+        echo -e "  ${BOLD}${CYAN}Enter keyboard shortcut combination:${RESET}"
+        echo -e "  ${DIM}  Examples: Ctrl+Alt+G   Meta+Shift+A   Ctrl+Alt+Return${RESET}"
+        echo -e "  ${DIM}  Modifiers: Ctrl  Alt  Meta (Win)  Shift${RESET}"
+        echo ""
+
+        # Show known used Ctrl+Alt combos for reference
+        if [ -f "$HOME/.config/kglobalshortcutsrc" ]; then
+            echo -e "  ${DIM}  Taken Ctrl+Alt combos on your system:${RESET}"
+            grep -h "=Ctrl+Alt+" "$HOME/.config/kglobalshortcutsrc" 2>/dev/null \
+                | grep -v "^_k_" | head -6 \
+                | while IFS='=' read -r kname kval; do
+                    local _fb
+                    _fb="$(echo "$kval" | cut -d',' -f1)"
+                    printf "  ${DIM}    %-40s %s${RESET}\n" \
+                        "$(echo "$kname" | sed 's/_/ /g')" "$_fb"
+                done
+            echo ""
+        fi
+
+        local new_sc
+        read -rp "  $(echo -e "${BOLD}Keyboard shortcut (or 0 to cancel): ${RESET}")" new_sc
+        [[ "$new_sc" == "0" ]] || [[ -z "$new_sc" ]] && continue
+
+        # Normalise
+        local norm_sc
+        norm_sc="$(echo "$new_sc" | sed \
+            -e 's/\bctrl\b/Ctrl/gi'  -e 's/\balt\b/Alt/gi' \
+            -e 's/\bmeta\b/Meta/gi'  -e 's/\bshift\b/Shift/gi' \
+            -e 's/\breturn\b/Return/gi' -e 's/\bspace\b/Space/gi' \
+            -e 's/\btab\b/Tab/gi'    -e 's/\binsert\b/Insert/gi' \
+            -e 's/\bdelete\b/Delete/gi' -e 's/\bescape\b/Escape/gi' \
+            -e 's/\bhome\b/Home/gi'  -e 's/\bend\b/End/gi' \
+            -e 's/ //g')"
+
+        echo ""
+        echo -e "  ${BOLD}Shortcut   :${RESET} ${CYAN}${BOLD}${norm_sc}${RESET}"
+        echo -e "  ${BOLD}Application:${RESET} ${GREEN}${_sn}${RESET}"
+        echo ""
+        read -rp "  $(echo -e "${BOLD}Apply this binding? [Y/n]: ${RESET}")" _conf
+        [[ "$_conf" =~ ^[Nn]$ ]] && continue
+
+        # ── Write to ~/.local/share/applications/ ──────────────────────────
+        local local_apps="$HOME/.local/share/applications"
+        local dsk_base
+        dsk_base="$(basename "$_sf")"
+        local target_dsk="${local_apps}/${dsk_base}"
+
+        [ "$_sf" != "$target_dsk" ] && cp -f "$_sf" "$target_dsk"
+
+        # Strip old X-KDE-* lines and re-append
+        local _tmp
+        _tmp="$(mktemp /tmp/congen_dsk_XXXXXX.desktop)"
+        grep -v '^X-KDE-GlobalAccel-CommandShortcut=' "$target_dsk" \
+            | grep -v '^X-KDE-Shortcuts=' > "$_tmp" 2>/dev/null || true
+        echo "X-KDE-GlobalAccel-CommandShortcut=true" >> "$_tmp"
+        echo "X-KDE-Shortcuts=${norm_sc}" >> "$_tmp"
+        mv -f "$_tmp" "$target_dsk"
+
+        # ── Write to kglobalshortcutsrc ────────────────────────────────────
+        local kgrc="$HOME/.config/kglobalshortcutsrc"
+        local section_key="[services][${dsk_base}]"
+        local action="${dsk_base%.desktop}"
+
+        if [ -f "$kgrc" ]; then
+            local _tkg
+            _tkg="$(mktemp /tmp/congen_kgrc_XXXXXX.rc)"
+            python3 - "$kgrc" "$action" "$norm_sc" "$_sn" > "$_tkg" << 'PYEOF'
+import sys, re
+cfg, action, shortcut, app = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+with open(cfg, 'r', encoding='utf-8', errors='replace') as f:
+    content = f.read()
+# Remove existing block
+content = re.sub(
+    r'^\[services\]\[' + re.escape(action) + r'\.desktop\][^\[]*',
+    '', content, flags=re.MULTILINE)
+content = re.sub(r'\n{3,}', '\n\n', content)
+new_block = (
+    f'\n[services][{action}.desktop]\n'
+    f'_k_friendly_name={app}\n'
+    f'{action}={shortcut},{shortcut},Launch {app}\n'
+)
+print(content.rstrip('\n') + '\n' + new_block + '\n', end='')
+PYEOF
+            [ -s "$_tkg" ] && mv -f "$_tkg" "$kgrc" || rm -f "$_tkg"
+        else
+            { echo "${section_key}"
+              echo "_k_friendly_name=${_sn}"
+              echo "${action}=${norm_sc},${norm_sc},Launch ${_sn}"
+              echo ""; } >> "$kgrc"
+        fi
+
+        # Notify KDE
+        if command -v qdbus >/dev/null 2>&1; then
+            qdbus org.kde.kglobalaccel /kglobalaccel \
+                org.kde.KGlobalAccel.reloadConfig >/dev/null 2>&1 || true
+        fi
+        command -v kbuildsycoca6 >/dev/null 2>&1 && \
+            { kbuildsycoca6 --noincremental >/dev/null 2>&1 & disown; }
+
+        log_entry "KEYBOARD SHORTCUT BOUND | app='${_sn}' | shortcut='${norm_sc}' | file='${target_dsk}'"
+
+        echo ""
+        echo -e "${CYAN}$(hr '─')${RESET}"
+        echo -e "  ${GREEN}${BOLD}✔  Keyboard Shortcut Bound Successfully!${RESET}"
+        echo ""
+        echo -e "  ${BOLD}Application :${RESET} ${GREEN}${_sn}${RESET}"
+        echo -e "  ${BOLD}Shortcut    :${RESET} ${CYAN}${BOLD}${norm_sc}${RESET}"
+        echo -e "  ${BOLD}Desktop File:${RESET} ${DIM}${target_dsk}${RESET}"
+        echo ""
+        echo -e "  ${GREEN}✔${RESET} ${DIM}X-KDE-Shortcuts=${norm_sc} written${RESET}"
+        echo -e "  ${GREEN}✔${RESET} ${DIM}~/.config/kglobalshortcutsrc updated${RESET}"
+        echo -e "  ${GREEN}✔${RESET} ${DIM}KDE daemon notified${RESET}"
+        echo ""
+        echo -e "  ${YELLOW}Tip:${RESET} ${DIM}Press ${CYAN}${norm_sc}${RESET} ${DIM}anywhere on KDE to fire the shortcut.${RESET}"
+        echo ""
+        press_enter
+
+        # Refresh cached key for this entry
+        DSK_KEYS[$_si]="$norm_sc"
+    done
+}
+
+# ---------------------------------------------------------------------------
+# 3. Schedule a Desktop Shortcut to Launch at a Future Date/Time
+# ---------------------------------------------------------------------------
+congen_schedule_desktop_shortcut() {
+    collect_desktop_shortcuts
+
+    if [ ${#DSK_NAMES[@]} -eq 0 ]; then
+        echo -e "\n  ${RED}No .desktop shortcuts found.${RESET}"
+        press_enter; return
+    fi
+
+    clear
+    echo ""
+    echo -e "${CYAN}$(hr '═')${RESET}"
+    echo -e "${CYAN}║${RESET}  ${BOLD}${WHITE}🗓️  Schedule Desktop Shortcut to Launch — Congen${RESET}"
+    echo -e "${CYAN}$(hr '═')${RESET}"
+    echo ""
+
+    # Check scheduling backend
+    local backend
+    backend=$(schedule_detect_backend)
+    if [ "$backend" = "none" ]; then
+        echo -e "  ${RED}${BOLD}✘  No scheduling backend found.${RESET}"
+        echo -e "  ${DIM}  Install 'at' via: sudo dnf install at  OR  sudo apt install at${RESET}"
+        echo ""
+        press_enter; return
+    fi
+    echo -e "  ${DIM}Scheduling backend: ${BOLD}${backend}${RESET}"
+    echo ""
+
+    # ── Step 1: select desktop shortcut ──────────────────────────────────────
+    echo -e "  ${BOLD}Available Desktop Shortcuts:${RESET}"
+    echo ""
+    _dsk_print_list
+    echo ""
+    read -rp "  $(echo -e "${BOLD}Select shortcut to schedule [1-${#DSK_NAMES[@]}] (0=cancel): ${RESET}")" sc_ch
+
+    [[ "$sc_ch" == "0" ]] || [[ -z "$sc_ch" ]] && return
+
+    if ! [[ "$sc_ch" =~ ^[0-9]+$ ]] || \
+       [ "$sc_ch" -lt 1 ] || [ "$sc_ch" -gt "${#DSK_NAMES[@]}" ]; then
+        echo -e "\n  ${RED}Invalid selection. Aborting.${RESET}"; sleep 1; return
+    fi
+
+    local _si=$(( sc_ch - 1 ))
+    local _sn="${DSK_NAMES[$_si]}"
+    local _sf="${DSK_FILES[$_si]}"
+
+    # Detect kioclient binary (will be embedded in the job script)
+    local _kio=""
+    if   command -v kioclient  >/dev/null 2>&1; then _kio="kioclient"
+    elif command -v kioclient5 >/dev/null 2>&1; then _kio="kioclient5"
+    elif command -v kioclient6 >/dev/null 2>&1; then _kio="kioclient6"
+    else
+        echo -e "\n  ${RED}kioclient not found. Cannot build job script.${RESET}"
+        press_enter; return
+    fi
+
+    # ── Step 2: date & time input ─────────────────────────────────────────────
+    echo ""
+    echo -e "  ${BOLD}Selected:${RESET} ${GREEN}${_sn}${RESET}"
+    echo ""
+    echo -e "  ${BOLD}Schedule date & time${RESET}"
+    echo -e "  ${DIM}Format: YYYY-MM-DD HH:MM  (24-hour, local time)${RESET}"
+    echo -e "  ${DIM}Example: $(date -d '+1 hour' '+%Y-%m-%d %H:%M' 2>/dev/null || date '+%Y-%m-%d %H:%M')${RESET}"
+    echo ""
+
+    local run_dt dt_status
+    while true; do
+        read -rp "  $(echo -e "${BOLD}Run at: ${RESET}")" run_dt
+        dt_status=$(schedule_validate_datetime "$run_dt")
+        [ "$dt_status" = "ok"      ] && break
+        [ "$dt_status" = "past"    ] && echo -e "  ${RED}That time is in the past. Use a future time.${RESET}" && continue
+        echo -e "  ${RED}Invalid format. Use YYYY-MM-DD HH:MM (e.g. 2026-10-01 09:00).${RESET}"
+    done
+
+    # ── Step 3: optional label ────────────────────────────────────────────────
+    echo ""
+    local job_label
+    read -rp "  $(echo -e "${BOLD}Job label (optional, press Enter to skip): ${RESET}")" job_label
+    [ -z "$job_label" ] && job_label="Launch ${_sn}"
+
+    # ── Step 4: build runner script ───────────────────────────────────────────
+    mkdir -p "${SCHEDULE_JOBS_DIR}"
+    local job_ts
+    job_ts="$(date '+%Y%m%d_%H%M%S')"
+    local runner="${SCHEDULE_JOBS_DIR}/dsk_job_${job_ts}.sh"
+
+    cat > "$runner" << JOBEOF
+#!/usr/bin/env bash
+# Congen Desktop Shortcut Scheduled Job
+# Shortcut  : ${_sn}
+# File      : ${_sf}
+# Scheduled : ${run_dt}
+# Created   : $(date '+%Y-%m-%d %H:%M:%S')
+# Label     : ${job_label}
+
+LOG_FILE='${LOG_FILE}'
+
+ts() { date '+%Y-%m-%d %H:%M:%S'; }
+
+{
+    echo '========================================'
+    echo '  Congen Desktop Shortcut Job — START'
+    echo "  Shortcut  : ${_sn}"
+    echo "  Triggered : \$(ts)"
+    echo '========================================'
+} >> "\${LOG_FILE}"
+
+set +e
+${_kio} exec '${_sf}' >/dev/null 2>&1
+_ec=\$?
+set -e
+
+if [ \$_ec -eq 0 ]; then _status='SUCCESS'; else _status='FAILED'; fi
+
+{
+    echo '========================================'
+    echo '  Congen Run Audit'
+    echo "  Timestamp : \$(ts)"
+    echo "  Command   : ${_sn} (Desktop Shortcut)"
+    echo "  Script    : ${_sf}"
+    echo "  Status    : \${_status}"
+    echo "  Exit Code : \${_ec}"
+    echo "  Triggered : Scheduled Job — ${job_label}"
+    echo '========================================'
+} >> "\${LOG_FILE}"
+
+{
+    echo '========================================'
+    echo '  Congen Desktop Shortcut Job — COMPLETE'
+    echo "  Label     : ${job_label}"
+    echo "  Finished  : \$(ts)"
+    echo '========================================'
+} >> "\${LOG_FILE}"
+JOBEOF
+    chmod +x "$runner"
+
+    # ── Step 5: submit to scheduler ───────────────────────────────────────────
+    echo ""
+    echo -e "  ${DIM}Submitting job to ${backend}…${RESET}"
+
+    local job_id=""
+    set +e
+    if [ "$backend" = "at" ]; then
+        local at_time at_date at_stderr at_ec
+        at_time="${run_dt##* }"
+        at_date="${run_dt%% *}"
+        at_stderr=$(echo "bash '${runner}'" | at "$at_time" "$at_date" 2>&1)
+        at_ec=$?
+        job_id="$(echo "$at_stderr" | grep -oP 'job \K[0-9]+' | head -1)"
+        [ -z "$job_id" ] && job_id="at-$(date +%s)"
+        if [ $at_ec -ne 0 ]; then
+            echo -e "  ${RED}${BOLD}✘  'at' submission failed:${RESET}"
+            echo "$at_stderr"
+            set -e; press_enter; return
+        fi
+    elif [ "$backend" = "systemd-run" ]; then
+        local sd_time="${run_dt}:00"
+        local sd_out sd_ec
+        sd_out=$(systemd-run --user \
+                     --on-calendar="$sd_time" \
+                     --unit="congen-dsk-${job_ts}" \
+                     bash "$runner" 2>&1)
+        sd_ec=$?
+        job_id="congen-dsk-${job_ts}"
+        if [ $sd_ec -ne 0 ]; then
+            echo -e "  ${RED}${BOLD}✘  systemd-run submission failed:${RESET}"
+            echo "$sd_out"
+            set -e; press_enter; return
+        fi
+    fi
+    set -e
+
+    # ── Step 6: record ────────────────────────────────────────────────────────
+    schedule_record "$job_id" "$run_dt" "$runner" "$_sn" "$backend"
+    log_entry "DESKTOP SHORTCUT SCHEDULED | job_id='${job_id}' | shortcut='${_sn}' | file='${_sf}' | time='${run_dt}' | label='${job_label}'"
+
+    # ── Step 7: confirmation ──────────────────────────────────────────────────
+    echo ""
+    echo -e "${CYAN}$(hr '─')${RESET}"
+    echo -e "  ${GREEN}${BOLD}✔  Desktop Shortcut Scheduled Successfully!${RESET}"
+    echo ""
+    echo -e "  ${BOLD}Job ID      :${RESET} ${YELLOW}${job_id}${RESET}"
+    echo -e "  ${BOLD}Shortcut    :${RESET} ${GREEN}${_sn}${RESET}"
+    echo -e "  ${BOLD}Backend     :${RESET} ${backend}"
+    echo -e "  ${BOLD}Run At      :${RESET} ${run_dt}"
+    echo -e "  ${BOLD}Label       :${RESET} ${job_label}"
+    echo -e "  ${BOLD}Runner      :${RESET} ${DIM}${runner}${RESET}"
+    echo ""
+    echo -e "  ${DIM}Results will appear in Congen.log and Schedule view (option 4).${RESET}"
+    echo -e "${CYAN}$(hr '─')${RESET}"
+    echo ""
+    press_enter
+}
+
+# ---------------------------------------------------------------------------
+# Desktop Shortcut Management — submenu
+# ---------------------------------------------------------------------------
+desktop_shortcut_menu() {
+    while true; do
+        clear
+        echo ""
+        echo -e "${CYAN}$(hr '═')${RESET}"
+        echo -e "${CYAN}║${RESET}  ${BOLD}${WHITE}🖥️  Desktop Shortcut Management — KDE Plasma${RESET}"
+        echo -e "${CYAN}$(hr '═')${RESET}"
+        echo ""
+        echo -e "  ${DIM}Advanced Desktop Shortcut Management powered by Congen.${RESET}"
+        echo -e "  ${DIM}Launch, bind keyboard shortcuts, and schedule your Desktop Shortcuts.${RESET}"
+        echo ""
+        echo -e "    ${YELLOW}[1]${RESET}  Run Any Desktop Shortcut                ${DIM}(kioclient exec — instant launch)${RESET}"
+        echo -e "    ${YELLOW}[2]${RESET}  Bind Desktop Shortcut to Keyboard Key   ${DIM}(Ctrl+Alt+X global hotkey — KDE Plasma)${RESET}"
+        echo -e "    ${YELLOW}[3]${RESET}  Schedule Desktop Shortcut to Launch     ${DIM}(future date/time via at / systemd-run)${RESET}"
+        echo -e "    ${YELLOW}[4]${RESET}  View Scheduled Jobs                     ${DIM}(Congen Schedule Log)${RESET}"
+        echo ""
+        echo -e "    ${YELLOW}[b]${RESET}  Back to Main Menu"
+        echo ""
+        read -rp "  $(echo -e "${BOLD}Select option: ${RESET}")" opt
+
+        case "${opt,,}" in
+            1) congen_run_desktop_shortcut ;;
+            2) congen_bind_desktop_keyboard ;;
+            3) congen_schedule_desktop_shortcut ;;
+            4) schedule_view ;;
+            b|back) return ;;
+            *)
+                echo -e "\n  ${RED}Invalid option.${RESET} Please select 1–4 or b."
+                sleep 1
+                ;;
+        esac
+    done
+}
+
 # ---------------------------------------------------------------------------
 # Main menu
 # ---------------------------------------------------------------------------
@@ -4166,6 +4726,7 @@ main_menu() {
         echo -e "    ${YELLOW}[7]${RESET}  Generate Congen Commands Manual (Multi)"
         echo -e "    ${YELLOW}[8]${RESET}  Congen Alerts                         ${DIM}(sound notifications)${RESET}"
         echo -e "    ${YELLOW}[9]${RESET}  Generate Command from Keyboard Shortcut"
+        echo -e "    ${YELLOW}[10]${RESET} 🖥️  Desktop Shortcut Management         ${DIM}(Run, Bind Keys & Schedule — KDE Plasma)${RESET}"
         echo -e "    ${YELLOW}[q]${RESET}  Quit"
         echo ""
 
@@ -4181,6 +4742,7 @@ main_menu() {
             7) generate_manual ;;
             8) congen_alerts_menu ;;
             9) generate_from_shortcut ;;
+            10) desktop_shortcut_menu ;;
             q|quit|exit)
                 echo ""
                 echo -e "  ${DIM}Goodbye.${RESET}"
@@ -4189,7 +4751,7 @@ main_menu() {
                 exit 0
                 ;;
             *)
-                echo -e "\n  ${RED}Invalid option.${RESET} Please select 1–9 or q."
+                echo -e "\n  ${RED}Invalid option.${RESET} Please select 1–10 or q."
                 sleep 1
                 ;;
         esac
