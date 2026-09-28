@@ -155,6 +155,11 @@ ${BOLD}AVAILABLE MENU OPTIONS (INTERACTIVE & DIRECT SHORTCUTS):${NC}
        Configure Wayland/X11, display scaling, audio routing, or kill audio apps.
   ${BOLD}${CYAN}29${NC}   ${BOLD}Universal System Maintenance & Cleanup${NC}
        Reclaim drive space, clean package manager caches, update OS packages.
+       Submenu ${BOLD}${CYAN}8${NC} on macOS/Windows, ${BOLD}${CYAN}7${NC} on Linux/FreeBSD, or ${BOLD}${CYAN}m${NC}:
+       ${BOLD}Monitor System Processes and Bash Commands with System Info${NC}
+       (MP_Monitor_Bash.sh, macOS and Linux, new terminal tab).
+  ${BOLD}${CYAN}m${NC}    ${BOLD}Monitor System Processes and Bash Commands with System Info${NC}
+       Same monitor, directly from the main menu. Also: monitor, mp-monitor.
   ${BOLD}${CYAN}30${NC}   ${BOLD}AI Assistant & Local LLM Servers Suite${NC}
        Manage Claude, GPT, Ollama (:11434), DeepSeek (:3080), WAN2GP, and Beszel (:8090).
   ${BOLD}${CYAN}31${NC}   ${BOLD}Dynamic MOTD Banner Manager & Drive Burner${NC}
@@ -186,6 +191,7 @@ ${BOLD}DIRECT COMMAND SHORTCUTS:${NC}
     ${CYAN}gpu-screen-recorder${NC}  Record a DJ mix with GPU Screen Recorder (Linux)
     ${CYAN}alarm${NC} | ${CYAN}alarm-clock${NC}   Launch MPlanetarians Alarm Clock (Wake Up Edition)
     ${CYAN}congen${NC} | ${CYAN}kdeconnect${NC}    Launch Congen KDE Connect Commands Generator & Remote Control
+    ${CYAN}m${NC} | ${CYAN}monitor${NC}     Monitor processes, shell commands, and system info in a new tab
 
 ${BOLD}EXAMPLES:${NC}
   ${DIM}# Launch interactive terminal UI:${NC}

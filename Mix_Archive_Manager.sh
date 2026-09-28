@@ -762,10 +762,130 @@ launch_in_terminal() {
     local mode="${3:-tab}" # "tab" or "window"
 
     if [ "$OS_TYPE" = "macos" ]; then
-        local escaped_pwd escaped_cmd
-        escaped_pwd=$(printf '%s' "$PWD" | sed 's/"/\\"/g')
-        escaped_cmd=$(printf '%s' "$cmd" | sed 's/"/\\"/g')
-        osascript -e "tell application \"Terminal\" to do script \"cd \\\"$escaped_pwd\\\" && $escaped_cmd\"" >/dev/null 2>&1 &
+        if [ "${TERM_PROGRAM:-}" = "iTerm.app" ]; then
+            osascript - "$cmd" <<'APPLESCRIPT' >/dev/null 2>&1
+on run argv
+    set cmdText to item 1 of argv
+    tell application "iTerm"
+        activate
+        if (count of windows) = 0 then
+            create window with default profile
+        end if
+        tell current window
+            create tab with default profile
+            tell current session of current tab
+                write text cmdText
+            end tell
+        end tell
+    end tell
+end run
+APPLESCRIPT
+            return 0
+        fi
+
+        if [ "$mode" = "window" ]; then
+            osascript - "$cmd" <<'APPLESCRIPT' >/dev/null 2>&1
+on run argv
+    tell application "Terminal"
+        activate
+        do script (item 1 of argv)
+    end tell
+end run
+APPLESCRIPT
+            return 0
+        fi
+
+        # New tab in the Terminal window that is already in front. The new-tab
+        # button is used because this Mac's Shell > New Tab action opens a
+        # separate window. A fresh login tab is the only place the command is sent.
+        local launch_result=""
+        launch_result="$(osascript - "$cmd" <<'APPLESCRIPT'
+on run argv
+    set cmdText to item 1 of argv
+    tell application "System Events"
+        tell process "Terminal"
+            set frontmost to true
+            key code 53
+        end tell
+    end tell
+    delay 0.1
+    set beforeCount to 0
+    tell application "System Events"
+        tell process "Terminal"
+            repeat with w in windows
+                try
+                    set beforeCount to beforeCount + (count of radio buttons of tab group 1 of w)
+                end try
+            end repeat
+        end tell
+    end tell
+    tell application "Terminal"
+        set oldIds to {}
+        repeat with w in windows
+            try
+                set end of oldIds to (id of w as integer) as string
+            end try
+        end repeat
+    end tell
+    ignoring application responses
+        tell application "System Events"
+            tell process "Terminal"
+                set frontmost to true
+                click button 1 of tab group 1 of window 1
+            end tell
+        end tell
+    end ignoring
+    delay 0.7
+    set afterCount to 0
+    tell application "System Events"
+        tell process "Terminal"
+            repeat with w in windows
+                try
+                    set afterCount to afterCount + (count of radio buttons of tab group 1 of w)
+                end try
+            end repeat
+        end tell
+    end tell
+    tell application "Terminal"
+        set targetWin to missing value
+        repeat with w in windows
+            try
+                set wid to (id of w as integer) as string
+                set known to false
+                repeat with oldId in oldIds
+                    if (oldId as string) is equal to wid then set known to true
+                end repeat
+                if not known then
+                    set hist to history of selected tab of w
+                    set nm to name of w
+                    if (count of hist) < 900 and hist contains "Last login" and nm does not contain "grok" and nm does not contain "ffmpeg" and nm does not contain "Mix Archive" then
+                        set targetWin to w
+                        exit repeat
+                    end if
+                end if
+            end try
+        end repeat
+        if targetWin is not missing value then
+            do script cmdText in selected tab of targetWin
+            if afterCount > beforeCount then
+                return "tab"
+            end if
+            return "window"
+        end if
+        do script cmdText
+        return "fallback"
+    end tell
+end run
+APPLESCRIPT
+)" || launch_result="fail"
+        case "$launch_result" in
+            tab*|window*|fallback*) return 0 ;;
+        esac
+        osascript - "$cmd" <<'APPLESCRIPT' >/dev/null 2>&1
+on run argv
+    tell application "Terminal" to do script (item 1 of argv)
+end run
+APPLESCRIPT
         return 0
     elif [ "$OS_TYPE" = "windows" ]; then
         if command -v wt.exe >/dev/null 2>&1; then
@@ -813,7 +933,12 @@ launch_in_terminal() {
             nohup xdg-terminal-exec bash -c "$cmd" >/dev/null 2>&1 &
             return 0
         elif command -v gnome-terminal >/dev/null 2>&1; then
-            nohup gnome-terminal --title="$title" -- bash -c "$cmd" >/dev/null 2>&1 &
+            nohup gnome-terminal --tab --title="$title" --working-directory="$PWD" -- bash -c "$cmd" >/dev/null 2>&1 &
+            return 0
+        elif command -v xfce4-terminal >/dev/null 2>&1; then
+            local xfce_cmd
+            xfce_cmd="$(printf '%q' "$cmd")"
+            nohup xfce4-terminal --tab --title="$title" --working-directory="$PWD" -e "bash -lc ${xfce_cmd}" >/dev/null 2>&1 &
             return 0
         elif command -v xterm >/dev/null 2>&1; then
             nohup xterm -T "$title" -e bash -c "$cmd" >/dev/null 2>&1 &
@@ -3530,6 +3655,65 @@ manage_network_services() {
     done
 }
 
+launch_system_process_monitor() {
+    local refresh="${1:-10}"
+    local mon="$SCRIPT_DIR/scripts/MP_Monitor_Bash.sh"
+    [ ! -f "$mon" ] && mon="$SCRIPT_DIR/MP_Monitor_Bash.sh"
+    if [ ! -f "$mon" ]; then
+        echo -e "\n${RED}Monitor script not found: MP_Monitor_Bash.sh${NC}"
+        press_enter
+        return 1
+    fi
+
+    local mon_q dir_q run_cmd
+    mon_q="$(printf '%q' "$mon")"
+    dir_q="$(printf '%q' "$SCRIPT_DIR")"
+    run_cmd="cd ${dir_q} && exec bash ${mon_q} --refresh ${refresh}"
+
+    echo -e "\n${BOLD}${GREEN}Opening Monitor System Processes and Bash Commands with System Info in a new terminal tab...${NC}\n"
+    if launch_in_terminal "Monitor System Processes and Bash Commands with System Info" "$run_cmd" "tab"; then
+        echo -e "${GREEN}✓ Monitor is running in a new tab of this Terminal. This menu stays here.${NC}"
+        echo -e "${DIM}Refresh interval: ${refresh}s. History log: ${SCRIPT_DIR}/running_history.log${NC}"
+        sleep 1.2
+    else
+        echo -e "${YELLOW}No separate terminal tab was available. Running the monitor here. Ctrl+C returns to the menu.${NC}\n"
+        sleep 0.6
+        trap ':' INT
+        bash "$mon" --refresh "$refresh"
+        trap - INT
+        press_enter
+    fi
+}
+
+manage_process_and_bash_monitor() {
+    while true; do
+        clear
+        echo -e "${BOLD}${MAGENTA}==================================================${NC}"
+        echo -e "${BOLD}${MAGENTA} Monitor System Processes and Bash Commands with System Info ${NC}"
+        echo -e "${BOLD}${MAGENTA}==================================================${NC}"
+        echo ""
+        echo -e "  ${DIM}macOS and Linux. Opens in a new tab of the terminal running Mix Manager.${NC}"
+        echo -e "  ${DIM}Snapshots append to running_history.log and are never cleared.${NC}"
+        echo ""
+        echo -e "  ${BOLD}${CYAN}1)${NC} Launch monitor ${GREEN}(refresh every 10 seconds)${NC}"
+        echo -e "  ${BOLD}${CYAN}2)${NC} Launch monitor ${GREEN}(refresh every 5 seconds)${NC}"
+        echo -e "  ${BOLD}${CYAN}3)${NC} Launch monitor ${GREEN}(refresh every 2 seconds)${NC}"
+        echo -e "  ${BOLD}${CYAN}4)${NC} Return"
+        echo ""
+        read -r -p "Enter choice [1-4]: " mon_choice
+        case "$mon_choice" in
+            1) launch_system_process_monitor 10 ;;
+            2) launch_system_process_monitor 5 ;;
+            3) launch_system_process_monitor 2 ;;
+            4|0|[qQ]|back) return 0 ;;
+            *)
+                echo -e "\n${RED}Invalid choice!${NC}"
+                sleep 1.2
+                ;;
+        esac
+    done
+}
+
 manage_system_maintenance() {
     while true; do
         clear
@@ -3564,9 +3748,10 @@ manage_system_maintenance() {
             echo -e "  ${BOLD}${CYAN}5)${NC} Purge Inactive System RAM Memory (${GREEN}sudo purge${NC})"
             echo -e "  ${BOLD}${CYAN}6)${NC} Clear User Caches & Temporary Files (${GREEN}rm -rf ~/Library/Caches/*${NC})"
             echo -e "  ${BOLD}${CYAN}7)${NC} ${BOLD}${YELLOW}Run Complete macOS Maintenance Suite${NC}"
-            echo -e "  ${BOLD}${CYAN}8)${NC} Return to Main Menu"
+            echo -e "  ${BOLD}${CYAN}8)${NC} Monitor System Processes and Bash Commands with System Info ${GREEN}(MP_Monitor_Bash.sh, new Terminal tab)${NC}"
+            echo -e "  ${BOLD}${CYAN}9)${NC} Return to Main Menu"
             echo ""
-            read -r -p "Enter choice [1-8]: " m_choice
+            read -r -p "Enter choice [1-9, or m]: " m_choice
             case "$m_choice" in
                 1)
                     local drive_sh="$SCRIPT_DIR/Get_All_Drive_Space.sh"
@@ -3620,7 +3805,10 @@ manage_system_maintenance() {
                     echo -e "${GREEN}✓ Cleanup suite finished!${NC}"
                     press_enter
                     ;;
-                8|7|0|[qQ])
+                8|m|monitor|mp-monitor)
+                    manage_process_and_bash_monitor
+                    ;;
+                9|0|[qQ])
                     return 0
                     ;;
                 *)
@@ -3639,9 +3827,10 @@ manage_system_maintenance() {
             echo -e "  ${BOLD}${CYAN}5)${NC} Empty Windows Recycle Bin (${GREEN}Clear-RecycleBin${NC})"
             echo -e "  ${BOLD}${CYAN}6)${NC} Optimize / TRIM Primary Drive C: (${GREEN}Optimize-Volume${NC})"
             echo -e "  ${BOLD}${CYAN}7)${NC} ${BOLD}${YELLOW}Run Complete Windows Maintenance Suite${NC}"
-            echo -e "  ${BOLD}${CYAN}8)${NC} Return to Main Menu"
+            echo -e "  ${BOLD}${CYAN}8)${NC} Monitor System Processes and Bash Commands with System Info ${GREEN}(MP_Monitor_Bash.sh, new Terminal tab)${NC}"
+            echo -e "  ${BOLD}${CYAN}9)${NC} Return to Main Menu"
             echo ""
-            read -r -p "Enter choice [1-8]: " m_choice
+            read -r -p "Enter choice [1-9, or m]: " m_choice
             case "$m_choice" in
                 1)
                     local drive_sh="$SCRIPT_DIR/Get_All_Drive_Space.sh"
@@ -3698,7 +3887,10 @@ manage_system_maintenance() {
                     echo -e "${GREEN}✓ Windows maintenance suite finished!${NC}"
                     press_enter
                     ;;
-                8|0|[qQ])
+                8|m|monitor|mp-monitor)
+                    manage_process_and_bash_monitor
+                    ;;
+                9|0|[qQ])
                     return 0
                     ;;
                 *)
@@ -3721,9 +3913,10 @@ manage_system_maintenance() {
             echo -e "  ${BOLD}${CYAN}4)${NC} Audit Installed Packages for Vulnerabilities (${GREEN}pkg audit -F${NC})"
             echo -e "  ${BOLD}${CYAN}5)${NC} Clear User Caches & /tmp (${GREEN}rm -rf ~/.cache/* /tmp/*${NC})"
             echo -e "  ${BOLD}${CYAN}6)${NC} ${BOLD}${YELLOW}Run Complete FreeBSD Maintenance Suite${NC}"
-            echo -e "  ${BOLD}${CYAN}7)${NC} Return to Main Menu"
+            echo -e "  ${BOLD}${CYAN}7)${NC} Monitor System Processes and Bash Commands with System Info ${GREEN}(MP_Monitor_Bash.sh, new Terminal tab)${NC}"
+            echo -e "  ${BOLD}${CYAN}8)${NC} Return to Main Menu"
             echo ""
-            read -r -p "Enter choice [1-7]: " m_choice
+            read -r -p "Enter choice [1-8, or m]: " m_choice
             case "$m_choice" in
                 1)
                     local drive_sh="$SCRIPT_DIR/Get_All_Drive_Space.sh"
@@ -3767,7 +3960,10 @@ manage_system_maintenance() {
                     echo -e "${GREEN}✓ FreeBSD maintenance suite finished!${NC}"
                     press_enter
                     ;;
-                7|0|[qQ])
+                7|m|monitor|mp-monitor)
+                    manage_process_and_bash_monitor
+                    ;;
+                8|0|[qQ])
                     return 0
                     ;;
                 *)
@@ -3829,9 +4025,10 @@ manage_system_maintenance() {
             echo -e "  ${BOLD}${CYAN}4)${NC} Vacuum System Logs (${GREEN}sudo journalctl --vacuum-size=200M${NC})"
             echo -e "  ${BOLD}${CYAN}5)${NC} Optimize & Trim SSD Storage (${GREEN}sudo fstrim -av${NC})"
             echo -e "  ${BOLD}${CYAN}6)${NC} ${BOLD}${YELLOW}Run Complete Cleanup Suite${NC} (Clean System + Vacuum Logs + SSD Trim)"
-            echo -e "  ${BOLD}${CYAN}7)${NC} Return to Main Menu"
+            echo -e "  ${BOLD}${CYAN}7)${NC} Monitor System Processes and Bash Commands with System Info ${GREEN}(MP_Monitor_Bash.sh, new Terminal tab)${NC}"
+            echo -e "  ${BOLD}${CYAN}8)${NC} Return to Main Menu"
             echo ""
-            read -r -p "Enter choice [1-7]: " m_choice
+            read -r -p "Enter choice [1-8, or m]: " m_choice
 
             case $m_choice in
                 1)
@@ -4016,7 +4213,10 @@ manage_system_maintenance() {
                     echo ""
                     press_enter
                     ;;
-                7|0|[qQ])
+                7|m|monitor|mp-monitor)
+                    manage_process_and_bash_monitor
+                    ;;
+                8|0|[qQ])
                     return 0
                     ;;
                 *)
@@ -11088,6 +11288,7 @@ while true; do
     echo -e "  ${BOLD}${CYAN}27)${NC} Network Services, Congen & Internet Control (${GREEN}SSH, Samba, FTP, Congen KDE Connect, Block Internet${NC})"
     echo -e "  ${BOLD}${CYAN}28)${NC} Desktop Display Settings, Audio Routing & App Control (${GREEN}Wayland/X11/macOS/Windows, Close Apps${NC})"
     echo -e "  ${BOLD}${CYAN}29)${NC} Universal System Maintenance & Cleanup (${GREEN}Drive space, OS Updates, Package Clean, Logs${NC})"
+    echo -e "  ${BOLD}${CYAN}  m)${NC} Monitor System Processes and Bash Commands with System Info (${GREEN}MP_Monitor_Bash.sh, new Terminal tab${NC})"
     echo -e "  ${BOLD}${CYAN}30)${NC} AI Assistant & Local LLM Servers Suite (${GREEN}Claude, GPT, Ollama, DeepSeek, WAN2GP, Beszel${NC})"
     echo -e "  ${BOLD}${CYAN}31)${NC} Dynamic MOTD Banner Manager & Drive Burner (${GREEN}Last 3 Mixes, Netpbm, ISO USB Burner${NC})"
     echo -e "  ${BOLD}${CYAN}32)${NC} Manager Settings, Themes, Shell CLI & Reboot (${GREEN}Themes, Migration, Bash CLI, Reboot${NC})"
@@ -11100,7 +11301,7 @@ while true; do
         choice="$CLI_INITIAL_ACTION"
         CLI_INITIAL_ACTION=""
     else
-        read -r -p "Enter choice [1-33, or q to exit]: " choice
+        read -r -p "Enter choice [1-33, m, or q to exit]: " choice
     fi
     
     case $choice in
@@ -11203,6 +11404,9 @@ while true; do
         29)
             manage_system_maintenance
             ;;
+        m|monitor|mp-monitor|bash-monitor)
+            manage_process_and_bash_monitor
+            ;;
         30)
             manage_ai_and_servers
             ;;
@@ -11301,7 +11505,7 @@ while true; do
             manage_desktop_shortcuts
             ;;
         *)
-            echo -e "\n${RED}Invalid option! Please enter a number between 1 and 33 (or 'q' to exit).${NC}"
+            echo -e "\n${RED}Invalid option! Please enter a number between 1 and 33, m, or q to exit.${NC}"
             sleep 2
             ;;
     esac

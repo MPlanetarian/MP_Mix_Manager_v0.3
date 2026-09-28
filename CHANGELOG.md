@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.2] - 2026-09-28
+
+- **Monitor System Processes and Bash Commands with System Info**:
+  - Added main-menu ID **`m`** directly under option 29 (Universal System Maintenance & Cleanup).
+  - Inside option 29 the same item is **8** on macOS and Windows, and **7** on Linux and FreeBSD. `m` works there too.
+  - Opens `scripts/MP_Monitor_Bash.sh` in a new tab of the terminal already running Mix Manager (macOS Terminal, iTerm, GNOME Terminal, Konsole, Windows Terminal).
+  - The monitor runs on macOS and Linux: last 10 shell commands, top processes, CPU, memory, disk, Wi-Fi, GPU, and temperatures. Each refresh appends one line to `running_history.log` and does not clear earlier entries.
+  - Refresh choices are 10, 5, or 2 seconds. Direct shortcuts: `m`, `monitor`, `mp-monitor`.
+
 ## [0.3.1] - 2026-09-25
 
 - **Listen to Your Top 5 Tracks Right Now (Pre-Selected - Special Option) [Unlock Mystery / Ready]**:
