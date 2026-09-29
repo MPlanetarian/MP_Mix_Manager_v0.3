@@ -122,6 +122,16 @@ save_theme() {
 }
 
 load_theme
+
+# Ctrl+C at the main menu exits. Monitors that catch INT restore this afterwards.
+exit_mix_manager() {
+    echo ""
+    echo -e "${BOLD}${GREEN}You are exiting the Mix Archive Manager.${NC}"
+    echo ""
+    exit 0
+}
+trap 'exit_mix_manager' INT
+
 MANAGER_START_EPOCH="$(date +%s)"
 printf '\033]0;%s\007' "Mix Archive Manager" 2>/dev/null || true
 # Resolve symlinks so SCRIPT_DIR correctly points to codebase directory
@@ -1185,6 +1195,7 @@ STARTUP_YOUTUBE_URL="${STARTUP_YOUTUBE_URL:-}"
 WEATHER_ENABLED="${WEATHER_ENABLED:-true}"
 WEATHER_LOCATION="${WEATHER_LOCATION:-Swansea, UK}"
 STARTUP_AUTOPLAY_EXECUTED=0
+STARTUP_AUTOPLAY_NOTICE=""
 
 save_config_setting() {
     local key="$1"
@@ -2682,7 +2693,7 @@ monitor_cliamp_live() {
             q|Q) break ;;
         esac
     done
-    trap - INT
+    trap 'exit_mix_manager' INT
 }
 
 manage_cliamp() {
@@ -3050,7 +3061,7 @@ launch_geexlab_demos() {
         sleep 0.5
         trap ':' INT
         (cd "$furmark_dir" && ./demo_launcher.sh)
-        trap - INT
+        trap 'exit_mix_manager' INT
     else
         echo -e "${RED}Error: demo_launcher.sh not found or not executable in $furmark_dir!${NC}"
         press_enter
@@ -3080,7 +3091,7 @@ list_usb_midi_devices() {
         else
             "$HOME/bin/list-midi-devices" -w
         fi
-        trap - INT
+        trap 'exit_mix_manager' INT
     fi
 }
 
@@ -3680,7 +3691,7 @@ launch_system_process_monitor() {
         sleep 0.6
         trap ':' INT
         bash "$mon" --refresh "$refresh"
-        trap - INT
+        trap 'exit_mix_manager' INT
         press_enter
     fi
 }
@@ -4254,7 +4265,7 @@ launch_ai_session() {
         sleep 0.8
         trap ':' INT
         eval "$run_cmd"
-        trap - INT
+        trap 'exit_mix_manager' INT
         press_enter
         return 0
     fi
@@ -4278,7 +4289,7 @@ launch_ai_session() {
                 sleep 0.5
                 trap ':' INT
                 eval "$run_cmd"
-                trap - INT
+                trap 'exit_mix_manager' INT
                 press_enter
                 return 0
             fi
@@ -4288,7 +4299,7 @@ launch_ai_session() {
             sleep 0.8
             trap ':' INT
             eval "$run_cmd"
-            trap - INT
+            trap 'exit_mix_manager' INT
             press_enter
             ;;
         *)
@@ -4302,7 +4313,7 @@ launch_ai_session() {
                 sleep 0.5
                 trap ':' INT
                 eval "$run_cmd"
-                trap - INT
+                trap 'exit_mix_manager' INT
                 press_enter
                 return 0
             fi
@@ -6076,7 +6087,53 @@ select_startup_mix() {
     python3 - "$mode" "$list" << 'PY'
 import os, random, re, sys
 mode = sys.argv[1]
-files = []
+
+def paths_open_for_write(candidates):
+    wanted = set()
+    for path in candidates:
+        wanted.add(path)
+        try:
+            wanted.add(os.path.realpath(path))
+        except OSError:
+            pass
+    writing = set()
+    if not os.path.isdir("/proc"):
+        return writing
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit():
+            continue
+        fd_dir = "/proc/" + pid + "/fd"
+        try:
+            fds = os.listdir(fd_dir)
+        except OSError:
+            continue
+        for fd in fds:
+            fd_path = fd_dir + "/" + fd
+            try:
+                target = os.path.realpath(os.readlink(fd_path))
+            except OSError:
+                continue
+            if target not in wanted:
+                continue
+            try:
+                info = open("/proc/" + pid + "/fdinfo/" + fd, encoding="utf-8", errors="ignore").read()
+            except OSError:
+                continue
+            flags = ""
+            for line in info.splitlines():
+                if line.startswith("flags:"):
+                    parts = line.split()
+                    flags = parts[1] if len(parts) > 1 else ""
+                    break
+            try:
+                # O_RDONLY is 0, O_WRONLY is 1, O_RDWR is 2.
+                if int(flags, 8) & 3:
+                    writing.add(target)
+            except ValueError:
+                continue
+    return writing
+
+raw_files = []
 seen = set()
 with open(sys.argv[2], encoding="utf-8", errors="ignore") as fh:
     for line in fh:
@@ -6084,7 +6141,18 @@ with open(sys.argv[2], encoding="utf-8", errors="ignore") as fh:
         if not path or path in seen or not os.path.isfile(path):
             continue
         seen.add(path)
-        files.append(path)
+        raw_files.append(path)
+writing = paths_open_for_write(raw_files)
+files = []
+for path in raw_files:
+    try:
+        if os.path.getsize(path) <= 0:
+            continue
+        if os.path.realpath(path) in writing:
+            continue
+    except OSError:
+        continue
+    files.append(path)
 if not files:
     sys.exit(1)
 
@@ -6137,7 +6205,9 @@ audacious_dbus_ready() {
 
 play_audacious_file_now() {
     local file="$1"
-    [ -f "$file" ] || return 1
+    # An empty or missing file must not be handed to Audacious. Launching the
+    # player with no file restores the saved playlist and starts that song.
+    [ -s "$file" ] || return 1
 
     if ! audacious_dbus_ready; then
         if command -v audacious >/dev/null 2>&1; then
@@ -6153,14 +6223,15 @@ play_audacious_file_now() {
             return 1
         fi
         local wait_i
-        for wait_i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+        for wait_i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40; do
             audacious_dbus_ready && break
-            sleep 0.3
+            sleep 0.5
         done
     fi
+    audacious_dbus_ready || return 1
 
     python3 - "$file" << 'PY'
-import os, sys, urllib.parse
+import os, sys, time, urllib.parse
 target = os.path.realpath(sys.argv[1])
 target_base = os.path.basename(target)
 uri = "file://" + urllib.parse.quote(target)
@@ -6181,37 +6252,105 @@ def matches(raw):
 
 try:
     import dbus
-    bus = dbus.SessionBus()
-    obj = bus.get_object("org.atheme.audacious", "/org/atheme/audacious")
-    player = dbus.Interface(obj, "org.atheme.audacious")
-    length = int(player.Length())
-    found = None
-    for index in range(length):
-        if matches(player.SongFilename(dbus.UInt32(index))):
-            found = index
-            break
-    if found is None:
-        player.Add(uri)
-        length = int(player.Length())
-        found = max(length - 1, 0)
-        if not matches(player.SongFilename(dbus.UInt32(found))):
-            for index in range(length):
-                if matches(player.SongFilename(dbus.UInt32(index))):
-                    found = index
-                    break
-    shuffle_on = False
-    try:
-        shuffle_on = bool(player.Shuffle())
-    except Exception:
-        shuffle_on = False
-    if shuffle_on:
-        player.ToggleShuffle()
-    player.Jump(dbus.UInt32(found))
-    player.Play()
-    if shuffle_on:
-        player.ToggleShuffle()
 except Exception:
     sys.exit(1)
+
+bus = dbus.SessionBus()
+obj = bus.get_object("org.atheme.audacious", "/org/atheme/audacious")
+player = dbus.Interface(obj, "org.atheme.audacious")
+
+def length():
+    return int(player.Length())
+
+def position():
+    return int(player.Position())
+
+def song_at(index):
+    return player.SongFilename(dbus.UInt32(index))
+
+def current_matches():
+    try:
+        return matches(song_at(position()))
+    except Exception:
+        return False
+
+# DBus comes up before the saved playlist is loaded. Jumping in that window
+# is thrown away when Audacious restores the previous song.
+last = None
+stable = 0
+deadline = time.time() + 20
+while time.time() < deadline:
+    try:
+        current = length()
+    except Exception:
+        time.sleep(0.3)
+        continue
+    if current > 0 and current == last:
+        stable += 1
+        if stable >= 4:
+            break
+    else:
+        stable = 0
+        last = current
+    time.sleep(0.3)
+
+def find_index():
+    total = length()
+    for index in range(total):
+        try:
+            if matches(song_at(index)):
+                return index
+        except Exception:
+            continue
+    return None
+
+def ensure_index():
+    found = find_index()
+    if found is not None:
+        return found
+    try:
+        player.Add(uri)
+    except Exception:
+        return None
+    wait_until = time.time() + 5
+    while time.time() < wait_until:
+        found = find_index()
+        if found is not None:
+            return found
+        time.sleep(0.2)
+    return None
+
+try:
+    shuffle_on = bool(player.Shuffle())
+except Exception:
+    shuffle_on = False
+
+for _attempt in range(6):
+    found = ensure_index()
+    if found is None:
+        time.sleep(0.4)
+        continue
+    try:
+        if shuffle_on and bool(player.Shuffle()):
+            player.ToggleShuffle()
+        player.Stop()
+        player.Jump(dbus.UInt32(found))
+        player.Play()
+        if shuffle_on and not bool(player.Shuffle()):
+            player.ToggleShuffle()
+    except Exception:
+        time.sleep(0.4)
+        continue
+    held = True
+    for _sample in range(5):
+        time.sleep(0.3)
+        if not current_matches():
+            held = False
+            break
+    if held:
+        sys.exit(0)
+
+sys.exit(1)
 PY
 }
 
@@ -6222,9 +6361,10 @@ execute_startup_autoplay() {
 
     local selected_mix=""
     selected_mix="$(select_startup_mix)" || true
-    if [ -z "$selected_mix" ] || [ ! -f "$selected_mix" ]; then
+    if [ -z "$selected_mix" ] || [ ! -s "$selected_mix" ]; then
         return 0
     fi
+    STARTUP_AUTOPLAY_NOTICE="Latest converted mix: $(basename "$selected_mix")"
 
     local player="${DEFAULT_AUDIO_PLAYER:-audacious}"
     local SKIP_PLAYING_ASSETS=1
@@ -6257,7 +6397,13 @@ execute_startup_autoplay() {
             play_audio_file "$player" "$selected_mix"
         fi
     elif [ "$player" = "audacious" ]; then
-        play_audacious_file_now "$selected_mix" || play_audio_file "$player" "$selected_mix"
+        # play_audio_file only enqueues when Audacious is already running, which
+        # leaves the restored playlist song playing. Retry the direct jump.
+        if ! play_audacious_file_now "$selected_mix"; then
+            if ! play_audacious_file_now "$selected_mix"; then
+                STARTUP_AUTOPLAY_NOTICE="Could not start $(basename "$selected_mix"). Audacious kept its previous mix."
+            fi
+        fi
     else
         play_audio_file "$player" "$selected_mix"
     fi
@@ -6818,7 +6964,7 @@ manage_live_monitors() {
                 sleep 0.8
                 trap ':' INT
                 run_sub_script "SOF_Live_Tracker.sh"
-                trap - INT
+                trap 'exit_mix_manager' INT
                 press_enter
                 ;;
             2)
@@ -6835,7 +6981,7 @@ manage_live_monitors() {
                 else
                     echo -e "${RED}Error: transfer-monitor command not found in PATH or ~/.local/bin!${NC}"
                 fi
-                trap - INT
+                trap 'exit_mix_manager' INT
                 press_enter
                 ;;
             4)
@@ -6857,7 +7003,7 @@ manage_live_monitors() {
                 else
                     echo -e "${RED}Error: chrome-upload-monitor command not found in PATH or ~/.local/bin!${NC}"
                 fi
-                trap - INT
+                trap 'exit_mix_manager' INT
                 press_enter
                 ;;
             5)
@@ -6900,7 +7046,7 @@ manage_system_process_monitors() {
                     echo -e "${RED}Error: btop command not found in PATH!${NC}"
                     press_enter
                 fi
-                trap - INT
+                trap 'exit_mix_manager' INT
                 ;;
             2)
                 echo -e "\n${BOLD}${YELLOW}Launching nvtop GPU Monitor (Press 'q' to exit)...${NC}\n"
@@ -6912,7 +7058,7 @@ manage_system_process_monitors() {
                     echo -e "${RED}Error: nvtop command not found in PATH!${NC}"
                     press_enter
                 fi
-                trap - INT
+                trap 'exit_mix_manager' INT
                 ;;
             3)
                 echo -e "\n${BOLD}${YELLOW}Launching top Process Monitor (Press 'q' to exit)...${NC}\n"
@@ -6924,7 +7070,7 @@ manage_system_process_monitors() {
                     echo -e "${RED}Error: top command not found in PATH!${NC}"
                     press_enter
                 fi
-                trap - INT
+                trap 'exit_mix_manager' INT
                 ;;
             0|[qQ])
                 return 0
@@ -7247,7 +7393,7 @@ launch_traktor_monitor_window() {
                 sleep 0.8
                 trap ':' INT
                 "$mon_sh"
-                trap - INT
+                trap 'exit_mix_manager' INT
                 press_enter
             fi
             ;;
@@ -7261,7 +7407,7 @@ launch_traktor_monitor_window() {
             sleep 0.8
             trap ':' INT
             "$mon_sh"
-            trap - INT
+            trap 'exit_mix_manager' INT
             press_enter
             ;;
         3)
@@ -11287,6 +11433,9 @@ while true; do
     current_datetime=$(date "+%A, %B %d, %Y • %T %Z")
     echo -e "  ${os_badge}"
     echo -e "  ${BOLD}${CYAN}🔄 OS Updates:${NC} ${os_updates}  ${BOLD}${BLUE}│${NC}  ${BOLD}${CYAN}🐚 Shell:${NC} ${shell_info}  ${BOLD}${BLUE}│${NC}  ${BOLD}${CYAN}📅 Date:${NC} ${current_datetime}"
+    if [ -n "${STARTUP_AUTOPLAY_NOTICE:-}" ]; then
+        echo -e "  ${BOLD}${GREEN}${STARTUP_AUTOPLAY_NOTICE}${NC}"
+    fi
     sys_perf=$(get_system_perf_stats)
     echo -e "${sys_perf}"
     audio_interface_disp=$(get_active_audio_interface_display)
@@ -11375,7 +11524,7 @@ while true; do
                 read -r -p "Type [m] to open the main menu, or [q] to quit: " flac_done_choice </dev/tty || true
                 case "$flac_done_choice" in
                     [mM]) break ;;
-                    [qQ]) exit 0 ;;
+                    [qQ]) exit_mix_manager ;;
                 esac
             done
             ;;
@@ -11486,8 +11635,7 @@ while true; do
             manage_settings_and_system
             ;;
         33|77|0|[qQ]|[eE][xX][iI][tT])
-            echo -e "\n${BOLD}${GREEN}Exiting Mix Archive Manager. Goodbye!${NC}\n"
-            exit 0
+            exit_mix_manager
             ;;
         # ----------------------------------------------------------------------
         # Legacy Shortcut Aliases (for direct muscle-memory compatibility)
@@ -11524,21 +11672,21 @@ while true; do
             sleep 0.5
             trap ':' INT
             if command -v btop >/dev/null 2>&1; then btop; else echo -e "${RED}Error: btop command not found!${NC}"; press_enter; fi
-            trap - INT
+            trap 'exit_mix_manager' INT
             ;;
         nvtop|nvtop-launch)
             echo -e "\n${BOLD}${YELLOW}Launching nvtop GPU Monitor (Press 'q' to exit)...${NC}\n"
             sleep 0.5
             trap ':' INT
             if command -v nvtop >/dev/null 2>&1; then nvtop; else echo -e "${RED}Error: nvtop command not found!${NC}"; press_enter; fi
-            trap - INT
+            trap 'exit_mix_manager' INT
             ;;
         top|top-launch)
             echo -e "\n${BOLD}${YELLOW}Launching top Process Monitor (Press 'q' to exit)...${NC}\n"
             sleep 0.5
             trap ':' INT
             if command -v top >/dev/null 2>&1; then top; else echo -e "${RED}Error: top command not found!${NC}"; press_enter; fi
-            trap - INT
+            trap 'exit_mix_manager' INT
             ;;
         split-flac|split_flac)
             split_flac_audio
