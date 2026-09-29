@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+# Exit cleanly on Ctrl+C (SIGINT)
+trap 'echo -e "\nScript aborted by user."; exit 130' INT
+
 # ================================
 # CONFIGURATION & PATHS
 # ================================
@@ -101,6 +104,11 @@ total_flac_bytes=0
 total_wav_bytes=0
 total_cumulative_seconds=0
 
+# Determine xargs --no-run-if-empty flag compatibility
+xargs_r_flag=""
+xargs --no-run-if-empty </dev/null &>/dev/null && xargs_r_flag="-r"
+parallel_jobs="$(nproc 2>/dev/null || echo 2)"
+
 declare -a REPORT_LINES=()
 
 for i in "${!ARCHIVE_NAMES[@]}"; do
@@ -121,14 +129,17 @@ for i in "${!ARCHIVE_NAMES[@]}"; do
         [ -z "$loc_flac_bytes" ] && loc_flac_bytes=0
 
         while IFS= read -r txt_file; do
+            [ -z "$txt_file" ] && continue
             track_entries=$(grep -E '^[0-9]{1,2}\.' "$txt_file" 2>/dev/null | wc -l)
             if [ "$track_entries" -gt 3 ]; then
                 ((loc_valid_tracklists++))
             fi
         done < <(find "$flac_path" -maxdepth 1 -type f -name "*.txt" 2>/dev/null)
 
-        if command -v ffprobe &>/dev/null; then
-            durations=$(find "$flac_path" -maxdepth 1 -type f -name "*.flac" -print0 2>/dev/null | xargs -0 -P "$(nproc)" -I {} ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "{}" 2>/dev/null || true)
+        if [ "$loc_flac_count" -gt 0 ] && command -v ffprobe &>/dev/null; then
+            durations=$(find "$flac_path" -maxdepth 1 -type f -name "*.flac" -print0 2>/dev/null \
+                | xargs -0 $xargs_r_flag -P "$parallel_jobs" -I {} \
+                  ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "{}" </dev/null 2>/dev/null || true)
             if [ -n "$durations" ]; then
                 loc_seconds=$(echo "$durations" | awk '{s+=$1} END {print s+0}')
             fi
@@ -146,10 +157,11 @@ for i in "${!ARCHIVE_NAMES[@]}"; do
     total_valid_tracklists=$((total_valid_tracklists + loc_valid_tracklists))
     total_flac_bytes=$((total_flac_bytes + loc_flac_bytes))
     total_wav_bytes=$((total_wav_bytes + loc_wav_bytes))
-    total_cumulative_seconds=$(awk "BEGIN {print $total_cumulative_seconds + $loc_seconds}")
+    total_cumulative_seconds=$(awk "BEGIN {print ${total_cumulative_seconds:-0} + ${loc_seconds:-0}}")
 
-    loc_flac_gb=$(awk "BEGIN {print $loc_flac_bytes / 1024 / 1024 / 1024}")
+    loc_flac_gb=$(awk "BEGIN {print ${loc_flac_bytes:-0} / 1024 / 1024 / 1024}")
     loc_sec_int=${loc_seconds%.*}
+    loc_sec_int=${loc_sec_int:-0}
     loc_h=$((loc_sec_int / 3600))
     loc_m=$(((loc_sec_int % 3600) / 60))
 
@@ -164,11 +176,12 @@ for i in "${!ARCHIVE_NAMES[@]}"; do
 done
 
 total_size_bytes=$((total_flac_bytes + total_wav_bytes))
-total_flac_gb=$(awk "BEGIN {print $total_flac_bytes / 1024 / 1024 / 1024}")
-total_wav_gb=$(awk "BEGIN {print $total_wav_bytes / 1024 / 1024 / 1024}")
-total_size_gb=$(awk "BEGIN {print $total_size_bytes / 1024 / 1024 / 1024}")
+total_flac_gb=$(awk "BEGIN {print ${total_flac_bytes:-0} / 1024 / 1024 / 1024}")
+total_wav_gb=$(awk "BEGIN {print ${total_wav_bytes:-0} / 1024 / 1024 / 1024}")
+total_size_gb=$(awk "BEGIN {print ${total_size_bytes:-0} / 1024 / 1024 / 1024}")
 
 tot_sec_int=${total_cumulative_seconds%.*}
+tot_sec_int=${tot_sec_int:-0}
 hours=$((tot_sec_int / 3600))
 mins=$(((tot_sec_int % 3600) / 60))
 secs=$((tot_sec_int % 60))

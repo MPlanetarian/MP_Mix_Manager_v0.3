@@ -455,107 +455,8 @@ declare -a successfully_processed_wavs=()
 declare -a newly_exported_flacs=()
 all_groups_successful=true
 
-# 4. Process, Merge, Convert, Tag Groups, Write Tracklist, and Generate Spectrogram
-counter=1
-for g_hash in "${group_keys[@]}"; do
-    base=$(cat "$GROUP_TMP_DIR/group_${g_hash}.base")
-    wav_file_list="$GROUP_TMP_DIR/group_${g_hash}.wavs"
 
-    declare -a current_wavs=()
-    if [ -f "$wav_file_list" ]; then
-        while IFS= read -r line || [ -n "$line" ]; do
-            [[ -n "$line" ]] && current_wavs+=("$line")
-        done < <(grep -v '^$' "$wav_file_list" | sort)
-    fi
-    
-    # Format output filenames cleanly with Artist, Show Name, and Datestamp intact
-    clean_base=$(echo "$base" | sed 's/__/_/g')
-    if [[ "$clean_base" != *"MPlanetarian"* ]]; then
-        normalized_name="MPlanetarian - Stream of Frequency - ${clean_base}"
-    else
-        normalized_name="$clean_base"
-    fi
-
-    output_filename="${normalized_name}.${OUTPUT_EXT}"
-    output_path="${OUTPUT_DIR}/${output_filename}"
-    
-    tracklist_filename="${normalized_name}.txt"
-    tracklist_path="${OUTPUT_DIR}/${tracklist_filename}"
-
-    if [ "$OUTPUT_FORMAT" != "flac" ] && [ -s "$output_path" ]; then
-        echo "Processing Group [$counter/$total_groups]: Session ID '$base'"
-        echo " -> Output ${OUTPUT_LABEL} file already exists ($output_path). Leaving the source WAV in place."
-        ((counter++))
-        echo "--------------------------------------------------"
-        continue
-    fi
-
-    existing_flac=""
-    if [ "$OUTPUT_FORMAT" = "flac" ]; then
-    for fdir in "${flac_check_dirs[@]}"; do
-        if [ -f "$fdir/$output_filename" ] && [ -s "$fdir/$output_filename" ]; then
-            existing_flac="$fdir/$output_filename"
-            break
-        fi
-    done
-    fi
-
-    if [ -n "$existing_flac" ]; then
-        echo "Processing Group [$counter/$total_groups]: Session ID '$base'"
-        echo " -> Output FLAC file already exists in archive ($existing_flac). Skipping conversion."
-        # Move source WAVs to Archive if they exist
-        for w in "${current_wavs[@]}"; do
-            if [ -f "$w" ]; then
-                mv "$w" "$ARCHIVE_DIR/"
-            fi
-            successfully_processed_wavs+=("$w")
-        done
-        ((counter++))
-        echo "--------------------------------------------------"
-        continue
-    fi
-    
-    spek_image="${SPEK_DIR}/${normalized_name}_spectrogram.png"
-    
-    readable_title=$(echo "$base" | sed 's/_/ /g')
-
-    echo "Processing Group [$counter/$total_groups]: Session ID '$base'"
-    echo " -> Standardized Output Name: '$normalized_name'"
-
-    # Extract date components robustly from WAV filename (handles variable year/month positions)
-    ref_name="$base"
-    if [ ${#current_wavs[@]} -gt 0 ]; then
-        ref_name="$(basename "${current_wavs[0]}")"
-    fi
-
-    # grep exits 1 when a token is absent, and 141 when head closes the pipe.
-    # Either status aborts the batch under set -eo pipefail, so these are optional.
-    session_year=$(echo "$ref_name" | grep -oE '20[0-9]{2}' | head -n 1 || true)
-    session_month=$(echo "$ref_name" | grep -oE '20[0-9]{2}-[0-9]{2}' | awk -F'-' '{print $2}' || true)
-    if [ -z "$session_month" ]; then
-        session_month=$(echo "$ref_name" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' | awk -F'-' '{print $2}' || true)
-    fi
-    session_day=$(echo "$ref_name" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' | awk -F'-' '{print $3}' || true)
-    session_hour=$(echo "$ref_name" | grep -oE '[0-9]{1,2}h' | head -n 1 | tr -d 'h' || true)
-    if [ -n "$session_hour" ] && [ ${#session_hour} -eq 1 ]; then
-        session_hour="0${session_hour}"
-    fi
-    session_min=$(echo "$ref_name" | grep -oE '[0-9]{2}m' | head -n 1 | tr -d 'm' || true)
-    
-    if [ -n "$session_year" ] && [ -n "$session_month" ] && [ -n "$session_day" ]; then
-        session_date="${session_year}-${session_month}-${session_day}"
-        fallback_pattern="history_${session_year}y${session_month}m${session_day}d"
-    else
-        session_date=""
-        fallback_pattern=""
-    fi
-
-    if [ -n "$fallback_pattern" ] && [ -n "$session_hour" ] && [ -n "$session_min" ]; then
-        traktor_pattern="history_${session_year}y${session_month}m${session_day}d_${session_hour}h${session_min}"
-    else
-        traktor_pattern=""
-    fi
-
+build_session_tracklist() {
     tracklist_found=false
     matched_history=""
 
@@ -798,7 +699,8 @@ PY_PARSER
             python3 "$temp_py" "$matched_history" "$ref_name" >> "$tracklist_path"
             rm -f "$temp_py"
 
-            if [ -s "$tracklist_path" ] && [ $(wc -l < "$tracklist_path") -gt 10 ]; then
+            if grep -q "TRACKLIST (Extracted from Traktor Database)" "$tracklist_path" \
+                && grep -qE "^[0-9]{2}\. " "$tracklist_path"; then
                 tracklist_found=true
             fi
         fi
@@ -828,6 +730,201 @@ PY_PARSER
     else
         echo " -> Tracklist verified successfully ($tracklist_filename)."
     fi
+}
+
+show_tracklist_file() {
+    echo ""
+    echo "=================================================="
+    echo "TRACKLIST FOR THIS MIX"
+    echo "=================================================="
+    if [ -f "$tracklist_path" ]; then
+        cat "$tracklist_path"
+    else
+        echo "(no tracklist file was written)"
+    fi
+    echo "=================================================="
+    echo "Tracklist file: $tracklist_path"
+    echo ""
+}
+
+edit_tracklist_and_save() {
+    local path="$1"
+    local backup
+    [ -n "$path" ] && [ -f "$path" ] || return 1
+    backup=$(mktemp)
+    cp "$path" "$backup"
+    echo "Opening the tracklist so you can update it." >/dev/tty
+    echo "Finish editing and close the editor. The tracklist is saved automatically." >/dev/tty
+    if [ -n "${SOF_TRACKLIST_EDITOR:-}" ]; then
+        "$SOF_TRACKLIST_EDITOR" "$path" </dev/tty >/dev/tty 2>&1 || true
+    elif command -v kate >/dev/null 2>&1; then
+        kate -n -b "$path" </dev/tty >/dev/null 2>&1 || true
+    elif command -v nano >/dev/null 2>&1; then
+        nano "$path" </dev/tty >/dev/tty || true
+    elif command -v vi >/dev/null 2>&1; then
+        vi "$path" </dev/tty >/dev/tty || true
+    else
+        cp "$backup" "$path"
+        rm -f "$backup"
+        echo "No text editor is available. The tracklist was not changed." >/dev/tty
+        return 0
+    fi
+    if [ ! -s "$path" ]; then
+        cp "$backup" "$path"
+        echo "The edit was empty, so the previous tracklist was kept." >/dev/tty
+    else
+        echo "Tracklist saved: $path" >/dev/tty
+    fi
+    rm -f "$backup"
+}
+
+review_converted_tracklist() {
+    show_tracklist_file
+    if [ "$tracklist_found" = true ]; then
+        return 0
+    fi
+    echo "ALERT: No tracklist was found in the Traktor history for this mix."
+    echo "The text above is a placeholder, not the tracks that were played."
+    if [ ! -r /dev/tty ]; then
+        return 0
+    fi
+    while true; do
+        {
+            echo "  1) Generate the tracklist again from Traktor history"
+            echo "  2) Update the tracklist manually"
+            echo "  0) Continue with the current tracklist"
+        } >/dev/tty
+        local track_choice=""
+        read -r -p "Tracklist [1/2/0]: " track_choice </dev/tty || track_choice=""
+        case "$track_choice" in
+            1)
+                sync_missing_traktor_history "$LOCAL_HISTORY_DIR"
+                build_session_tracklist
+                show_tracklist_file
+                if [ "$tracklist_found" = true ]; then
+                    echo "Tracklist generated from Traktor history and saved."
+                    return 0
+                fi
+                echo "ALERT: Traktor history still has no tracklist for this mix."
+                ;;
+            2)
+                edit_tracklist_and_save "$tracklist_path"
+                show_tracklist_file
+                return 0
+                ;;
+            0)
+                echo "Continuing with the tracklist saved at: $tracklist_path"
+                return 0
+                ;;
+            *)
+                echo "Choose 1, 2, or 0." >/dev/tty
+                ;;
+        esac
+    done
+}
+
+# 4. Process, Merge, Convert, Tag Groups, Write Tracklist, and Generate Spectrogram
+counter=1
+for g_hash in "${group_keys[@]}"; do
+    base=$(cat "$GROUP_TMP_DIR/group_${g_hash}.base")
+    wav_file_list="$GROUP_TMP_DIR/group_${g_hash}.wavs"
+
+    declare -a current_wavs=()
+    if [ -f "$wav_file_list" ]; then
+        while IFS= read -r line || [ -n "$line" ]; do
+            [[ -n "$line" ]] && current_wavs+=("$line")
+        done < <(grep -v '^$' "$wav_file_list" | sort)
+    fi
+    
+    # Format output filenames cleanly with Artist, Show Name, and Datestamp intact
+    clean_base=$(echo "$base" | sed 's/__/_/g')
+    if [[ "$clean_base" != *"MPlanetarian"* ]]; then
+        normalized_name="MPlanetarian - Stream of Frequency - ${clean_base}"
+    else
+        normalized_name="$clean_base"
+    fi
+
+    output_filename="${normalized_name}.${OUTPUT_EXT}"
+    output_path="${OUTPUT_DIR}/${output_filename}"
+    
+    tracklist_filename="${normalized_name}.txt"
+    tracklist_path="${OUTPUT_DIR}/${tracklist_filename}"
+
+    if [ "$OUTPUT_FORMAT" != "flac" ] && [ -s "$output_path" ]; then
+        echo "Processing Group [$counter/$total_groups]: Session ID '$base'"
+        echo " -> Output ${OUTPUT_LABEL} file already exists ($output_path). Leaving the source WAV in place."
+        ((counter++))
+        echo "--------------------------------------------------"
+        continue
+    fi
+
+    existing_flac=""
+    if [ "$OUTPUT_FORMAT" = "flac" ]; then
+    for fdir in "${flac_check_dirs[@]}"; do
+        if [ -f "$fdir/$output_filename" ] && [ -s "$fdir/$output_filename" ]; then
+            existing_flac="$fdir/$output_filename"
+            break
+        fi
+    done
+    fi
+
+    if [ -n "$existing_flac" ]; then
+        echo "Processing Group [$counter/$total_groups]: Session ID '$base'"
+        echo " -> Output FLAC file already exists in archive ($existing_flac). Skipping conversion."
+        # Move source WAVs to Archive if they exist
+        for w in "${current_wavs[@]}"; do
+            if [ -f "$w" ]; then
+                mv "$w" "$ARCHIVE_DIR/"
+            fi
+            successfully_processed_wavs+=("$w")
+        done
+        ((counter++))
+        echo "--------------------------------------------------"
+        continue
+    fi
+    
+    spek_image="${SPEK_DIR}/${normalized_name}_spectrogram.png"
+    
+    readable_title=$(echo "$base" | sed 's/_/ /g')
+
+    echo "Processing Group [$counter/$total_groups]: Session ID '$base'"
+    echo " -> Standardized Output Name: '$normalized_name'"
+
+    # Extract date components robustly from WAV filename (handles variable year/month positions)
+    ref_name="$base"
+    if [ ${#current_wavs[@]} -gt 0 ]; then
+        ref_name="$(basename "${current_wavs[0]}")"
+    fi
+
+    # grep exits 1 when a token is absent, and 141 when head closes the pipe.
+    # Either status aborts the batch under set -eo pipefail, so these are optional.
+    session_year=$(echo "$ref_name" | grep -oE '20[0-9]{2}' | head -n 1 || true)
+    session_month=$(echo "$ref_name" | grep -oE '20[0-9]{2}-[0-9]{2}' | awk -F'-' '{print $2}' || true)
+    if [ -z "$session_month" ]; then
+        session_month=$(echo "$ref_name" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' | awk -F'-' '{print $2}' || true)
+    fi
+    session_day=$(echo "$ref_name" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' | awk -F'-' '{print $3}' || true)
+    session_hour=$(echo "$ref_name" | grep -oE '[0-9]{1,2}h' | head -n 1 | tr -d 'h' || true)
+    if [ -n "$session_hour" ] && [ ${#session_hour} -eq 1 ]; then
+        session_hour="0${session_hour}"
+    fi
+    session_min=$(echo "$ref_name" | grep -oE '[0-9]{2}m' | head -n 1 | tr -d 'm' || true)
+    
+    if [ -n "$session_year" ] && [ -n "$session_month" ] && [ -n "$session_day" ]; then
+        session_date="${session_year}-${session_month}-${session_day}"
+        fallback_pattern="history_${session_year}y${session_month}m${session_day}d"
+    else
+        session_date=""
+        fallback_pattern=""
+    fi
+
+    if [ -n "$fallback_pattern" ] && [ -n "$session_hour" ] && [ -n "$session_min" ]; then
+        traktor_pattern="history_${session_year}y${session_month}m${session_day}d_${session_hour}h${session_min}"
+    else
+        traktor_pattern=""
+    fi
+
+    build_session_tracklist
 
     # Determine cover art to use: specific WAV cover (.png matching first WAV filename) or fallback to Cover.png
     first_wav="${current_wavs[0]}"
@@ -970,6 +1067,8 @@ PY_PARSER
         fi
         successfully_processed_wavs+=("$w")
     done
+
+    review_converted_tracklist
 
     rm -f "$OPTIMIZED_COVER"
     ((counter++))

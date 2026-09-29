@@ -18,9 +18,20 @@
 ────────────────────────────────────────────────────────────────────────────────
 
 ────────────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────────────
+  Command Name : Open Strawberry & Play
+  Script Path  : /home/mplanetarian/KDE_CONNECT_CMDS/kc_launch_strawberry_play.sh
+  Summary      : Open Strawberry & Play (Imported from iPhone)
+  Added        : 2026-09-28 03:27:44
+────────────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────────────
   Command Name : Run Resident Evil 9
-  Script Path  : /home/mplanetarian/Desktop/GAME_LAUNCHERS/MP_Gamelauncher_RE9.sh
-  Summary      : Runs the Game Resident Evil 9
-  Added        : 2026-09-26 23:58:02
+  Script Path  : /home/mplanetarian/Desktop/Run_RE9.sh
+  Summary      : Runs Resident Evil 9
+  Added        : 2026-09-28 03:36:27
 ────────────────────────────────────────────────────────────────────────────────
 

@@ -737,6 +737,84 @@ find_mix_cover() {
     return 1
 }
 
+# Spectrogram that belongs to this mix. A different mix's Spek file is not a match.
+find_mix_spek() {
+    local mix_file="$1"
+    [ -n "$mix_file" ] || return 1
+
+    local mix_stem
+    mix_stem="$(basename "${mix_file%.*}")"
+    [ -n "$mix_stem" ] || return 1
+
+    local -a dirs=()
+    add_spek_dir() {
+        local cand="$1"
+        local resolved seen
+        [ -n "$cand" ] && [ -d "$cand" ] || return 0
+        resolved="$(cd "$cand" 2>/dev/null && pwd -P)" || return 0
+        for seen in "${dirs[@]}"; do
+            [ "$seen" = "$resolved" ] && return 0
+        done
+        dirs+=("$resolved")
+    }
+
+    add_spek_dir "$(dirname "$mix_file")"
+    add_spek_dir "${SPEK_DIR:-}"
+    if [ -n "${MIX_ARCHIVE_DIR:-}" ]; then
+        add_spek_dir "${MIX_ARCHIVE_DIR%/}/SPEK_OUTPUTS"
+        if [ -n "${SPEK_DIR:-}" ] && [[ "$SPEK_DIR" != /* ]]; then
+            add_spek_dir "${MIX_ARCHIVE_DIR%/}/${SPEK_DIR}"
+        fi
+    fi
+    add_spek_dir "${PWD}/SPEK_OUTPUTS"
+    if command -v get_all_mix_archive_dirs >/dev/null 2>&1; then
+        local archive_dir
+        while IFS= read -r archive_dir; do
+            [ -z "$archive_dir" ] && continue
+            add_spek_dir "${archive_dir%/}/SPEK_OUTPUTS"
+            add_spek_dir "$(dirname "$archive_dir")/SPEK_OUTPUTS"
+        done < <(get_all_mix_archive_dirs)
+    fi
+
+    local spek_dir spek_name
+    for spek_dir in "${dirs[@]}"; do
+        for spek_name in \
+            "${mix_stem}_spectrogram.png" \
+            "${mix_stem}.spek.png" \
+            "${mix_stem}.spek" \
+            "${mix_stem}_spectrogram.jpg"
+        do
+            if [ -s "$spek_dir/$spek_name" ]; then
+                echo "$spek_dir/$spek_name"
+                return 0
+            fi
+        done
+    done
+    return 1
+}
+
+# First load opens the Spek for the newest finished mix. With no converted mix, it does nothing.
+open_startup_mix_spek() {
+    local saved_mode="${AUTO_PLAY_MIX_SELECTION:-latest}"
+    local selected_mix=""
+    AUTO_PLAY_MIX_SELECTION="latest"
+    selected_mix="$(select_startup_mix)" || true
+    AUTO_PLAY_MIX_SELECTION="$saved_mode"
+
+    if [ -z "$selected_mix" ] || [ ! -s "$selected_mix" ]; then
+        return 0
+    fi
+
+    local spek=""
+    spek="$(find_mix_spek "$selected_mix" 2>/dev/null || true)"
+    if [ -z "$spek" ] || [ ! -s "$spek" ]; then
+        return 0
+    fi
+
+    STARTUP_SPEK_NOTICE="Spectrogram: $(basename "$spek")"
+    open_cover_art_window "$spek" || open_path "$spek"
+}
+
 # Cross-Platform Clipboard Copy (Linux wl-copy/xclip, macOS pbcopy, Windows clip.exe)
 copy_to_clipboard() {
     local text="$1"
@@ -1196,6 +1274,7 @@ WEATHER_ENABLED="${WEATHER_ENABLED:-true}"
 WEATHER_LOCATION="${WEATHER_LOCATION:-Swansea, UK}"
 STARTUP_AUTOPLAY_EXECUTED=0
 STARTUP_AUTOPLAY_NOTICE=""
+STARTUP_SPEK_NOTICE=""
 
 save_config_setting() {
     local key="$1"
@@ -11409,6 +11488,7 @@ while true; do
         STARTUP_AUTOPLAY_EXECUTED=1
         printf '\033]0;%s\007' "Mix Archive Manager" 2>/dev/null || true
         align_mix_windows_on_screen
+        open_startup_mix_spek
         if [ "${AUTO_PLAY_ON_STARTUP:-true}" = "true" ]; then
             execute_startup_autoplay
         else
@@ -11435,6 +11515,9 @@ while true; do
     echo -e "  ${BOLD}${CYAN}🔄 OS Updates:${NC} ${os_updates}  ${BOLD}${BLUE}│${NC}  ${BOLD}${CYAN}🐚 Shell:${NC} ${shell_info}  ${BOLD}${BLUE}│${NC}  ${BOLD}${CYAN}📅 Date:${NC} ${current_datetime}"
     if [ -n "${STARTUP_AUTOPLAY_NOTICE:-}" ]; then
         echo -e "  ${BOLD}${GREEN}${STARTUP_AUTOPLAY_NOTICE}${NC}"
+    fi
+    if [ -n "${STARTUP_SPEK_NOTICE:-}" ]; then
+        echo -e "  ${BOLD}${GREEN}${STARTUP_SPEK_NOTICE}${NC}"
     fi
     sys_perf=$(get_system_perf_stats)
     echo -e "${sys_perf}"
