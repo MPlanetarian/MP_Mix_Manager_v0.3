@@ -87,3 +87,4 @@ assets/weather_cache.txt
 master_tracklists.html
 
 !Congen/.congen_alert.wav
+*.old
