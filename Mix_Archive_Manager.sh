@@ -6018,184 +6018,250 @@ play_audio_file() {
     fi
 }
 
+collect_converted_mix_dirs() {
+    local -a dirs=()
+    local seen="|"
+    local cand resolved rel adir kind
+
+    add_converted_dir() {
+        cand="$1"
+        [ -n "$cand" ] && [ -d "$cand" ] || return 0
+        resolved="$(cd "$cand" 2>/dev/null && pwd -P)" || return 0
+        case "$seen" in
+            *"|$resolved|"*) return 0 ;;
+        esac
+        seen="${seen}${resolved}|"
+        dirs+=("$resolved")
+    }
+
+    for rel in "${OUTPUT_DIR:-}" "${MP3_OUTPUT_DIR:-}" "${WAV_OUTPUT_DIR:-}"; do
+        [ -z "$rel" ] && continue
+        add_converted_dir "$rel"
+        if [ -n "${MIX_ARCHIVE_DIR:-}" ]; then
+            add_converted_dir "${MIX_ARCHIVE_DIR%/}/$rel"
+        fi
+    done
+
+    if command -v get_all_mix_archive_dirs >/dev/null 2>&1; then
+        while IFS= read -r adir; do
+            [ -z "$adir" ] && continue
+            case "$adir" in
+                *FLAC_CONVERTED_OUTPUTS|*FLAC_CONVERTED_OUTPUTS/|\
+                *MP3_CONVERTED_OUTPUTS|*MP3_CONVERTED_OUTPUTS/|\
+                *WAV_CONVERTED_OUTPUTS|*WAV_CONVERTED_OUTPUTS/)
+                    add_converted_dir "$adir"
+                    ;;
+            esac
+            for kind in FLAC_CONVERTED_OUTPUTS MP3_CONVERTED_OUTPUTS WAV_CONVERTED_OUTPUTS; do
+                add_converted_dir "${adir%/}/$kind"
+            done
+        done < <(get_all_mix_archive_dirs)
+    fi
+
+    [ ${#dirs[@]} -gt 0 ] && printf '%s\n' "${dirs[@]}"
+}
+
+select_startup_mix() {
+    local mode="${AUTO_PLAY_MIX_SELECTION:-latest}"
+    local list d
+    list="$(mktemp "${TMPDIR:-/tmp}/sof_startup_XXXXXX")"
+    while IFS= read -r d; do
+        [ -d "$d" ] || continue
+        find "$d" -maxdepth 1 -type f \( -iname '*.flac' -o -iname '*.mp3' -o -iname '*.wav' \) -print >> "$list"
+    done < <(collect_converted_mix_dirs)
+    if [ ! -s "$list" ]; then
+        rm -f "$list"
+        return 1
+    fi
+    python3 - "$mode" "$list" << 'PY'
+import os, random, re, sys
+mode = sys.argv[1]
+files = []
+seen = set()
+with open(sys.argv[2], encoding="utf-8", errors="ignore") as fh:
+    for line in fh:
+        path = line.strip()
+        if not path or path in seen or not os.path.isfile(path):
+            continue
+        seen.add(path)
+        files.append(path)
+if not files:
+    sys.exit(1)
+
+def stem(path):
+    return os.path.splitext(os.path.basename(path))[0].lower()
+
+rank = {".flac": 0, ".wav": 1, ".mp3": 2}
+
+def prefer_sibling(chosen):
+    chosen_stem = stem(chosen)
+    siblings = [path for path in files if stem(path) == chosen_stem]
+    siblings.sort(key=lambda path: (rank.get(os.path.splitext(path)[1].lower(), 9), -os.path.getmtime(path)))
+    return siblings[0]
+
+if mode == "random":
+    pick = prefer_sibling(random.choice(files))
+elif mode == "latest":
+    pick = prefer_sibling(max(files, key=lambda path: os.path.getmtime(path)))
+else:
+    try:
+        pattern = re.compile(mode, re.IGNORECASE)
+        matched = [path for path in files if pattern.search(os.path.basename(path))]
+    except re.error:
+        needle = mode.lower()
+        matched = [path for path in files if needle in os.path.basename(path).lower()]
+    pool = matched or files
+    pool.sort(key=lambda path: os.path.getmtime(path), reverse=True)
+    pick = prefer_sibling(pool[0])
+print(pick)
+PY
+    local py_rc=$?
+    rm -f "$list"
+    return "$py_rc"
+}
+
+same_mix_file() {
+    local left="$1" right="$2"
+    [ -n "$left" ] && [ -n "$right" ] || return 1
+    [ "$left" = "$right" ] && return 0
+    local left_real right_real
+    left_real="$(readlink -f "$left" 2>/dev/null || echo "$left")"
+    right_real="$(readlink -f "$right" 2>/dev/null || echo "$right")"
+    [ "$left_real" = "$right_real" ] && return 0
+    [ "$(basename "$left_real")" = "$(basename "$right_real")" ]
+}
+
+audacious_dbus_ready() {
+    qdbus org.atheme.audacious /org/atheme/audacious org.atheme.audacious.Length >/dev/null 2>&1
+}
+
+play_audacious_file_now() {
+    local file="$1"
+    [ -f "$file" ] || return 1
+
+    if ! audacious_dbus_ready; then
+        if command -v audacious >/dev/null 2>&1; then
+            nohup audacious >/dev/null 2>&1 &
+            disown 2>/dev/null || true
+        elif flatpak list 2>/dev/null | grep -q "org.atheme.audacious"; then
+            nohup flatpak run org.atheme.audacious >/dev/null 2>&1 &
+            disown 2>/dev/null || true
+        elif [ "${OS_TYPE:-}" = "macos" ]; then
+            open -a Audacious "$file" >/dev/null 2>&1 &
+            return 0
+        else
+            return 1
+        fi
+        local wait_i
+        for wait_i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+            audacious_dbus_ready && break
+            sleep 0.3
+        done
+    fi
+
+    python3 - "$file" << 'PY'
+import os, sys, urllib.parse
+target = os.path.realpath(sys.argv[1])
+target_base = os.path.basename(target)
+uri = "file://" + urllib.parse.quote(target)
+
+def normalize(raw):
+    text = urllib.parse.unquote(str(raw or ""))
+    if text.startswith("file://"):
+        text = text[7:]
+    elif text.startswith("file:"):
+        text = text[5:]
+    if text and os.path.exists(text):
+        text = os.path.realpath(text)
+    return text
+
+def matches(raw):
+    path = normalize(raw)
+    return path == target or os.path.basename(path) == target_base
+
+try:
+    import dbus
+    bus = dbus.SessionBus()
+    obj = bus.get_object("org.atheme.audacious", "/org/atheme/audacious")
+    player = dbus.Interface(obj, "org.atheme.audacious")
+    length = int(player.Length())
+    found = None
+    for index in range(length):
+        if matches(player.SongFilename(dbus.UInt32(index))):
+            found = index
+            break
+    if found is None:
+        player.Add(uri)
+        length = int(player.Length())
+        found = max(length - 1, 0)
+        if not matches(player.SongFilename(dbus.UInt32(found))):
+            for index in range(length):
+                if matches(player.SongFilename(dbus.UInt32(index))):
+                    found = index
+                    break
+    shuffle_on = False
+    try:
+        shuffle_on = bool(player.Shuffle())
+    except Exception:
+        shuffle_on = False
+    if shuffle_on:
+        player.ToggleShuffle()
+    player.Jump(dbus.UInt32(found))
+    player.Play()
+    if shuffle_on:
+        player.ToggleShuffle()
+except Exception:
+    sys.exit(1)
+PY
+}
+
 execute_startup_autoplay() {
     if [ "${AUTO_PLAY_ON_STARTUP:-true}" != "true" ]; then
         return 0
     fi
 
-    # 0. Check if Audacious, Strawberry or another player is ALREADY playing!
-    # If Audacious or any player is already playing, DO NOT launch cliamp or start a new track!
-    local active_playing_mix=""
-    local active_player_name=""
-
-    if get_audacious_track_info 2>/dev/null && [ "$AUDACIOUS_STATE" = "playing" ]; then
-        active_player_name="Audacious"
-        active_playing_mix="$AUDACIOUS_RESOLVED_PATH"
-    elif get_strawberry_track_info 2>/dev/null && [ "$STRAWBERRY_STATE" = "playing" ]; then
-        active_player_name="Strawberry"
-        active_playing_mix="$STRAWBERRY_RESOLVED_PATH"
-    elif get_cliamp_track_info 2>/dev/null && [ "$CLIAMP_STATE" = "playing" ]; then
-        active_player_name="cliamp"
-        active_playing_mix="$CLIAMP_RESOLVED_PATH"
-    else
-        local detected_mix
-        detected_mix=$(detect_currently_playing_mix 2>/dev/null)
-        if [ -n "$detected_mix" ] && [ -f "$detected_mix" ]; then
-            active_playing_mix="$detected_mix"
-            active_player_name="${DEFAULT_AUDIO_PLAYER:-audacious}"
-        fi
-    fi
-
-    if [ -n "$active_playing_mix" ] || [ "$active_player_name" = "Audacious" ] || [ "$active_player_name" = "Strawberry" ]; then
-        # Audio is already actively playing in the background (e.g. Audacious).
-        # Open cover art if enabled and not already open
-        if [ "${AUTO_SHOW_COVER_ON_STARTUP:-true}" = "true" ] && [ -n "$active_playing_mix" ]; then
-            local found_cover
-            found_cover=$(find_mix_cover "$active_playing_mix" 2>/dev/null)
-            if [ -n "$found_cover" ] && [ -f "$found_cover" ]; then
-                open_cover_art_window "$found_cover"
-            fi
-        fi
-        align_mix_windows_on_screen
-        return 0
-    fi
-
-    # Scan candidate audio directories
-    local search_dirs=(
-        "$OUTPUT_DIR"
-        "${MIX_ARCHIVE_DIR:-$PWD}/FLAC_CONVERTED_OUTPUTS"
-        "$PWD/FLAC_CONVERTED_OUTPUTS"
-        "${MIX_ARCHIVE_DIR:-$PWD}"
-        "$PWD"
-    )
-    if command -v get_all_flac_output_dirs >/dev/null 2>&1; then
-        while IFS= read -r f_dir; do
-            [ -n "$f_dir" ] && [ -d "$f_dir" ] && search_dirs+=("$f_dir")
-        done < <(get_all_flac_output_dirs)
-    fi
-    if command -v get_all_mix_archive_dirs >/dev/null 2>&1; then
-        while IFS= read -r a_dir; do
-            [ -n "$a_dir" ] && [ -d "$a_dir" ] && search_dirs+=("$a_dir")
-        done < <(get_all_mix_archive_dirs)
-    fi
-
-    shopt -s nullglob nocaseglob
-    local flac_candidates=()
-    for d in "${search_dirs[@]}"; do
-        if [ -d "$d" ]; then
-            for f in "$d"/*.flac; do
-                [ -f "$f" ] && flac_candidates+=("$f")
-            done
-        fi
-    done
-    shopt -u nullglob nocaseglob
-
-    # If no FLAC mixes found, search for WAV and MP3 files
-    if [ ${#flac_candidates[@]} -eq 0 ]; then
-        shopt -s nullglob nocaseglob
-        for d in "${search_dirs[@]}"; do
-            if [ -d "$d" ]; then
-                for f in "$d"/*.wav "$d"/*.mp3; do
-                    [ -f "$f" ] && flac_candidates+=("$f")
-                done
-            fi
-        done
-        shopt -u nullglob nocaseglob
-    fi
-
-    if [ ${#flac_candidates[@]} -eq 0 ]; then
-        return 0
-    fi
-
     local selected_mix=""
-    if [ "${AUTO_PLAY_MIX_SELECTION:-latest}" = "random" ]; then
-        local distinct_mixes
-        IFS=$'\n' read -r -d '' -a distinct_mixes < <(printf "%s\n" "${flac_candidates[@]}" | sort -u && printf '\0')
-        local rand_idx=$(( RANDOM % ${#distinct_mixes[@]} ))
-        selected_mix="${distinct_mixes[$rand_idx]}"
-    elif [ "${AUTO_PLAY_MIX_SELECTION:-latest}" = "latest" ]; then
-        # Pick truly newest mix by file modification time
-        selected_mix=$(python3 -c "
-import os, sys
-files = list(set(sys.argv[1:]))
-files = [f for f in files if os.path.isfile(f)]
-if files:
-    files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
-    print(files[0])
-" "${flac_candidates[@]}" 2>/dev/null)
-        [ -z "$selected_mix" ] && selected_mix="${flac_candidates[0]}"
-    else
-        local kw="${AUTO_PLAY_MIX_SELECTION}"
-        for f in "${flac_candidates[@]}"; do
-            if [[ "$(basename "$f")" =~ $kw ]]; then
-                selected_mix="$f"
-                break
-            fi
-        done
-        [ -z "$selected_mix" ] && selected_mix="${flac_candidates[0]}"
+    selected_mix="$(select_startup_mix)" || true
+    if [ -z "$selected_mix" ] || [ ! -f "$selected_mix" ]; then
+        return 0
     fi
 
-    [ ! -f "$selected_mix" ] && return 0
-
-    local mix_basename
-    mix_basename=$(basename "$selected_mix")
-    local mix_stem="${mix_basename%.*}"
-
-    # 1. Play in default audio player
-    local SKIP_PLAYING_ASSETS=1
     local player="${DEFAULT_AUDIO_PLAYER:-audacious}"
-    local mix_already_in_playlist=0
-    if [ "$player" = "audacious" ] && is_mix_in_audacious_playlist "$selected_mix"; then
-        mix_already_in_playlist=1
-    elif [ "$player" = "strawberry" ] && is_mix_in_strawberry_playlist "$selected_mix"; then
-        mix_already_in_playlist=1
+    local SKIP_PLAYING_ASSETS=1
+    local current_path=""
+    local current_state=""
+
+    if [ "$player" = "audacious" ] && get_audacious_track_info 2>/dev/null; then
+        current_path="$AUDACIOUS_RESOLVED_PATH"
+        current_state="$AUDACIOUS_STATE"
+    elif [ "$player" = "strawberry" ] && get_strawberry_track_info 2>/dev/null; then
+        current_path="$STRAWBERRY_RESOLVED_PATH"
+        current_state="$STRAWBERRY_STATE"
+    else
+        local detected_mix=""
+        detected_mix="$(detect_currently_playing_mix 2>/dev/null || true)"
+        if [ -n "$detected_mix" ] && [ -f "$detected_mix" ]; then
+            current_path="$detected_mix"
+            current_state="playing"
+        fi
     fi
 
-    if [ "$mix_already_in_playlist" -eq 1 ]; then
+    if same_mix_file "$current_path" "$selected_mix" && [ "$current_state" = "playing" ]; then
+        :
+    elif same_mix_file "$current_path" "$selected_mix"; then
         if [ "$player" = "audacious" ]; then
-            if ! pgrep -i -f audacious >/dev/null 2>&1; then
-                if command -v audacious >/dev/null 2>&1; then
-                    nohup audacious -p >/dev/null 2>&1 &
-                    disown 2>/dev/null || true
-                elif flatpak list 2>/dev/null | grep -q "org.atheme.audacious"; then
-                    nohup flatpak run org.atheme.audacious -p >/dev/null 2>&1 &
-                    disown 2>/dev/null || true
-                fi
-            else
-                if command -v audtool >/dev/null 2>&1; then
-                    audtool playback-play >/dev/null 2>&1 || true
-                else
-                    qdbus org.mpris.MediaPlayer2.audacious /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Play >/dev/null 2>&1 || true
-                fi
-            fi
-        elif [ "$player" = "strawberry" ]; then
-            # The latest mix was already added to Strawberry playlist previously; do NOT add it again!
-            if ! pgrep -i -f strawberry >/dev/null 2>&1; then
-                # Strawberry not running: launch Strawberry to load existing playlist without adding duplicates
-                if command -v strawberry >/dev/null 2>&1; then
-                    nohup strawberry -p >/dev/null 2>&1 &
-                    disown 2>/dev/null || true
-                elif flatpak list 2>/dev/null | grep -q "org.strawberrymusicplayer.strawberry"; then
-                    nohup flatpak run org.strawberrymusicplayer.strawberry -p >/dev/null 2>&1 &
-                    disown 2>/dev/null || true
-                elif [ "$OS_TYPE" = "macos" ]; then
-                    open -a Strawberry >/dev/null 2>&1 &
-                fi
-            else
-                # Strawberry already running: ensure playlist is playing if paused/stopped
-                if command -v strawberry >/dev/null 2>&1; then
-                    strawberry -p >/dev/null 2>&1 || true
-                elif flatpak list 2>/dev/null | grep -q "org.strawberrymusicplayer.strawberry"; then
-                    flatpak run org.strawberrymusicplayer.strawberry -p >/dev/null 2>&1 || true
-                fi
-            fi
+            qdbus org.atheme.audacious /org/atheme/audacious org.atheme.audacious.Play >/dev/null 2>&1 \
+                || audtool playback-play >/dev/null 2>&1 \
+                || true
+        else
+            play_audio_file "$player" "$selected_mix"
         fi
+    elif [ "$player" = "audacious" ]; then
+        play_audacious_file_now "$selected_mix" || play_audio_file "$player" "$selected_mix"
     else
-        # Not previously added: add and play in default audio player
         play_audio_file "$player" "$selected_mix"
     fi
 
-    # 2. Open cover art in dedicated image viewer window if enabled
     local found_cover=""
     if [ "${AUTO_SHOW_COVER_ON_STARTUP:-true}" = "true" ]; then
         found_cover=$(find_mix_cover "$selected_mix" 2>/dev/null)
@@ -6204,10 +6270,6 @@ if files:
         fi
     fi
 
-    # 3. Find matching tracklist and open in dedicated new console window
-    # ONLY show tracklist window on startup if single display connected (<= 1).
-    # When >1 displays are connected, only the manager is shown on main screen and
-    # the other two windows (Audacious/Strawberry + Cover) are placed on the secondary screen.
     local num_displays
     num_displays=$(get_connected_displays_count)
     if [ "$num_displays" -le 1 ]; then
@@ -6220,14 +6282,12 @@ if files:
         fi
     fi
 
-    # Align windows across displays: Manager on primary display, Player & Cover on secondary display (>1 displays)
     local align_args=()
     [ "$player" = "audacious" ] && align_args+=(--expect-audacious)
     [ "$player" = "strawberry" ] && align_args+=(--expect-strawberry)
     [ -n "$found_cover" ] && align_args+=(--expect-cover)
     align_mix_windows_on_screen "${align_args[@]}"
 
-    # 4. Custom YouTube video URL on startup (only if mix audio is playing!)
     if [ "${AUTO_PLAY_YOUTUBE_ON_STARTUP:-false}" = "true" ] && [ -n "${STARTUP_YOUTUBE_URL:-}" ]; then
         (sleep 0.6; open_video_url "$STARTUP_YOUTUBE_URL" >/dev/null 2>&1 || true) &
     fi
@@ -6281,7 +6341,7 @@ configure_audio_player_and_startup() {
         echo -e "  • Auto-Show Tracklist on Boot:   ${tl_badge}"
         echo -e "  • Tracklist Window Viewer:       ${BOLD}${CYAN}${TRACKLIST_VIEWER:-console}${NC} (Dedicated Window)"
 
-        echo -e "  • Startup Mix Selection Mode:    ${BOLD}${CYAN}${AUTO_PLAY_MIX_SELECTION:-latest}${NC} (Latest Episode or Random)"
+        echo -e "  • Startup Mix Selection Mode:    ${BOLD}${CYAN}${AUTO_PLAY_MIX_SELECTION:-latest}${NC} (Newest converted mix, or Random)"
         echo -e "  • Default Video Player:          ${BOLD}${GREEN}${DEFAULT_VIDEO_PLAYER:-vlc}${NC}"
 
         local yt_badge="${RED}DISABLED${NC}"
@@ -11255,7 +11315,7 @@ while true; do
     
     echo -e "\n  ${BOLD}${BLUE}─── [ SECTION 1: MIX ARCHIVE WORKFLOW & INGESTION ] ─────────${NC}"
     echo -e "  ${BOLD}${CYAN} 0)${NC} Run Any Desktop Shortcuts — Linux (${GREEN}Games, Audio, Files, Tools, AI Servers — KDE Plasma${NC})"
-    echo -e "  ${BOLD}${CYAN} 1)${NC} Run FLAC Conversion Process (${GREEN}Make_SOF_FLAC_CONVERSION.sh${NC})"
+    echo -e "  ${BOLD}${CYAN} 1)${NC} Run Mix Conversion (${GREEN}FLAC, MP3, WAV, or YouTube MP4${NC})"
     echo -e "  ${BOLD}${CYAN} 2)${NC} Convert Audio Formats, Bit Depths & Split FLACs (${GREEN}WAV, MP3, AAC, FLAC Splitter${NC})"
     echo -e "  ${BOLD}${CYAN} 3)${NC} Retrieve Unconverted WAVs from Archive (${GREEN}MOVE_NOT_CONVERTED_WAVS.sh${NC})"
     echo -e "  ${BOLD}${CYAN} 4)${NC} Search & Import Mixes from Local Drives & SMB (${GREEN}search_and_import_mixes.sh / import_new_mixes.sh${NC})"
@@ -11306,9 +11366,18 @@ while true; do
     
     case $choice in
         1)
-            echo -e "\n${BOLD}${YELLOW}Starting FLAC Conversion...${NC}\n"
+            echo -e "\n${BOLD}${YELLOW}Starting conversion. You can still choose FLAC, MP3, WAV, or a YouTube MP4.${NC}\n"
             run_sub_script "Make_SOF_FLAC_CONVERSION.sh"
-            press_enter
+            echo ""
+            echo -e "${BOLD}${GREEN}Conversion finished. This report stays on screen.${NC}"
+            while true; do
+                flac_done_choice=""
+                read -r -p "Type [m] to open the main menu, or [q] to quit: " flac_done_choice </dev/tty || true
+                case "$flac_done_choice" in
+                    [mM]) break ;;
+                    [qQ]) exit 0 ;;
+                esac
+            done
             ;;
         2)
             manage_audio_conversion

@@ -106,6 +106,114 @@ safe_mktemp() {
     fi
 }
 
+# Copy history_*.nml files that exist on the Traktor machine but not locally.
+# Files already present are left untouched. A failed share check does not stop conversion.
+sync_missing_traktor_history() {
+    local dest="$1"
+    local cred="" remote_raw="" remote_names="" local_names="" missing="" missing_count=0
+    local remote_dir smb_target list_cmd get_cmd smb_err copied=0 smb_rc=0
+
+    if [ -z "${TRAKTOR_SMB_HOST:-}" ] || [ -z "${TRAKTOR_SMB_SHARE:-}" ] || [ -z "${TRAKTOR_SMB_USER:-}" ] || [ -z "${TRAKTOR_SMB_PASSWORD:-}" ]; then
+        echo " -> Traktor history sync skipped (SMB host, share, user, or password is not set)."
+        return 0
+    fi
+    if ! command -v smbclient >/dev/null 2>&1; then
+        echo " -> WARNING: smbclient is not installed. Continuing with the local Traktor history only."
+        return 0
+    fi
+    if [ -z "$dest" ]; then
+        echo " -> WARNING: No local Traktor history directory is configured. Skipping history sync."
+        return 0
+    fi
+    if [ ! -d "$dest" ]; then
+        mkdir -p "$dest" 2>/dev/null || {
+            echo " -> WARNING: Could not create Traktor history directory: $dest"
+            return 0
+        }
+    fi
+
+    remote_dir="${TRAKTOR_SMB_HISTORY_DIR:-Documents/Native Instruments/Traktor 3.11.1/History}"
+    smb_target="//${TRAKTOR_SMB_HOST}/${TRAKTOR_SMB_SHARE}"
+    umask 077
+    cred=$(mktemp "${TMPDIR:-/tmp}/sof_smb_XXXXXX" 2>/dev/null || mktemp /tmp/sof_smb_XXXXXX)
+    remote_raw=$(mktemp "${TMPDIR:-/tmp}/sof_smb_dir_XXXXXX" 2>/dev/null || mktemp /tmp/sof_smb_dir_XXXXXX)
+    remote_names=$(mktemp "${TMPDIR:-/tmp}/sof_smb_remote_XXXXXX" 2>/dev/null || mktemp /tmp/sof_smb_remote_XXXXXX)
+    local_names=$(mktemp "${TMPDIR:-/tmp}/sof_smb_local_XXXXXX" 2>/dev/null || mktemp /tmp/sof_smb_local_XXXXXX)
+    missing=$(mktemp "${TMPDIR:-/tmp}/sof_smb_missing_XXXXXX" 2>/dev/null || mktemp /tmp/sof_smb_missing_XXXXXX)
+    smb_err=$(mktemp "${TMPDIR:-/tmp}/sof_smb_err_XXXXXX" 2>/dev/null || mktemp /tmp/sof_smb_err_XXXXXX)
+
+    cleanup_smb() {
+        rm -f "$cred" "$remote_raw" "$remote_names" "$local_names" "$missing" "$smb_err" 2>/dev/null || true
+    }
+
+    printf 'username=%s\npassword=%s\n' "$TRAKTOR_SMB_USER" "$TRAKTOR_SMB_PASSWORD" > "$cred"
+    echo " -> Checking Traktor history on ${smb_target} ..."
+
+    list_cmd="cd \"${remote_dir}\"; dir"
+    smb_rc=0
+    if command -v timeout >/dev/null 2>&1; then
+        timeout 40 smbclient "$smb_target" -A "$cred" -t 20 -c "$list_cmd" > "$remote_raw" 2>"$smb_err" || smb_rc=$?
+    else
+        smbclient "$smb_target" -A "$cred" -t 20 -c "$list_cmd" > "$remote_raw" 2>"$smb_err" || smb_rc=$?
+    fi
+    if [ "$smb_rc" -ne 0 ]; then
+        echo " -> WARNING: Could not read the Traktor history share. Continuing with local files."
+        if [ -s "$smb_err" ]; then
+            sed -n '1,3p' "$smb_err" | sed 's/^/    /'
+        fi
+        cleanup_smb
+        return 0
+    fi
+
+    awk '{
+        for (i = 1; i <= NF; i++) {
+            if ($i ~ /^history_.*\.nml$/) {
+                print $i
+                break
+            }
+        }
+    }' "$remote_raw" | sort -u > "$remote_names"
+
+    find "$dest" -maxdepth 1 -type f -name 'history_*.nml' -exec basename {} \; 2>/dev/null | sort -u > "$local_names"
+    comm -23 "$remote_names" "$local_names" > "$missing"
+    missing_count=$(grep -c . "$missing" || true)
+
+    if [ "$missing_count" -eq 0 ]; then
+        echo " -> Traktor history files are already available locally. Nothing to copy."
+        cleanup_smb
+        return 0
+    fi
+
+    echo " -> Copying ${missing_count} Traktor history file(s) that are not on this machine..."
+    get_cmd="cd \"${remote_dir}\"; prompt OFF;"
+    while IFS= read -r hist_name || [ -n "$hist_name" ]; do
+        [ -n "$hist_name" ] || continue
+        if [ -f "$dest/$hist_name" ]; then
+            continue
+        fi
+        get_cmd="${get_cmd} get \"${hist_name}\";"
+    done < "$missing"
+
+    if ( cd "$dest" && smbclient "$smb_target" -A "$cred" -t 30 -c "$get_cmd" >"$remote_raw" 2>"$smb_err" ); then
+        while IFS= read -r hist_name || [ -n "$hist_name" ]; do
+            [ -n "$hist_name" ] || continue
+            if [ -f "$dest/$hist_name" ]; then
+                copied=$((copied + 1))
+            else
+                echo " -> WARNING: Failed to copy ${hist_name}"
+            fi
+        done < "$missing"
+        echo " -> Copied ${copied} Traktor history file(s)."
+    else
+        echo " -> WARNING: Copy from the Traktor history share failed. Continuing with local files."
+        if [ -s "$smb_err" ]; then
+            sed -n '1,3p' "$smb_err" | sed 's/^/    /'
+        fi
+    fi
+    cleanup_smb
+    return 0
+}
+
 # Direct Local Traktor History Directory (Auto-detected across Linux, macOS, and Windows)
 LOCAL_HISTORY_DIR="${TRAKTOR_HISTORY_DIR:-}"
 if [ -z "$LOCAL_HISTORY_DIR" ] || [ ! -d "$LOCAL_HISTORY_DIR" ]; then
@@ -130,6 +238,72 @@ if [ -z "$LOCAL_HISTORY_DIR" ] || [ ! -d "$LOCAL_HISTORY_DIR" ]; then
     done
 fi
 
+# Ask which format to write before any files are moved or the log is cleared.
+# Enter keeps the usual FLAC conversion. SOF_OUTPUT_FORMAT skips the question.
+choose_conversion_output() {
+    OUTPUT_FORMAT="${SOF_OUTPUT_FORMAT:-}"
+    case "$OUTPUT_FORMAT" in
+        flac|mp3|wav|mp4) return 0 ;;
+    esac
+    OUTPUT_FORMAT=""
+    if [ ! -r /dev/tty ]; then
+        OUTPUT_FORMAT="flac"
+        return 0
+    fi
+    while true; do
+        {
+            echo "=================================================="
+            echo "The WAV files in this folder are ready to convert."
+            echo "Choose the output before conversion starts."
+            echo "  1) FLAC lossless          (default, press Enter)"
+            echo "  2) MP3 320 kbps"
+            echo "  3) WAV 24-bit"
+            echo "  4) MP4 YouTube video      (1080p, still cover art)"
+            echo "  0) Cancel"
+            echo "=================================================="
+        } >/dev/tty
+        local format_choice=""
+        read -r -p "Output [1/Enter = FLAC]: " format_choice </dev/tty || format_choice=""
+        case "$format_choice" in
+            ""|1) OUTPUT_FORMAT="flac"; return 0 ;;
+            2) OUTPUT_FORMAT="mp3"; return 0 ;;
+            3) OUTPUT_FORMAT="wav"; return 0 ;;
+            4) OUTPUT_FORMAT="mp4"; return 0 ;;
+            0|[qQ]) echo "Conversion cancelled." >/dev/tty; exit 0 ;;
+            *) echo "Choose 1, 2, 3, 4, or 0." >/dev/tty ;;
+        esac
+    done
+}
+
+choose_conversion_output
+
+case "$OUTPUT_FORMAT" in
+    mp3)
+        OUTPUT_EXT="mp3"
+        OUTPUT_LABEL="MP3"
+        OUTPUT_DIR="${MP3_OUTPUT_DIR:-MP3_CONVERTED_OUTPUTS}"
+        ;;
+    wav)
+        OUTPUT_EXT="wav"
+        OUTPUT_LABEL="WAV"
+        OUTPUT_DIR="${WAV_OUTPUT_DIR:-WAV_CONVERTED_OUTPUTS}"
+        ;;
+    mp4)
+        OUTPUT_EXT="mp4"
+        OUTPUT_LABEL="MP4"
+        OUTPUT_DIR="${MP4_OUTPUT_DIR:-MP4_CONVERTED_OUTPUTS}"
+        ;;
+    *)
+        OUTPUT_FORMAT="flac"
+        OUTPUT_EXT="flac"
+        OUTPUT_LABEL="FLAC"
+        ;;
+esac
+
+if [ "$OUTPUT_FORMAT" != "flac" ] && [ -n "${MIX_ARCHIVE_DIR:-}" ] && [ -d "$MIX_ARCHIVE_DIR" ] && [[ "$OUTPUT_DIR" != /* ]]; then
+    OUTPUT_DIR="$MIX_ARCHIVE_DIR/${OUTPUT_DIR#./}"
+fi
+
 # Start timer and log start time
 START_TIME=$(date '+%Y-%m-%d %H:%M:%S')
 START_SECONDS=$(date +%s)
@@ -143,14 +317,21 @@ mkdir -p "$SPEK_DIR"
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 echo "=================================================="
-echo "FLAC Conversion Started at: $START_TIME"
+echo "${OUTPUT_LABEL} conversion started at: $START_TIME"
 echo "=================================================="
 
-# Check History Directory Availability
+# Check History Directory Availability, then fetch any history files that are not here yet
 if [ -d "$LOCAL_HISTORY_DIR" ]; then
     echo " -> Traktor History directory located successfully at: $LOCAL_HISTORY_DIR"
+elif [ -n "${TRAKTOR_HISTORY_DIR:-}" ]; then
+    LOCAL_HISTORY_DIR="$TRAKTOR_HISTORY_DIR"
+    echo " -> WARNING: Traktor History directory was missing. It will be created if the share can be reached."
 else
     echo " -> WARNING: Traktor History directory not found at specified path!"
+fi
+sync_missing_traktor_history "$LOCAL_HISTORY_DIR"
+if [ -d "$LOCAL_HISTORY_DIR" ]; then
+    echo " -> Traktor History directory ready at: $LOCAL_HISTORY_DIR"
 fi
 
 # Mandatory Cover Art Check
@@ -295,19 +476,29 @@ for g_hash in "${group_keys[@]}"; do
         normalized_name="$clean_base"
     fi
 
-    output_filename="${normalized_name}.flac"
+    output_filename="${normalized_name}.${OUTPUT_EXT}"
     output_path="${OUTPUT_DIR}/${output_filename}"
     
     tracklist_filename="${normalized_name}.txt"
     tracklist_path="${OUTPUT_DIR}/${tracklist_filename}"
 
+    if [ "$OUTPUT_FORMAT" != "flac" ] && [ -s "$output_path" ]; then
+        echo "Processing Group [$counter/$total_groups]: Session ID '$base'"
+        echo " -> Output ${OUTPUT_LABEL} file already exists ($output_path). Leaving the source WAV in place."
+        ((counter++))
+        echo "--------------------------------------------------"
+        continue
+    fi
+
     existing_flac=""
+    if [ "$OUTPUT_FORMAT" = "flac" ]; then
     for fdir in "${flac_check_dirs[@]}"; do
         if [ -f "$fdir/$output_filename" ] && [ -s "$fdir/$output_filename" ]; then
             existing_flac="$fdir/$output_filename"
             break
         fi
     done
+    fi
 
     if [ -n "$existing_flac" ]; then
         echo "Processing Group [$counter/$total_groups]: Session ID '$base'"
@@ -337,17 +528,19 @@ for g_hash in "${group_keys[@]}"; do
         ref_name="$(basename "${current_wavs[0]}")"
     fi
 
-    session_year=$(echo "$ref_name" | grep -oE '20[0-9]{2}' | head -n 1)
-    session_month=$(echo "$ref_name" | grep -oE '20[0-9]{2}-[0-9]{2}' | awk -F'-' '{print $2}')
+    # grep exits 1 when a token is absent, and 141 when head closes the pipe.
+    # Either status aborts the batch under set -eo pipefail, so these are optional.
+    session_year=$(echo "$ref_name" | grep -oE '20[0-9]{2}' | head -n 1 || true)
+    session_month=$(echo "$ref_name" | grep -oE '20[0-9]{2}-[0-9]{2}' | awk -F'-' '{print $2}' || true)
     if [ -z "$session_month" ]; then
-        session_month=$(echo "$ref_name" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' | awk -F'-' '{print $2}')
+        session_month=$(echo "$ref_name" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' | awk -F'-' '{print $2}' || true)
     fi
-    session_day=$(echo "$ref_name" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' | awk -F'-' '{print $3}')
-    session_hour=$(echo "$ref_name" | grep -oE '[0-9]{1,2}h' | head -n 1 | tr -d 'h')
+    session_day=$(echo "$ref_name" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' | awk -F'-' '{print $3}' || true)
+    session_hour=$(echo "$ref_name" | grep -oE '[0-9]{1,2}h' | head -n 1 | tr -d 'h' || true)
     if [ -n "$session_hour" ] && [ ${#session_hour} -eq 1 ]; then
         session_hour="0${session_hour}"
     fi
-    session_min=$(echo "$ref_name" | grep -oE '[0-9]{2}m' | head -n 1 | tr -d 'm')
+    session_min=$(echo "$ref_name" | grep -oE '[0-9]{2}m' | head -n 1 | tr -d 'm' || true)
     
     if [ -n "$session_year" ] && [ -n "$session_month" ] && [ -n "$session_day" ]; then
         session_date="${session_year}-${session_month}-${session_day}"
@@ -368,15 +561,106 @@ for g_hash in "${group_keys[@]}"; do
 
     if [ -d "$LOCAL_HISTORY_DIR" ]; then
         if [ -n "$traktor_pattern" ]; then
-            matched_history=$(find "$LOCAL_HISTORY_DIR" -maxdepth 2 -type f \( -name "*.nml" -o -name "*.xml" -o -name "*.txt" \) 2>/dev/null | grep -i -- "$traktor_pattern" | head -n 1)
+            matched_history=$(find "$LOCAL_HISTORY_DIR" -maxdepth 2 -type f \( -name "*.nml" -o -name "*.xml" -o -name "*.txt" \) 2>/dev/null | grep -i -- "$traktor_pattern" | head -n 1 || true)
         fi
-        
+
+        # Traktor stamps history_*.nml with the time the history was saved, which is
+        # often later than the recording start encoded in the WAV name.
+        if [ -z "$matched_history" ] && [ -n "$session_date" ] && [ -n "$session_hour" ] && [ -n "$session_min" ]; then
+            temp_match=$(safe_mktemp py)
+            cat << 'PY_MATCH' > "$temp_match"
+import os
+import re
+import sys
+import xml.etree.ElementTree as ET
+from datetime import datetime, timedelta
+
+history_dir = sys.argv[1]
+ref_name = sys.argv[2]
+m = re.search(r"(20\d{2})-(\d{2})-(\d{2})_(\d{1,2})h(\d{2})m(\d{2})", ref_name)
+if not m:
+    sys.exit(0)
+y, mo, d, hh, mm, ss = (int(x) for x in m.groups())
+rec = datetime(y, mo, d, hh, mm, ss)
+window = timedelta(minutes=15)
+
+def decode(sd, st):
+    n = int(sd)
+    year, month, day = n >> 16, (n >> 8) & 0xFF, n & 0xFF
+    sec = int(float(st))
+    try:
+        return datetime(year, month, day, sec // 3600, (sec % 3600) // 60, sec % 60)
+    except ValueError:
+        return None
+
+def file_date(name):
+    fm = re.search(r"history_(\d{4})y(\d{2})m(\d{2})d", name, re.I)
+    if not fm:
+        return None
+    try:
+        return datetime(int(fm.group(1)), int(fm.group(2)), int(fm.group(3))).date()
+    except ValueError:
+        return None
+
+files = []
+for dirpath, dirnames, names in os.walk(history_dir):
+    rel = os.path.relpath(dirpath, history_dir)
+    depth = 0 if rel == "." else rel.count(os.sep) + 1
+    if depth >= 2:
+        dirnames[:] = []
+    for name in names:
+        if name.lower().endswith((".nml", ".xml")):
+            files.append(os.path.join(dirpath, name))
+
+def closest(path):
+    try:
+        root = ET.parse(path).getroot()
+    except Exception:
+        return None
+    best = None
+    for ext in root.findall(".//EXTENDEDDATA"):
+        sd, st = ext.get("STARTDATE"), ext.get("STARTTIME")
+        if not sd or not st:
+            continue
+        started = decode(sd, st)
+        if started is None:
+            continue
+        delta = abs(started - rec)
+        if delta <= window and (best is None or delta < best):
+            best = delta
+    return best
+
+near, rest = [], []
+for path in files:
+    fd = file_date(os.path.basename(path))
+    if fd is not None and abs((fd - rec.date()).days) <= 1:
+        near.append(path)
+    else:
+        rest.append(path)
+
+chosen = None
+chosen_delta = None
+for group in (near, rest):
+    for path in group:
+        delta = closest(path)
+        if delta is not None and (chosen_delta is None or delta < chosen_delta):
+            chosen = path
+            chosen_delta = delta
+    if chosen:
+        break
+if chosen:
+    print(chosen)
+PY_MATCH
+            matched_history=$(python3 "$temp_match" "$LOCAL_HISTORY_DIR" "$ref_name" 2>/dev/null | head -n 1 || true)
+            rm -f "$temp_match"
+        fi
+
         if [ -z "$matched_history" ] && [ -n "$fallback_pattern" ]; then
-            matched_history=$(find "$LOCAL_HISTORY_DIR" -maxdepth 2 -type f \( -name "*.nml" -o -name "*.xml" -o -name "*.txt" \) 2>/dev/null | grep -i -- "$fallback_pattern" | sort | tail -n 1)
+            matched_history=$(find "$LOCAL_HISTORY_DIR" -maxdepth 2 -type f \( -name "*.nml" -o -name "*.xml" -o -name "*.txt" \) 2>/dev/null | grep -i -- "$fallback_pattern" | sort | tail -n 1 || true)
         fi
         
         if [ -z "$matched_history" ] && [ -n "$session_date" ]; then
-            matched_history=$(find "$LOCAL_HISTORY_DIR" -maxdepth 2 -type f \( -name "*.nml" -o -name "*.xml" -o -name "*.txt" \) 2>/dev/null | grep -i -- "$session_date" | sort | tail -n 1)
+            matched_history=$(find "$LOCAL_HISTORY_DIR" -maxdepth 2 -type f \( -name "*.nml" -o -name "*.xml" -o -name "*.txt" \) 2>/dev/null | grep -i -- "$session_date" | sort | tail -n 1 || true)
         fi
 
         if [ -n "$matched_history" ] && [ -f "$matched_history" ]; then
@@ -401,10 +685,36 @@ for g_hash in "${group_keys[@]}"; do
 
             temp_py=$(safe_mktemp py)
             cat << 'PY_PARSER' > "$temp_py"
+import re
 import sys
 import xml.etree.ElementTree as ET
+from datetime import datetime, timedelta
 
 xml_file = sys.argv[1]
+ref_name = sys.argv[2] if len(sys.argv) > 2 else ""
+rec_start = None
+m = re.search(r"(20\d{2})-(\d{2})-(\d{2})_(\d{1,2})h(\d{2})m(\d{2})", ref_name)
+if m:
+    y, mo, d, hh, mm, ss = (int(x) for x in m.groups())
+    rec_start = datetime(y, mo, d, hh, mm, ss)
+cutoff = rec_start - timedelta(minutes=3) if rec_start else None
+
+def decode_start(sd, st):
+    n = int(sd)
+    year, month, day = n >> 16, (n >> 8) & 0xFF, n & 0xFF
+    sec = int(float(st))
+    try:
+        return datetime(year, month, day, sec // 3600, (sec % 3600) // 60, sec % 60)
+    except ValueError:
+        return None
+
+def track_label(artist, title):
+    artist = (artist or "").strip()
+    title = (title or "").strip()
+    if artist and title:
+        return f"{artist} - {title}"
+    return title or artist
+
 try:
     tree = ET.parse(xml_file)
     root = tree.getroot()
@@ -418,12 +728,10 @@ try:
             full_key = f"{location.get('VOLUME', '')}{dir_path}{file_name}"
         else:
             full_key = ""
-        
-        artist = entry.get("ARTIST", "")
-        title = entry.get("TITLE", "")
-        
-        track_info = f"{artist} - {title}".strip()
-        if track_info != "-":
+            file_name = ""
+
+        track_info = track_label(entry.get("ARTIST", ""), entry.get("TITLE", ""))
+        if track_info and track_info != "-":
             if full_key:
                 collection_tracks[full_key] = track_info
             if file_name:
@@ -438,6 +746,12 @@ try:
     for entry in search_scope.findall(".//ENTRY"):
         pkey = entry.find("PRIMARYKEY")
         if pkey is not None:
+            if cutoff is not None:
+                ext = entry.find("EXTENDEDDATA")
+                if ext is not None and ext.get("STARTDATE") and ext.get("STARTTIME"):
+                    started = decode_start(ext.get("STARTDATE"), ext.get("STARTTIME"))
+                    if started is not None and started < cutoff:
+                        continue
             key_val = pkey.get("KEY", "")
             track = None
             if key_val in collection_tracks:
@@ -481,7 +795,7 @@ except Exception:
     sys.exit(1)
 PY_PARSER
 
-            python3 "$temp_py" "$matched_history" >> "$tracklist_path"
+            python3 "$temp_py" "$matched_history" "$ref_name" >> "$tracklist_path"
             rm -f "$temp_py"
 
             if [ -s "$tracklist_path" ] && [ $(wc -l < "$tracklist_path") -gt 10 ]; then
@@ -538,34 +852,98 @@ PY_PARSER
         cp "$selected_cover" "$OPTIMIZED_COVER"
     fi
 
+    concat_list=""
+    session_audio="${current_wavs[0]}"
     if [ ${#current_wavs[@]} -gt 1 ]; then
-        echo " -> Merging ${#current_wavs[@]} split WAV files into single FLAC with cover art..."
         concat_list=$(safe_mktemp)
         for w in "${current_wavs[@]}"; do
             echo "file '$w'" >> "$concat_list"
         done
+        session_audio=$(safe_mktemp wav)
+        echo " -> Merging ${#current_wavs[@]} split WAV files..."
+        if ! ffmpeg -y -f concat -safe 0 -i "$concat_list" -c:a pcm_s24le "$session_audio" >/dev/null 2>&1; then
+            echo "ERROR: Could not merge the split WAV files for '$base'."
+            rm -f "$concat_list" "$session_audio" "$OPTIMIZED_COVER"
+            exit 1
+        fi
+    fi
 
-        ffmpeg -y -f concat -safe 0 -i "$concat_list" -i "$OPTIMIZED_COVER" \
-          -c:a flac -sample_fmt s32 -compression_level 12 \
-          -map 0:a -map 1:v \
-          -metadata artist="MPlanetarian" \
-          -metadata album="Stream of Frequency" \
-          -metadata title="$readable_title" \
-          -disposition:v:0 attached_pic \
-          "$output_path"
-        conversion_status=$?
-        rm -f "$concat_list"
-    else
-        echo " -> Converting single WAV file to FLAC with cover art..."
-        ffmpeg -y -i "${current_wavs[0]}" -i "$OPTIMIZED_COVER" \
-          -c:a flac -sample_fmt s32 -compression_level 12 \
-          -map 0:a -map 1:v \
-          -metadata artist="MPlanetarian" \
-          -metadata album="Stream of Frequency" \
-          -metadata title="$readable_title" \
-          -disposition:v:0 attached_pic \
-          "$output_path"
-        conversion_status=$?
+    conversion_status=1
+    case "$OUTPUT_FORMAT" in
+        mp3)
+            echo " -> Converting to MP3 320 kbps with cover art..."
+            if ffmpeg -y -i "$session_audio" -i "$OPTIMIZED_COVER" \
+              -map 0:a -map 1:v -c:v mjpeg -id3v2_version 3 \
+              -metadata:s:v title="Album cover" -metadata:s:v comment="Cover (front)" \
+              -c:a libmp3lame -b:a 320k \
+              -metadata artist="MPlanetarian" \
+              -metadata album="Stream of Frequency" \
+              -metadata title="$readable_title" \
+              "$output_path" >/dev/null 2>&1; then
+                conversion_status=0
+            fi
+            ;;
+        wav)
+            echo " -> Converting to 24-bit WAV..."
+            if ffmpeg -y -i "$session_audio" -c:a pcm_s24le \
+              -metadata artist="MPlanetarian" \
+              -metadata album="Stream of Frequency" \
+              -metadata title="$readable_title" \
+              "$output_path" >/dev/null 2>&1; then
+                conversion_status=0
+            fi
+            ;;
+        mp4)
+            if [ "${MP4_ENCODER_READY:-0}" != "1" ]; then
+                MP4_VCODEC="libx264"
+                MP4_VENC_ARGS="-preset medium -crf 20"
+                if ffmpeg -f lavfi -i color=c=black:s=64x64 -frames:v 1 -c:v h264_nvenc -f null - >/dev/null 2>&1; then
+                    MP4_VCODEC="h264_nvenc"
+                    MP4_VENC_ARGS="-preset p4 -cq 21 -g 60"
+                fi
+                MP4_ACODEC="aac"
+                if ffmpeg -encoders 2>/dev/null | grep -q "libfdk_aac"; then
+                    MP4_ACODEC="libfdk_aac"
+                fi
+                MP4_ENCODER_READY=1
+                echo " -> YouTube video encoder: ${MP4_VCODEC}, audio: ${MP4_ACODEC}"
+            fi
+            audio_duration=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$session_audio" 2>/dev/null || echo "")
+            total_sec=$(printf "%.0f" "${audio_duration:-0}")
+            fade_filter=""
+            if [ "$total_sec" -ge 12 ]; then
+                fade_out=$((total_sec - 5))
+                fade_filter=",fade=t=in:st=0:d=5:color=black,fade=t=out:st=${fade_out}:d=5:color=black"
+            fi
+            echo " -> Rendering 1080p YouTube MP4 from the cover art..."
+            # shellcheck disable=SC2086
+            if ffmpeg -y -loop 1 -framerate 30 -t "$audio_duration" -i "$selected_cover" -i "$session_audio" \
+              -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black${fade_filter},format=yuv420p" \
+              -c:v "$MP4_VCODEC" $MP4_VENC_ARGS \
+              -c:a "$MP4_ACODEC" -b:a 320k -movflags +faststart \
+              -metadata artist="MPlanetarian" \
+              -metadata album="Stream of Frequency" \
+              -metadata title="$readable_title" \
+              "$output_path" >/dev/null 2>&1; then
+                conversion_status=0
+            fi
+            ;;
+        *)
+            echo " -> Converting to FLAC with cover art..."
+            if ffmpeg -y -i "$session_audio" -i "$OPTIMIZED_COVER" \
+              -c:a flac -sample_fmt s32 -compression_level 12 \
+              -map 0:a -map 1:v \
+              -metadata artist="MPlanetarian" \
+              -metadata album="Stream of Frequency" \
+              -metadata title="$readable_title" \
+              -disposition:v:0 attached_pic \
+              "$output_path" >/dev/null 2>&1; then
+                conversion_status=0
+            fi
+            ;;
+    esac
+    if [ -n "$concat_list" ]; then
+        rm -f "$concat_list" "$session_audio"
     fi
 
     if [ $conversion_status -ne 0 ]; then
@@ -609,7 +987,7 @@ if [ ${#newly_exported_flacs[@]} -gt 0 ]; then
     : > "$PLAYLIST_NAME"
     for f in "${newly_exported_flacs[@]}"; do
         # Output the path relative to this script's directory
-        echo "FLAC_CONVERTED_OUTPUTS/$(basename "$f")" >> "$PLAYLIST_NAME"
+        echo "${OUTPUT_LABEL}_CONVERTED_OUTPUTS/$(basename "$f")" >> "$PLAYLIST_NAME"
     done
     echo "Playlist generated successfully at: $PLAYLIST_NAME"
 fi
@@ -617,16 +995,3 @@ fi
 echo "=================================================="
 echo "CONVERSION COMPLETE"
 echo "=================================================="
-
-# Check and alert about the Special Top 5 Tracks Feature
-FIRST_MIX_MARKER="$SCRIPT_DIR/.first_mix_processed"
-if [ ! -f "$FIRST_MIX_MARKER" ]; then
-    touch "$FIRST_MIX_MARKER"
-    echo -e "\n\033[1;35m═══════════════════════════════════════════════════════════════════════════════════\033[0m"
-    echo -e "\033[1;33m  🎉 SPECIAL FEATURE UNLOCKED: LISTEN TO YOUR TOP 5 TRACKS RIGHT NOW! 🎉\033[0m"
-    echo -e "\033[1;36m  Congratulations! You have recorded and processed a mix for the first time with the Manager.\033[0m"
-    echo -e "\033[1;37m  You can now access the special option from the Main Menu:\033[0m"
-    echo -e "\033[1;32m  ★ Listen to Your Top 5 Tracks Right Now (Pre-Selected - Special Option) [Unlock Mystery / Ready]\033[0m"
-    echo -e "\033[1;35m═══════════════════════════════════════════════════════════════════════════════════\033[0m\n"
-fi
-
