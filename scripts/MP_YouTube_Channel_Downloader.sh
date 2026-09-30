@@ -3,16 +3,14 @@
 # MP_YouTube_Channel_Downloader.sh
 # ------------------------------------------------------------------------------
 # Minimal & High-Efficiency YouTube 1080p Channel Downloader (Linux & macOS)
+# - Prompts user whether to use a proxy (with IP & Port) or direct connection
 # - Streams and downloads the last 6 months directly (stops at 6-month cutoff)
 # - No redundant scans or full-channel history parsing
-# - Proxy: 192.168.1.138:3128
 # - Target Dir: YOUTUBE_[CHANNELNAME]_DOWNLOAD_[INSERTDATE]
 # ==============================================================================
 set -euo pipefail
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:$PATH"
-
-PROXY="${YOUTUBE_PROXY:-http://192.168.1.138:3128}"
 
 # JS engine detection (Node or Deno)
 JS_ARG=()
@@ -24,15 +22,41 @@ elif command -v deno >/dev/null 2>&1; then
     JS_ARG=(--js-runtimes "deno:$(command -v deno)")
 fi
 
-echo -e "\033[1;36m=== YouTube 1080p Channel Downloader (Last 6 Months) ===\033[0m"
+echo -e "\033[1;36m=== YouTube 1080p Channel Downloader (Last 6 Months) ===\033[0m\n"
 
-# 1. Quick Proxy Ping (2-second timeout)
-if ! curl -s -x "$PROXY" -I https://www.google.com --connect-timeout 2 >/dev/null; then
-    echo -e "\033[1;31m❌ Error: Proxy server $PROXY is unreachable.\033[0m"
-    read -rp "Press Enter to exit..."
-    exit 1
+# 1. Ask user about Proxy usage
+PROXY_ARG=()
+read -rp "Do you want to use a Proxy server for downloading? [y/N]: " USE_PROXY
+USE_PROXY=$(echo "${USE_PROXY:-n}" | tr '[:upper:]' '[:lower:]' | xargs)
+
+if [[ "$USE_PROXY" == "y" || "$USE_PROXY" == "yes" ]]; then
+    read -rp "Enter Proxy IP [default: 192.168.1.138]: " PROXY_IP
+    PROXY_IP=$(echo "${PROXY_IP:-192.168.1.138}" | xargs)
+    # Strip protocol prefix if entered
+    PROXY_IP=$(echo "$PROXY_IP" | sed -E 's|^https?://||')
+
+    read -rp "Enter Proxy Port [default: 3128]: " PROXY_PORT
+    PROXY_PORT=$(echo "${PROXY_PORT:-3128}" | xargs)
+
+    PROXY_URL="http://${PROXY_IP}:${PROXY_PORT}"
+    echo -e "Testing proxy connectivity to ${PROXY_URL}..."
+
+    if ! curl -s -x "$PROXY_URL" -I https://www.google.com --connect-timeout 2 >/dev/null; then
+        echo -e "\033[1;31m❌ Warning: Proxy server $PROXY_URL is unreachable.\033[0m"
+        read -rp "Proceed without proxy (direct connection)? [Y/n]: " FALLBACK_CHOICE
+        FALLBACK_CHOICE=$(echo "${FALLBACK_CHOICE:-y}" | tr '[:upper:]' '[:lower:]' | xargs)
+        if [[ "$FALLBACK_CHOICE" != "y" && "$FALLBACK_CHOICE" != "yes" ]]; then
+            echo "Exiting."
+            exit 1
+        fi
+        echo -e "\033[33m⚡ Proceeding with direct connection (no proxy).\033[0m\n"
+    else
+        echo -e "\033[32m✔ Proxy online: $PROXY_URL\033[0m\n"
+        PROXY_ARG=(--proxy "$PROXY_URL")
+    fi
+else
+    echo -e "\033[32m✔ Direct connection selected (no proxy).\033[0m\n"
 fi
-echo -e "\033[32m✔ Proxy online: $PROXY\033[0m"
 
 # 2. Live Wi-Fi / Network Stats
 SSID="N/A"
@@ -141,7 +165,7 @@ echo -e "\033[1;32m🚀 Starting direct stream download in 1080p...\033[0m\n"
 START_TIME=$(date +%s)
 
 yt-dlp \
-    --proxy "$PROXY" \
+    ${PROXY_ARG[@]+"${PROXY_ARG[@]}"} \
     "${JS_ARG[@]}" \
     --lazy-playlist \
     --break-match-filters "upload_date >= ${CUTOFF_DATE}" \

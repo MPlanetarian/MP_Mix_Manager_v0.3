@@ -2526,7 +2526,7 @@ ${BOLD}${MAGENTA}===============================================================
     echo -e "  ${BOLD}${CYAN}3)${NC} 720p HD (1280x720 @ 30fps) - ${YELLOW}Fast Export & Compact File Size (Still Cover Art + Audio)${NC}"
     echo -e "  ${BOLD}${CYAN}4)${NC} Looping MP4-to-MP4 Video Creator (${GREEN}Loop MP4 with Segment Fades, Audio & Thumbnails${NC})"
     echo -e "  ${BOLD}${CYAN}5)${NC} Launch Universal Video Generator Wizard (${GREEN}generate_youtube_video.sh${NC})"
-    echo -e "  ${BOLD}${CYAN}6)${NC} Download YouTube Channel in 1080p (${GREEN}Last 6 Months via Tinyproxy - MP_YouTube_Channel_Downloader.sh${NC})"
+    echo -e "  ${BOLD}${CYAN}6)${NC} Download YouTube Channel in 1080p (${GREEN}Last 6 Months, Optional Proxy - MP_YouTube_Channel_Downloader.sh${NC})"
     echo -e "  ${BOLD}${CYAN}7)${NC} Cancel & Return to Main Menu
 "
     read -r -p "Enter choice [1-7, default: 2]: " v_choice
