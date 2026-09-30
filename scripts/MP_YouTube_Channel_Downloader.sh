@@ -2,7 +2,7 @@
 # ==============================================================================
 # MP_YouTube_Channel_Downloader.sh
 # ------------------------------------------------------------------------------
-# Minimal & High-Efficiency YouTube 1080p Channel Downloader
+# Minimal & High-Efficiency YouTube 1080p Channel Downloader (Linux & macOS)
 # - Streams and downloads the last 6 months directly (stops at 6-month cutoff)
 # - No redundant scans or full-channel history parsing
 # - Proxy: 192.168.1.138:3128
@@ -10,10 +10,19 @@
 # ==============================================================================
 set -euo pipefail
 
+export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:$PATH"
+
 PROXY="${YOUTUBE_PROXY:-http://192.168.1.138:3128}"
-NODE_PATH=$(command -v node 2>/dev/null || echo "/home/mplanetarian/.local/bin/node")
+
+# JS engine detection (Node or Deno)
 JS_ARG=()
-[[ -x "$NODE_PATH" ]] && JS_ARG=(--js-runtimes "node:${NODE_PATH}")
+if command -v node >/dev/null 2>&1; then
+    JS_ARG=(--js-runtimes "node:$(command -v node)")
+elif [[ -x "/home/mplanetarian/.local/bin/node" ]]; then
+    JS_ARG=(--js-runtimes "node:/home/mplanetarian/.local/bin/node")
+elif command -v deno >/dev/null 2>&1; then
+    JS_ARG=(--js-runtimes "deno:$(command -v deno)")
+fi
 
 echo -e "\033[1;36m=== YouTube 1080p Channel Downloader (Last 6 Months) ===\033[0m"
 
@@ -25,19 +34,47 @@ if ! curl -s -x "$PROXY" -I https://www.google.com --connect-timeout 2 >/dev/nul
 fi
 echo -e "\033[32m✔ Proxy online: $PROXY\033[0m"
 
-# 2. Live Wi-Fi Stats (instant one-shot query)
-IFACE=$(ip -o link show 2>/dev/null | awk -F': ' '$2 ~ /^wl/ {print $2; exit}' || true)
-IFACE=${IFACE:-wlp2s0}
-LINK_INFO=$(iw dev "$IFACE" link 2>/dev/null || true)
-SSID=$(echo "$LINK_INFO" | awk -F': ' '/SSID:/ {print $2}')
-BSSID=$(echo "$LINK_INFO" | awk '/Connected to/ {print $3}')
-FREQ=$(echo "$LINK_INFO" | awk -F': ' '/freq:/ {print $2}')
-SIGNAL=$(echo "$LINK_INFO" | awk -F': ' '/signal:/ {print $2}')
-RXRATE=$(echo "$LINK_INFO" | awk -F': ' '/rx bitrate:/ {print $2}')
-TXRATE=$(echo "$LINK_INFO" | awk -F': ' '/tx bitrate:/ {print $2}')
-IP_ADDR=$(ip -4 addr show "$IFACE" 2>/dev/null | awk '/inet / {print $2}')
+# 2. Live Wi-Fi / Network Stats
+SSID="N/A"
+BSSID="N/A"
+SIGNAL="N/A"
+FREQ="N/A"
+RXRATE="N/A"
+TXRATE="N/A"
+IP_ADDR="N/A"
 
-echo -e "\033[1;34m📶 Wi-Fi:\033[0m ${SSID:-N/A} (${BSSID:-N/A}) | Signal: ${SIGNAL:-N/A} | Freq: ${FREQ:-N/A} MHz"
+if [[ "$(uname)" == "Darwin" ]]; then
+    WIFI_DEV=$(networksetup -listallhardwareports 2>/dev/null | awk '/Hardware Port: Wi-Fi/{getline; print $2}')
+    WIFI_DEV=${WIFI_DEV:-en1}
+    AIRPORT="/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport"
+    if [[ -x "$AIRPORT" ]]; then
+        AIR_INFO=$("$AIRPORT" -I 2>/dev/null || true)
+        SSID=$(echo "$AIR_INFO" | awk -F': ' '/ SSID/ {print $2}' | xargs || true)
+        BSSID=$(echo "$AIR_INFO" | awk -F': ' '/ BSSID/ {print $2}' | xargs || true)
+        SIGNAL=$(echo "$AIR_INFO" | awk -F': ' '/agrCtlRSSI/ {print $2 " dBm"}' | xargs || true)
+        FREQ=$(echo "$AIR_INFO" | awk -F': ' '/channel/ {print $2}' | xargs || true)
+        TXRATE=$(echo "$AIR_INFO" | awk -F': ' '/lastTxRate/ {print $2 " Mbps"}' | xargs || true)
+        RXRATE=$(echo "$AIR_INFO" | awk -F': ' '/maxRate/ {print $2 " Mbps"}' | xargs || true)
+    else
+        SSID=$(networksetup -getairportnetwork "$WIFI_DEV" 2>/dev/null | awk -F': ' '{print $2}' | xargs || true)
+    fi
+    IP_ADDR=$(ipconfig getifaddr "$WIFI_DEV" 2>/dev/null || ipconfig getifaddr en0 2>/dev/null || true)
+else
+    IFACE=$(ip -o link show 2>/dev/null | awk -F': ' '$2 ~ /^wl/ {print $2; exit}' || true)
+    IFACE=${IFACE:-wlp2s0}
+    if command -v iw >/dev/null 2>&1; then
+        LINK_INFO=$(iw dev "$IFACE" link 2>/dev/null || true)
+        SSID=$(echo "$LINK_INFO" | awk -F': ' '/SSID:/ {print $2}' || true)
+        BSSID=$(echo "$LINK_INFO" | awk '/Connected to/ {print $3}' || true)
+        FREQ=$(echo "$LINK_INFO" | awk -F': ' '/freq:/ {print $2}' || true)
+        SIGNAL=$(echo "$LINK_INFO" | awk -F': ' '/signal:/ {print $2}' || true)
+        RXRATE=$(echo "$LINK_INFO" | awk -F': ' '/rx bitrate:/ {print $2}' || true)
+        TXRATE=$(echo "$LINK_INFO" | awk -F': ' '/tx bitrate:/ {print $2}' || true)
+    fi
+    IP_ADDR=$(ip -4 addr show "$IFACE" 2>/dev/null | awk '/inet / {print $2}' || true)
+fi
+
+echo -e "\033[1;34m📶 Network:\033[0m SSID: ${SSID:-N/A} (${BSSID:-N/A}) | Signal: ${SIGNAL:-N/A} | Freq: ${FREQ:-N/A} MHz"
 echo -e "   \033[2mSpeed: RX ${RXRATE:-N/A} / TX ${TXRATE:-N/A} | IP: ${IP_ADDR:-N/A}\033[0m\n"
 
 # 3. Channel Input
@@ -81,9 +118,23 @@ TARGET_DIR="YOUTUBE_${CHANNEL_NAME}_DOWNLOAD_${DATE_STR}"
 mkdir -p "$TARGET_DIR"
 cd "$TARGET_DIR"
 
-CUTOFF_DATE=$(date -d '6 months ago' +%Y%m%d)
+# 6 Months Cutoff Calculation (compatible with BSD/macOS and GNU date)
+if date -v-6m +%Y%m%d >/dev/null 2>&1; then
+    CUTOFF_DATE=$(date -v-6m +%Y%m%d)
+    CUTOFF_DISPLAY=$(date -v-6m '+%B %d, %Y')
+elif date -d '6 months ago' +%Y%m%d >/dev/null 2>&1; then
+    CUTOFF_DATE=$(date -d '6 months ago' +%Y%m%d)
+    CUTOFF_DISPLAY=$(date -d '6 months ago' '+%B %d, %Y')
+elif command -v gdate >/dev/null 2>&1; then
+    CUTOFF_DATE=$(gdate -d '6 months ago' +%Y%m%d)
+    CUTOFF_DISPLAY=$(gdate -d '6 months ago' '+%B %d, %Y')
+else
+    CUTOFF_DATE=$(date +%Y%m%d)
+    CUTOFF_DISPLAY="6 months ago"
+fi
+
 echo -e "\033[1;32m📁 Directory:\033[0m $(pwd)"
-echo -e "\033[1;32m📅 Cutoff:\033[0m Only videos on/after $(date -d '6 months ago' '+%B %d, %Y') ($CUTOFF_DATE)"
+echo -e "\033[1;32m📅 Cutoff:\033[0m Only videos on/after ${CUTOFF_DISPLAY} ($CUTOFF_DATE)"
 echo -e "\033[1;32m🚀 Starting direct stream download in 1080p...\033[0m\n"
 
 # 4. Direct Streamed Download
@@ -99,7 +150,7 @@ yt-dlp \
     -o "%(upload_date)s - %(title)s [%(id)s].%(ext)s" \
     --progress \
     --console-title \
-    --exec 'after_video:bash -c '\''SIZE=$(stat -c %s "$1" 2>/dev/null | numfmt --to=iec-i --suffix=B || echo "Unknown"); echo -e "\n\033[1;32m✔ Finished: $(basename "$1") | Size: ${SIZE}\033[0m\n"'\'' _ {}' \
+    --exec 'after_video:bash -c '\''SIZE=$(ls -lh "$1" 2>/dev/null | awk "{print \$5}"); echo -e "\n\033[1;32m✔ Finished: $(basename "$1") | Size: ${SIZE:-Unknown}\033[0m\n"'\'' _ {}' \
     "$CHANNEL_URL" || true
 
 TOTAL_TIME=$(( $(date +%s) - START_TIME ))
