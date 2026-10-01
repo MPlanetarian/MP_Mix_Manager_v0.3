@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.4] - 2026-10-01
 
+- **Interactive Audio ID3/Vorbis Tag Customizer & Cover Selector**:
+  - Integrated into audio conversion pipelines (`Make_SOF_FLAC_CONVERSION.sh` and `scripts/convert_audio_format.sh`).
+  - Prompts optionally before conversion to set common tags: Artist Name, Mix Title, Album, Release Year, Genre, and Description/Comment.
+  - Interactive Cover Art selector: automatically scans for local/mix archive covers (`Cover.png`, `./COVERS/`, etc.) or accepts custom full filepaths with drag-and-drop quote-stripping and tilde expansion.
+  - Non-blocking zero-friction defaults: pressing Enter immediately retains standard tags (`Artist=MPlanetarian`, `Album=Stream of Frequency`, auto-derived title) and default cover art (`Cover.png`).
 - **Loudness Mastering, CUE Engine & Archive Bit-Rot Resilience Suite**:
   - **EBU R128 Audio Loudness & True-Peak Mastering Suite** (`scripts/master_audio_loudness.py`, `master_audio_loudness.sh`):
     - Full analysis of Integrated Loudness (LUFS), True-Peak max (dBTP), Loudness Range (LRA), and threshold headroom.

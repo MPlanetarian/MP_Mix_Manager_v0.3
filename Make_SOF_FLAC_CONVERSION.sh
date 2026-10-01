@@ -277,6 +277,175 @@ choose_conversion_output() {
 
 choose_conversion_output
 
+# Metadata & ID Tag Defaults
+CUSTOM_ARTIST="${SOF_ARTIST:-}"
+CUSTOM_TITLE="${SOF_TITLE:-}"
+CUSTOM_ALBUM="${SOF_ALBUM:-}"
+CUSTOM_YEAR="${SOF_YEAR:-}"
+CUSTOM_GENRE="${SOF_GENRE:-}"
+CUSTOM_COMMENT="${SOF_COMMENT:-}"
+CUSTOM_COVER_IMAGE="${SOF_COVER_IMAGE:-}"
+
+configure_conversion_metadata_and_cover() {
+    if [ ! -r /dev/tty ]; then
+        return 0
+    fi
+
+    local tag_choice=""
+    {
+        echo ""
+        echo "=================================================="
+        echo "    AUDIO ID TAGS & COVER ARTWORK SETTINGS        "
+        echo "=================================================="
+        echo "Would you like to set custom tags or custom cover art?"
+        echo "  [y/N] (Default: Enter = keep standard tags & default cover)"
+        echo "=================================================="
+    } >/dev/tty
+
+    read -r -p "Customize audio tags & cover? [y/N]: " tag_choice </dev/tty || tag_choice=""
+    case "$tag_choice" in
+        [yY]|[yY][eE][sS])
+            ;;
+        *)
+            echo " -> Using standard default tags and cover art." >/dev/tty
+            return 0
+            ;;
+    esac
+
+    {
+        echo ""
+        echo "--- Audio Metadata / ID Tags (Press Enter to keep default) ---"
+    } >/dev/tty
+
+    # 1. Artist
+    local input_artist=""
+    read -r -p "Artist Name [MPlanetarian]: " input_artist </dev/tty || input_artist=""
+    CUSTOM_ARTIST="${input_artist:-MPlanetarian}"
+
+    # 2. Mix / Track Title
+    local input_title=""
+    read -r -p "Mix / Track Title [Auto-detect from filename]: " input_title </dev/tty || input_title=""
+    CUSTOM_TITLE="$input_title"
+
+    # 3. Album Name
+    local input_album=""
+    read -r -p "Album / Series Name [Stream of Frequency]: " input_album </dev/tty || input_album=""
+    CUSTOM_ALBUM="${input_album:-Stream of Frequency}"
+
+    # 4. Release Year
+    local def_year
+    def_year="$(date +%Y)"
+    local input_year=""
+    read -r -p "Release Year [$def_year]: " input_year </dev/tty || input_year=""
+    CUSTOM_YEAR="${input_year:-$def_year}"
+
+    # 5. Genre
+    local input_genre=""
+    read -r -p "Genre [Electronic / Trance]: " input_genre </dev/tty || input_genre=""
+    CUSTOM_GENRE="${input_genre:-Electronic / Trance}"
+
+    # 6. Comment
+    local input_comment=""
+    read -r -p "Comment / Description [Stream of Frequency Mix Archive]: " input_comment </dev/tty || input_comment=""
+    CUSTOM_COMMENT="${input_comment:-Stream of Frequency Mix Archive}"
+
+    # 7. Cover Artwork Selection
+    {
+        echo ""
+        echo "--- Cover Artwork Image Selection ---"
+    } >/dev/tty
+
+    local discovered_covers=()
+    local search_paths=(
+        "./Cover.png"
+        "./assets/Cover.png"
+        "./COVERS"
+        "$SCRIPT_DIR/COVERS"
+        "${MIX_ARCHIVE_DIR:-}/COVERS"
+        "${MIX_ARCHIVE_DIR:-}/SOF_PODCAST_COVER_ART"
+    )
+
+    for sp in "${search_paths[@]}"; do
+        if [ -f "$sp" ]; then
+            local already=0
+            for dc in "${discovered_covers[@]}"; do [ "$dc" = "$sp" ] && already=1 && break; done
+            [ "$already" -eq 0 ] && discovered_covers+=("$sp")
+        elif [ -d "$sp" ]; then
+            shopt -s nullglob nocaseglob
+            for img in "$sp"/*.png "$sp"/*.jpg "$sp"/*.jpeg; do
+                if [ -f "$img" ]; then
+                    local already=0
+                    for dc in "${discovered_covers[@]}"; do [ "$dc" = "$img" ] && already=1 && break; done
+                    [ "$already" -eq 0 ] && discovered_covers+=("$img")
+                fi
+            done
+            shopt -u nullglob nocaseglob
+        fi
+    done
+
+    {
+        echo "  1) Default Cover Image (${COVER_ART:-Cover.png})"
+        local c_idx=2
+        for cov in "${discovered_covers[@]}"; do
+            [ "$c_idx" -gt 9 ] && break
+            echo "  ${c_idx}) Existing: $cov"
+            ((c_idx++))
+        done
+        echo "  c) Enter full path to a custom image file (PNG / JPG)"
+    } >/dev/tty
+
+    local cov_choice=""
+    read -r -p "Select cover option [1/Enter = default]: " cov_choice </dev/tty || cov_choice=""
+    case "$cov_choice" in
+        ""|1)
+            echo " -> Selected default cover image." >/dev/tty
+            ;;
+        [cC]|[cC][uU][sS][tT][oO][mM])
+            local custom_path=""
+            read -r -p "Enter full path to cover image (or drag & drop): " custom_path </dev/tty || custom_path=""
+            custom_path="${custom_path#\"}"
+            custom_path="${custom_path%\"}"
+            custom_path="${custom_path#\'}"
+            custom_path="${custom_path%\'}"
+            custom_path="$(eval echo "$custom_path")"
+            if [ -n "$custom_path" ] && [ -f "$custom_path" ]; then
+                CUSTOM_COVER_IMAGE="$custom_path"
+                echo " -> Custom cover art verified: $CUSTOM_COVER_IMAGE" >/dev/tty
+            else
+                echo " -> Warning: File '$custom_path' not found. Using default cover." >/dev/tty
+            fi
+            ;;
+        [2-9])
+            local target_idx=$((cov_choice - 2))
+            if [ "$target_idx" -lt "${#discovered_covers[@]}" ]; then
+                CUSTOM_COVER_IMAGE="${discovered_covers[$target_idx]}"
+                echo " -> Selected existing cover: $CUSTOM_COVER_IMAGE" >/dev/tty
+            else
+                echo " -> Invalid selection. Using default cover." >/dev/tty
+            fi
+            ;;
+        *)
+            echo " -> Invalid selection. Using default cover." >/dev/tty
+            ;;
+    esac
+
+    {
+        echo ""
+        echo "=================================================="
+        echo "Configured Tag Summary:"
+        echo "  Artist:  ${CUSTOM_ARTIST:-MPlanetarian}"
+        echo "  Title:   ${CUSTOM_TITLE:-[Auto-detect from filename]}"
+        echo "  Album:   ${CUSTOM_ALBUM:-Stream of Frequency}"
+        echo "  Year:    ${CUSTOM_YEAR:-$def_year}"
+        echo "  Genre:   ${CUSTOM_GENRE:-Electronic / Trance}"
+        echo "  Cover:   ${CUSTOM_COVER_IMAGE:-Default ($COVER_ART)}"
+        echo "=================================================="
+        echo ""
+    } >/dev/tty
+}
+
+configure_conversion_metadata_and_cover
+
 case "$OUTPUT_FORMAT" in
     mp3)
         OUTPUT_EXT="mp3"
@@ -334,13 +503,23 @@ if [ -d "$LOCAL_HISTORY_DIR" ]; then
     echo " -> Traktor History directory ready at: $LOCAL_HISTORY_DIR"
 fi
 
-# Mandatory Cover Art Check
-if [ ! -f "$COVER_ART" ]; then
-    echo "ERROR: Required artwork file '$COVER_ART' not found in the current directory!"
-    echo "Please place 'Cover.png' in this directory and restart the script manually."
-    exit 1
+# Cover Art Verification and Fallback
+if [ -n "${CUSTOM_COVER_IMAGE:-}" ] && [ -f "$CUSTOM_COVER_IMAGE" ]; then
+    COVER_ART="$CUSTOM_COVER_IMAGE"
+elif [ ! -f "$COVER_ART" ]; then
+    if [ -f "$SCRIPT_DIR/assets/Cover.png" ]; then
+        COVER_ART="$SCRIPT_DIR/assets/Cover.png"
+    elif [ -f "$SCRIPT_DIR/Cover.png" ]; then
+        COVER_ART="$SCRIPT_DIR/Cover.png"
+    elif [ -f "$PARENT_DIR/Cover.png" ]; then
+        COVER_ART="$PARENT_DIR/Cover.png"
+    else
+        echo "ERROR: Required artwork file '$COVER_ART' not found in the current directory!"
+        echo "Please place 'Cover.png' in this directory or specify a custom cover."
+        exit 1
+    fi
 fi
-echo "Cover art found ($COVER_ART)."
+echo "Cover art ready ($COVER_ART)."
 
 # Enable globstar and nullglob for robust file matching
 shopt -s nullglob nocaseglob
@@ -926,7 +1105,7 @@ for g_hash in "${group_keys[@]}"; do
 
     build_session_tracklist
 
-    # Determine cover art to use: specific WAV cover (.png matching first WAV filename) or fallback to Cover.png
+    # Determine cover art to use: custom selected cover, specific WAV cover, or fallback to Cover.png
     first_wav="${current_wavs[0]}"
     wav_dir=$(dirname "$first_wav")
     wav_name=$(basename "$first_wav")
@@ -934,7 +1113,10 @@ for g_hash in "${group_keys[@]}"; do
     specific_cover="${wav_dir}/${wav_base}.png"
     
     selected_cover="$COVER_ART"
-    if [ -f "$specific_cover" ]; then
+    if [ -n "${CUSTOM_COVER_IMAGE:-}" ] && [ -f "$CUSTOM_COVER_IMAGE" ]; then
+        echo " -> Using custom selected cover art: $CUSTOM_COVER_IMAGE"
+        selected_cover="$CUSTOM_COVER_IMAGE"
+    elif [ -f "$specific_cover" ]; then
         echo " -> Specific cover art found: $(basename "$specific_cover")"
         selected_cover="$specific_cover"
     else
@@ -965,27 +1147,40 @@ for g_hash in "${group_keys[@]}"; do
         fi
     fi
 
+    local eff_artist="${CUSTOM_ARTIST:-MPlanetarian}"
+    local eff_title="${CUSTOM_TITLE:-$readable_title}"
+    local eff_album="${CUSTOM_ALBUM:-Stream of Frequency}"
+    local eff_year="${CUSTOM_YEAR:-$(date +%Y)}"
+    local eff_genre="${CUSTOM_GENRE:-Electronic / Trance}"
+    local eff_comment="${CUSTOM_COMMENT:-Stream of Frequency Mix Archive}"
+
     conversion_status=1
     case "$OUTPUT_FORMAT" in
         mp3)
-            echo " -> Converting to MP3 320 kbps with cover art..."
+            echo " -> Converting to MP3 320 kbps with cover art and tags..."
             if ffmpeg -y -i "$session_audio" -i "$OPTIMIZED_COVER" \
               -map 0:a -map 1:v -c:v mjpeg -id3v2_version 3 \
               -metadata:s:v title="Album cover" -metadata:s:v comment="Cover (front)" \
               -c:a libmp3lame -b:a 320k \
-              -metadata artist="MPlanetarian" \
-              -metadata album="Stream of Frequency" \
-              -metadata title="$readable_title" \
+              -metadata artist="$eff_artist" \
+              -metadata album="$eff_album" \
+              -metadata title="$eff_title" \
+              -metadata date="$eff_year" \
+              -metadata genre="$eff_genre" \
+              -metadata comment="$eff_comment" \
               "$output_path" >/dev/null 2>&1; then
                 conversion_status=0
             fi
             ;;
         wav)
-            echo " -> Converting to 24-bit WAV..."
+            echo " -> Converting to 24-bit WAV with tags..."
             if ffmpeg -y -i "$session_audio" -c:a pcm_s24le \
-              -metadata artist="MPlanetarian" \
-              -metadata album="Stream of Frequency" \
-              -metadata title="$readable_title" \
+              -metadata artist="$eff_artist" \
+              -metadata album="$eff_album" \
+              -metadata title="$eff_title" \
+              -metadata date="$eff_year" \
+              -metadata genre="$eff_genre" \
+              -metadata comment="$eff_comment" \
               "$output_path" >/dev/null 2>&1; then
                 conversion_status=0
             fi
@@ -1018,21 +1213,27 @@ for g_hash in "${group_keys[@]}"; do
               -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black${fade_filter},format=yuv420p" \
               -c:v "$MP4_VCODEC" $MP4_VENC_ARGS \
               -c:a "$MP4_ACODEC" -b:a 320k -movflags +faststart \
-              -metadata artist="MPlanetarian" \
-              -metadata album="Stream of Frequency" \
-              -metadata title="$readable_title" \
+              -metadata artist="$eff_artist" \
+              -metadata album="$eff_album" \
+              -metadata title="$eff_title" \
+              -metadata date="$eff_year" \
+              -metadata genre="$eff_genre" \
+              -metadata comment="$eff_comment" \
               "$output_path" >/dev/null 2>&1; then
                 conversion_status=0
             fi
             ;;
         *)
-            echo " -> Converting to FLAC with cover art..."
+            echo " -> Converting to FLAC with cover art and tags..."
             if ffmpeg -y -i "$session_audio" -i "$OPTIMIZED_COVER" \
               -c:a flac -sample_fmt s32 -compression_level 12 \
               -map 0:a -map 1:v \
-              -metadata artist="MPlanetarian" \
-              -metadata album="Stream of Frequency" \
-              -metadata title="$readable_title" \
+              -metadata artist="$eff_artist" \
+              -metadata album="$eff_album" \
+              -metadata title="$eff_title" \
+              -metadata date="$eff_year" \
+              -metadata genre="$eff_genre" \
+              -metadata comment="$eff_comment" \
               -disposition:v:0 attached_pic \
               "$output_path" >/dev/null 2>&1; then
                 conversion_status=0
