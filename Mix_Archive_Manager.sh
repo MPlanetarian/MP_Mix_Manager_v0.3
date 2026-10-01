@@ -4214,6 +4214,12 @@ manage_system_maintenance() {
             journal_usage=$(journalctl --disk-usage 2>/dev/null | grep -o '[0-9.]*[KMGT]B*' || echo "N/A")
             echo -e "  System Journal Log Usage:   ${CYAN}${journal_usage}${NC}"
 
+            if command -v free >/dev/null 2>&1; then
+                local ram_info
+                ram_info=$(free -h 2>/dev/null | awk '/^Mem:/ {print $3 "/" $2 " used, " $6 " cached, " $7 " avail"}')
+                [ -n "$ram_info" ] && echo -e "  System Memory (RAM):        ${CYAN}${ram_info}${NC}"
+            fi
+
             local distro_desc=""
             if [ -f /etc/os-release ]; then
                 distro_desc=$(grep -E '^PRETTY_NAME=' /etc/os-release 2>/dev/null | cut -d= -f2 | tr -d '"')
@@ -4262,11 +4268,12 @@ manage_system_maintenance() {
             echo -e "  ${BOLD}${CYAN}3)${NC} ${update_label}"
             echo -e "  ${BOLD}${CYAN}4)${NC} Vacuum System Logs (${GREEN}sudo journalctl --vacuum-size=200M${NC})"
             echo -e "  ${BOLD}${CYAN}5)${NC} Optimize & Trim SSD Storage (${GREEN}sudo fstrim -av${NC})"
-            echo -e "  ${BOLD}${CYAN}6)${NC} ${BOLD}${YELLOW}Run Complete Cleanup Suite${NC} (Clean System + Vacuum Logs + SSD Trim)"
-            echo -e "  ${BOLD}${CYAN}7)${NC} Monitor System Processes and Bash Commands with System Info ${GREEN}(MP_Monitor_Bash.sh, new Terminal tab)${NC}"
-            echo -e "  ${BOLD}${CYAN}8)${NC} Return to Main Menu"
+            echo -e "  ${BOLD}${CYAN}6)${NC} Clear System Memory & Page Cache (${GREEN}sudo sync && drop_caches=3${NC})"
+            echo -e "  ${BOLD}${CYAN}7)${NC} ${BOLD}${YELLOW}Run Complete Cleanup Suite${NC} (Clean System + Drop RAM Cache + Vacuum Logs + SSD Trim)"
+            echo -e "  ${BOLD}${CYAN}8)${NC} Monitor System Processes and Bash Commands with System Info ${GREEN}(MP_Monitor_Bash.sh, new Terminal tab)${NC}"
+            echo -e "  ${BOLD}${CYAN}9)${NC} Return to Main Menu"
             echo ""
-            read -r -p "Enter choice [1-8, or m]: " m_choice
+            read -r -p "Enter choice [1-9, or m]: " m_choice
 
             case $m_choice in
                 1)
@@ -4412,8 +4419,59 @@ manage_system_maintenance() {
                     press_enter
                     ;;
                 6)
+                    echo -e "\n${BOLD}${YELLOW}=== CLEAR SYSTEM MEMORY (RAM & PAGE CACHE) ===${NC}\n"
+                    if command -v free >/dev/null 2>&1; then
+                        echo -e "${BOLD}Memory status before cleanup:${NC}"
+                        free -h
+                        echo ""
+                    fi
+                    echo -e "${CYAN}Syncing filesystem buffers to disk...${NC}"
+                    sync
+                    echo -e "${CYAN}Dropping pagecache, dentries, and inodes (drop_caches=3)...${NC}"
+                    if echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null 2>&1; then
+                        echo -e "${GREEN}✓ PageCache, dentries, and inodes successfully cleared!${NC}"
+                    elif sudo sysctl -w vm.drop_caches=3 >/dev/null 2>&1; then
+                        echo -e "${GREEN}✓ PageCache, dentries, and inodes successfully cleared via sysctl!${NC}"
+                    else
+                        echo -e "${RED}Failed to drop caches (sudo permissions required).${NC}"
+                    fi
+
+                    local swap_used_kb=0
+                    if [ -f /proc/meminfo ]; then
+                        swap_used_kb=$(awk '/SwapTotal:/ {st=$2} /SwapFree:/ {sf=$2} END {print (st - sf)}' /proc/meminfo 2>/dev/null || echo 0)
+                    fi
+                    if [ "$swap_used_kb" -gt 51200 ]; then
+                        local swap_used_human
+                        swap_used_human=$(awk '/SwapTotal:/ {st=$2} /SwapFree:/ {sf=$2} END {printf "%.1f MB", (st - sf)/1024}' /proc/meminfo 2>/dev/null || echo "Swap in use")
+                        echo ""
+                        echo -e "Swap memory currently in use: ${YELLOW}${swap_used_human}${NC}"
+                        read -r -p "Would you also like to flush swap memory back into RAM? [y/N]: " swap_choice
+                        case "$swap_choice" in
+                            [yY]|[yY][eE][sS])
+                                echo -e "${CYAN}Flushing swap back to RAM (sudo swapoff -a && sudo swapon -a)...${NC}"
+                                if sudo swapoff -a && sudo swapon -a; then
+                                    echo -e "${GREEN}✓ Swap memory flushed successfully!${NC}"
+                                else
+                                    echo -e "${RED}Warning: Could not cycle swap.${NC}"
+                                fi
+                                ;;
+                            *)
+                                echo -e "${DIM}Skipping swap flush.${NC}"
+                                ;;
+                        esac
+                    fi
+
+                    echo ""
+                    if command -v free >/dev/null 2>&1; then
+                        echo -e "${BOLD}Memory status after cleanup:${NC}"
+                        free -h
+                    fi
+                    echo ""
+                    press_enter
+                    ;;
+                7)
                     echo -e "\n${BOLD}${GREEN}=== RUNNING COMPLETE CLEANUP SUITE ===${NC}\n"
-                    echo -e "${BOLD}${BLUE}[1/3] Running System Cleanup...${NC}"
+                    echo -e "${BOLD}${BLUE}[1/4] Running System Cleanup...${NC}"
                     if command -v ujust >/dev/null 2>&1; then
                         ujust clean-system
                     else
@@ -4440,21 +4498,30 @@ manage_system_maintenance() {
                         rm -rf "$HOME/.cache/thumbnails"/* 2>/dev/null || true
                     fi
                     echo ""
-                    echo -e "${BOLD}${BLUE}[2/3] Vacuuming system logs to 200MB...${NC}"
+                    echo -e "${BOLD}${BLUE}[2/4] Clearing System Memory (RAM Cache)...${NC}"
+                    sync
+                    echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null 2>&1 || sudo sysctl -w vm.drop_caches=3 >/dev/null 2>&1 || true
+                    echo -e "${GREEN}✓ System RAM cache cleared.${NC}"
+                    echo ""
+                    echo -e "${BOLD}${BLUE}[3/4] Vacuuming system logs to 200MB...${NC}"
                     sudo journalctl --vacuum-size=200M 2>/dev/null || true
                     echo ""
-                    echo -e "${BOLD}${BLUE}[3/3] Trimming SSD filesystems (fstrim)...${NC}"
+                    echo -e "${BOLD}${BLUE}[4/4] Trimming SSD filesystems (fstrim)...${NC}"
                     sudo fstrim -av 2>/dev/null || true
                     echo ""
                     echo -e "${BOLD}${GREEN}[✓] Complete cleanup finished!${NC}"
                     journalctl --disk-usage 2>/dev/null || true
+                    if command -v free >/dev/null 2>&1; then
+                        echo ""
+                        free -h
+                    fi
                     echo ""
                     press_enter
                     ;;
-                7|m|monitor|mp-monitor)
+                8|m|monitor|mp-monitor)
                     manage_process_and_bash_monitor
                     ;;
-                8|0|[qQ])
+                9|0|[qQ])
                     return 0
                     ;;
                 *)

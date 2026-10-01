@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.4] - 2026-10-01
 
+- **System RAM & PageCache Memory Purge Suite** (`Mix_Archive_Manager.sh`):
+  - Added dedicated option `6) Clear System Memory & Page Cache (sudo sync && drop_caches=3)` to the Universal System Maintenance & Cleanup Menu (Option 29).
+  - Displays real-time RAM usage in the header (`used`, `cached`, `available`) before and after clearing.
+  - Safely flushes dirty filesystem buffers with `sync` before invoking `drop_caches=3` to release PageCache, dentries, and inodes.
+  - Automatically detects active swap usage (>50MB) and offers optional swap memory cycling via `swapoff -a && swapon -a` to flush swapped memory back into physical RAM.
+  - Integrated automatic RAM cache purging directly into Option 7 (`Run Complete Cleanup Suite`) as step [2/4].
+
 - **Fix Multi-Part Split WAV Chunk Grouping & Chronological Assembly** (`Make_SOF_FLAC_CONVERSION.sh`, `MOVE_NOT_CONVERTED_WAVS.sh`):
   - **Resolved Premature Session Fragmentation**: Fixed a critical bug where long recordings split across multiple WAV files (e.g. `..._YYYY-MM-DD_HhMMmSS.wav` and subsequent chunks `..._YYYY-MM-DD_HhMMmSS_03h02m02.wav`, `..._06h04m05.wav`) were incorrectly split into two separate FLAC outputs because naive regex stripped the session start timestamp from Part 1 while preserving it on subsequent chunks.
   - **Unified Session Grouping**: Introduced `get_session_base_name` which accurately differentiates between session start timestamps and subsequent elapsed split duration offsets, ensuring all split chunks for a recording session resolve to the exact same master session ID.
