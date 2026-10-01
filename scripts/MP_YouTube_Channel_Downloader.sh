@@ -3,10 +3,12 @@
 # MP_YouTube_Channel_Downloader.sh
 # ------------------------------------------------------------------------------
 # High-Efficiency YouTube 1080p Downloader (Linux & macOS)
-# - Download Single YouTube Video (from URL)
-# - Download Channel Videos: Last 1 Month, Last 3 Months, Last 6 Months, or Entire Channel
+# - Single YouTube Video or Short (from URL / Video ID)
+# - Channel Standard Videos: Last 1 Month, 3 Months, 6 Months, or Entire Channel
+# - Channel YouTube Shorts: Last 1 Month, 3 Months, 6 Months, or Entire Channel
 # - Prompts user whether to use a proxy (with IP & Port) or direct connection
-# - Target Dir: YOUTUBE_SINGLE_VIDEOS or YOUTUBE_[CHANNELNAME]_DOWNLOAD_[INSERTDATE]
+# - Auto-categorized target dirs: YOUTUBE_SINGLE_VIDEOS, YOUTUBE_SINGLE_SHORTS,
+#   YOUTUBE_[CHANNEL]_DOWNLOAD_[DATE], YOUTUBE_[CHANNEL]_SHORTS_DOWNLOAD_[DATE]
 # ==============================================================================
 set -euo pipefail
 
@@ -23,7 +25,7 @@ elif command -v deno >/dev/null 2>&1; then
 fi
 
 echo -e "\033[1;36m========================================================================\033[0m"
-echo -e "\033[1;36m         YouTube 1080p Downloader (Single Video & Channel Suite)        \033[0m"
+echo -e "\033[1;36m         YouTube 1080p Downloader (Videos & Shorts Suite)               \033[0m"
 echo -e "\033[1;36m========================================================================\033[0m\n"
 
 # 1. Ask user about Proxy usage
@@ -107,51 +109,73 @@ echo -e "   \033[2mSpeed: RX ${RXRATE:-N/A} / TX ${TXRATE:-N/A} | IP: ${IP_ADDR:
 INPUT="${1:-}"
 MODE="${2:-}"
 
-# Auto-detect if input argument looks like a single video URL
+# Auto-detect if input argument looks like a single video or short URL
 if [[ -n "$INPUT" && -z "$MODE" ]]; then
     if [[ "$INPUT" =~ (watch\?v=|youtu\.be/|/shorts/) ]]; then
         MODE="1"
+    elif [[ "$INPUT" =~ /shorts/?$ ]]; then
+        MODE="8" # Default to 6m shorts if a channel /shorts link is passed
     fi
 fi
 
 if [[ -z "$MODE" ]]; then
     echo -e "\033[1;33mSelect Download Mode:\033[0m"
-    echo -e "  \033[1;36m1)\033[0m Single YouTube Video (from URL)"
-    echo -e "  \033[1;36m2)\033[0m YouTube Channel - Last 1 Month"
-    echo -e "  \033[1;36m3)\033[0m YouTube Channel - Last 3 Months"
-    echo -e "  \033[1;36m4)\033[0m YouTube Channel - Last 6 Months \033[2m(Default)\033[0m"
-    echo -e "  \033[1;36m5)\033[0m YouTube Channel - Entire Channel (All Videos)"
+    echo -e "  \033[1;36m1)\033[0m Single YouTube Video or Short (from URL / Video ID)"
+    echo -e "  \033[1;34m─── [ STANDARD VIDEOS (/videos) ] ─────────────────────────\033[0m"
+    echo -e "  \033[1;36m2)\033[0m Channel Videos - Last 1 Month"
+    echo -e "  \033[1;36m3)\033[0m Channel Videos - Last 3 Months"
+    echo -e "  \033[1;36m4)\033[0m Channel Videos - Last 6 Months \033[2m(Default)\033[0m"
+    echo -e "  \033[1;36m5)\033[0m Channel Videos - Entire Channel (All Videos)"
+    echo -e "  \033[1;35m─── [ YOUTUBE SHORTS (/shorts) ] ──────────────────────────\033[0m"
+    echo -e "  \033[1;36m6)\033[0m Channel Shorts - Last 1 Month"
+    echo -e "  \033[1;36m7)\033[0m Channel Shorts - Last 3 Months"
+    echo -e "  \033[1;36m8)\033[0m Channel Shorts - Last 6 Months"
+    echo -e "  \033[1;36m9)\033[0m Channel Shorts - Entire Channel (All Shorts)"
     echo ""
-    read -rp "Enter choice [1-5, default: 4]: " MODE_CHOICE
+    read -rp "Enter choice [1-9, default: 4]: " MODE_CHOICE
     MODE_CHOICE=$(echo "${MODE_CHOICE:-4}" | xargs)
     case "$MODE_CHOICE" in
-        1|single|video) MODE="single" ;;
-        2|1m|month)     MODE="1m" ;;
-        3|3m)           MODE="3m" ;;
-        4|6m)           MODE="6m" ;;
-        5|all|entire)   MODE="all" ;;
-        *)              MODE="6m" ;;
+        1|single|video|short|shorts)   MODE="single" ;;
+        2|1m|month|v1m)                MODE="1m" ;;
+        3|3m|v3m)                      MODE="3m" ;;
+        4|6m|v6m)                      MODE="6m" ;;
+        5|all|entire|vall)             MODE="all" ;;
+        6|s1m|short-1m|shorts-1m)      MODE="shorts-1m" ;;
+        7|s3m|short-3m|shorts-3m)      MODE="shorts-3m" ;;
+        8|s6m|short-6m|shorts-6m)      MODE="shorts-6m" ;;
+        9|sall|short-all|shorts-all)   MODE="shorts-all" ;;
+        *)                             MODE="6m" ;;
     esac
 else
     case "$MODE" in
-        1|single|video) MODE="single" ;;
-        2|1m|month)     MODE="1m" ;;
-        3|3m)           MODE="3m" ;;
-        4|6m)           MODE="6m" ;;
-        5|all|entire)   MODE="all" ;;
-        *)              MODE="6m" ;;
+        1|single|video|short|shorts)   MODE="single" ;;
+        2|1m|month|v1m)                MODE="1m" ;;
+        3|3m|v3m)                      MODE="3m" ;;
+        4|6m|v6m)                      MODE="6m" ;;
+        5|all|entire|vall)             MODE="all" ;;
+        6|s1m|short-1m|shorts-1m)      MODE="shorts-1m" ;;
+        7|s3m|short-3m|shorts-3m)      MODE="shorts-3m" ;;
+        8|s6m|short-6m|shorts-6m)      MODE="shorts-6m" ;;
+        9|sall|short-all|shorts-all)   MODE="shorts-all" ;;
+        *)                             MODE="6m" ;;
     esac
 fi
+
+# Determine if mode is targeting Shorts
+IS_SHORTS=0
+case "$MODE" in
+    shorts-*) IS_SHORTS=1 ;;
+esac
 
 # Acquire and format target URL/Input
 if [[ "$MODE" == "single" ]]; then
     if [[ -z "$INPUT" ]]; then
-        echo -ne "\033[1;33mEnter YouTube Video URL: \033[0m"
+        echo -ne "\033[1;33mEnter YouTube Video or Short URL: \033[0m"
         read -r INPUT
     fi
     INPUT=$(echo "$INPUT" | sed -e 's/^["'\'' ]*//' -e 's/["'\'' ]*$//')
     if [[ -z "$INPUT" ]]; then
-        echo "No video URL entered. Exiting."
+        echo "No URL entered. Exiting."
         exit 0
     fi
     # Support 11-char video ID input directly
@@ -162,9 +186,17 @@ if [[ "$MODE" == "single" ]]; then
     else
         DOWNLOAD_URL="https://www.youtube.com/watch?v=${INPUT}"
     fi
+
+    if [[ "$DOWNLOAD_URL" =~ /shorts/ ]]; then
+        IS_SHORTS=1
+    fi
 else
-    if [[ -z "$INPUT" ]]; then
+    if [[ "$IS_SHORTS" -eq 1 ]]; then
+        echo -ne "\033[1;35mEnter YouTube Channel URL, @Handle, or Name for Shorts: \033[0m"
+    else
         echo -ne "\033[1;33mEnter YouTube Channel URL, @Handle, or Name: \033[0m"
+    fi
+    if [[ -z "$INPUT" ]]; then
         read -r INPUT
     fi
     INPUT=$(echo "$INPUT" | sed -e 's/^["'\'' ]*//' -e 's/["'\'' ]*$//')
@@ -173,27 +205,47 @@ else
         exit 0
     fi
 
-    # Extract clean channel name and build standard URL
-    if [[ "$INPUT" =~ /@([^/?#]+) ]]; then
-        RAW_NAME="${BASH_REMATCH[1]}"
-        CHANNEL_URL="https://www.youtube.com/@${RAW_NAME}/videos"
-    elif [[ "$INPUT" =~ /channel/([^/?#]+) ]]; then
-        RAW_NAME="${BASH_REMATCH[1]}"
-        CHANNEL_URL="$INPUT"
-    elif [[ "$INPUT" =~ /c/([^/?#]+) ]]; then
-        RAW_NAME="${BASH_REMATCH[1]}"
-        CHANNEL_URL="$INPUT"
-    elif [[ "$INPUT" =~ ^https?:// ]]; then
-        RAW_NAME=$(echo "$INPUT" | sed -E 's|.*/@?([^/?#]+).*|\1|')
-        CHANNEL_URL="$INPUT"
+    # Extract clean channel name and build standard URL (videos vs shorts tab)
+    if [[ "$IS_SHORTS" -eq 1 ]]; then
+        if [[ "$INPUT" =~ /@([^/?#]+) ]]; then
+            RAW_NAME="${BASH_REMATCH[1]}"
+            CHANNEL_URL="https://www.youtube.com/@${RAW_NAME}/shorts"
+        elif [[ "$INPUT" =~ /channel/([^/?#]+) ]]; then
+            RAW_NAME="${BASH_REMATCH[1]}"
+            CHANNEL_URL="${INPUT%/}/shorts"
+        elif [[ "$INPUT" =~ /c/([^/?#]+) ]]; then
+            RAW_NAME="${BASH_REMATCH[1]}"
+            CHANNEL_URL="${INPUT%/}/shorts"
+        elif [[ "$INPUT" =~ ^https?:// ]]; then
+            RAW_NAME=$(echo "$INPUT" | sed -E "s%^https?://[^/]+/([^/?#]+).*%\1%")
+            CHANNEL_URL="${INPUT%/}/shorts"
+        else
+            CLEAN_HANDLE="${INPUT#@}"
+            RAW_NAME="$CLEAN_HANDLE"
+            CHANNEL_URL="https://www.youtube.com/@${CLEAN_HANDLE}/shorts"
+        fi
+        CHANNEL_URL=$(echo "$CHANNEL_URL" | sed -E "s%/(videos|featured|streams)/?$%/%")
+        [[ ! "$CHANNEL_URL" =~ /shorts$ ]] && CHANNEL_URL="${CHANNEL_URL%/}/shorts"
     else
-        CLEAN_HANDLE="${INPUT#@}"
-        RAW_NAME="$CLEAN_HANDLE"
-        CHANNEL_URL="https://www.youtube.com/@${CLEAN_HANDLE}/videos"
-    fi
-
-    if [[ "$CHANNEL_URL" =~ /@[^/]+$ ]]; then
-        CHANNEL_URL="${CHANNEL_URL}/videos"
+        if [[ "$INPUT" =~ /@([^/?#]+) ]]; then
+            RAW_NAME="${BASH_REMATCH[1]}"
+            CHANNEL_URL="https://www.youtube.com/@${RAW_NAME}/videos"
+        elif [[ "$INPUT" =~ /channel/([^/?#]+) ]]; then
+            RAW_NAME="${BASH_REMATCH[1]}"
+            CHANNEL_URL="${INPUT%/}/videos"
+        elif [[ "$INPUT" =~ /c/([^/?#]+) ]]; then
+            RAW_NAME="${BASH_REMATCH[1]}"
+            CHANNEL_URL="${INPUT%/}/videos"
+        elif [[ "$INPUT" =~ ^https?:// ]]; then
+            RAW_NAME=$(echo "$INPUT" | sed -E "s%^https?://[^/]+/([^/?#]+).*%\1%")
+            CHANNEL_URL="$INPUT"
+        else
+            CLEAN_HANDLE="${INPUT#@}"
+            RAW_NAME="$CLEAN_HANDLE"
+            CHANNEL_URL="https://www.youtube.com/@${CLEAN_HANDLE}/videos"
+        fi
+        CHANNEL_URL=$(echo "$CHANNEL_URL" | sed -E "s%/(shorts|featured|streams)/?$%/%")
+        [[ "$CHANNEL_URL" =~ /@[^/]+$ ]] && CHANNEL_URL="${CHANNEL_URL}/videos"
     fi
 
     CHANNEL_NAME=$(echo "$RAW_NAME" | tr -cd '[:alnum:]_-')
@@ -209,9 +261,17 @@ fi
 
 DATE_STR=$(date +%Y-%m-%d)
 if [[ "$MODE" == "single" ]]; then
-    TARGET_DIR="YOUTUBE_SINGLE_VIDEOS"
+    if [[ "$IS_SHORTS" -eq 1 ]]; then
+        TARGET_DIR="YOUTUBE_SINGLE_SHORTS"
+    else
+        TARGET_DIR="YOUTUBE_SINGLE_VIDEOS"
+    fi
 else
-    TARGET_DIR="YOUTUBE_${CHANNEL_NAME}_DOWNLOAD_${DATE_STR}"
+    if [[ "$IS_SHORTS" -eq 1 ]]; then
+        TARGET_DIR="YOUTUBE_${CHANNEL_NAME}_SHORTS_DOWNLOAD_${DATE_STR}"
+    else
+        TARGET_DIR="YOUTUBE_${CHANNEL_NAME}_DOWNLOAD_${DATE_STR}"
+    fi
 fi
 
 mkdir -p "$TARGET_DIR"
@@ -236,39 +296,79 @@ calculate_cutoff() {
 }
 
 EXTRA_YTDLP_ARGS=()
+if [[ "$IS_SHORTS" -eq 1 ]]; then
+    # Full 1080p vertical resolution for shorts (1080x1920) without downscaling
+    FORMAT_SPEC="bestvideo[height<=1920][width<=1080]+bestaudio/best[height<=1920]/best"
+else
+    # Standard landscape 1080p resolution (1920x1080)
+    FORMAT_SPEC="bestvideo[height<=1080]+bestaudio/best[height<=1080]/best"
+fi
+
 if [[ "$MODE" == "single" ]]; then
+    FORMAT_SPEC="bestvideo[height<=1920][width<=1920]+bestaudio/best[height<=1920]/best"
     EXTRA_YTDLP_ARGS+=(--no-playlist)
     echo -e "\033[1;32m📁 Directory:\033[0m $(pwd)"
-    echo -e "\033[1;32m🎯 Scope:\033[0m Single YouTube Video"
-    echo -e "\033[1;32m🔗 Video URL:\033[0m $DOWNLOAD_URL"
+    if [[ "$IS_SHORTS" -eq 1 ]]; then
+        echo -e "\033[1;35m🎯 Scope:\033[0m Single YouTube Short"
+    else
+        echo -e "\033[1;32m🎯 Scope:\033[0m Single YouTube Video"
+    fi
+    echo -e "\033[1;32m🔗 Target URL:\033[0m $DOWNLOAD_URL"
     echo -e "\033[1;32m🚀 Starting direct download in 1080p...\033[0m\n"
 elif [[ "$MODE" == "1m" ]]; then
     calculate_cutoff 1
     EXTRA_YTDLP_ARGS+=(--lazy-playlist --break-match-filters "upload_date >= ${CUTOFF_DATE}")
     echo -e "\033[1;32m📁 Directory:\033[0m $(pwd)"
-    echo -e "\033[1;32m📺 Channel:\033[0m $DOWNLOAD_URL"
+    echo -e "\033[1;32m📺 Channel Videos:\033[0m $DOWNLOAD_URL"
     echo -e "\033[1;32m📅 Cutoff:\033[0m Only videos on/after ${CUTOFF_DISPLAY} ($CUTOFF_DATE - Last 1 Month)"
     echo -e "\033[1;32m🚀 Starting direct stream download in 1080p...\033[0m\n"
 elif [[ "$MODE" == "3m" ]]; then
     calculate_cutoff 3
     EXTRA_YTDLP_ARGS+=(--lazy-playlist --break-match-filters "upload_date >= ${CUTOFF_DATE}")
     echo -e "\033[1;32m📁 Directory:\033[0m $(pwd)"
-    echo -e "\033[1;32m📺 Channel:\033[0m $DOWNLOAD_URL"
+    echo -e "\033[1;32m📺 Channel Videos:\033[0m $DOWNLOAD_URL"
     echo -e "\033[1;32m📅 Cutoff:\033[0m Only videos on/after ${CUTOFF_DISPLAY} ($CUTOFF_DATE - Last 3 Months)"
     echo -e "\033[1;32m🚀 Starting direct stream download in 1080p...\033[0m\n"
 elif [[ "$MODE" == "6m" ]]; then
     calculate_cutoff 6
     EXTRA_YTDLP_ARGS+=(--lazy-playlist --break-match-filters "upload_date >= ${CUTOFF_DATE}")
     echo -e "\033[1;32m📁 Directory:\033[0m $(pwd)"
-    echo -e "\033[1;32m📺 Channel:\033[0m $DOWNLOAD_URL"
+    echo -e "\033[1;32m📺 Channel Videos:\033[0m $DOWNLOAD_URL"
     echo -e "\033[1;32m📅 Cutoff:\033[0m Only videos on/after ${CUTOFF_DISPLAY} ($CUTOFF_DATE - Last 6 Months)"
     echo -e "\033[1;32m🚀 Starting direct stream download in 1080p...\033[0m\n"
 elif [[ "$MODE" == "all" ]]; then
     EXTRA_YTDLP_ARGS+=(--lazy-playlist)
     echo -e "\033[1;32m📁 Directory:\033[0m $(pwd)"
-    echo -e "\033[1;32m📺 Channel:\033[0m $DOWNLOAD_URL"
+    echo -e "\033[1;32m📺 Channel Videos:\033[0m $DOWNLOAD_URL"
     echo -e "\033[1;32m📅 Scope:\033[0m Entire Channel (All Videos - Complete Archive)"
     echo -e "\033[1;32m🚀 Starting direct stream download in 1080p...\033[0m\n"
+elif [[ "$MODE" == "shorts-1m" ]]; then
+    calculate_cutoff 1
+    EXTRA_YTDLP_ARGS+=(--lazy-playlist --break-match-filters "upload_date >= ${CUTOFF_DATE}")
+    echo -e "\033[1;32m📁 Directory:\033[0m $(pwd)"
+    echo -e "\033[1;35m⚡ Channel Shorts:\033[0m $DOWNLOAD_URL"
+    echo -e "\033[1;32m📅 Cutoff:\033[0m Only shorts on/after ${CUTOFF_DISPLAY} ($CUTOFF_DATE - Last 1 Month)"
+    echo -e "\033[1;35m🚀 Starting direct stream download in 1080p (Vertical HD)...\033[0m\n"
+elif [[ "$MODE" == "shorts-3m" ]]; then
+    calculate_cutoff 3
+    EXTRA_YTDLP_ARGS+=(--lazy-playlist --break-match-filters "upload_date >= ${CUTOFF_DATE}")
+    echo -e "\033[1;32m📁 Directory:\033[0m $(pwd)"
+    echo -e "\033[1;35m⚡ Channel Shorts:\033[0m $DOWNLOAD_URL"
+    echo -e "\033[1;32m📅 Cutoff:\033[0m Only shorts on/after ${CUTOFF_DISPLAY} ($CUTOFF_DATE - Last 3 Months)"
+    echo -e "\033[1;35m🚀 Starting direct stream download in 1080p (Vertical HD)...\033[0m\n"
+elif [[ "$MODE" == "shorts-6m" ]]; then
+    calculate_cutoff 6
+    EXTRA_YTDLP_ARGS+=(--lazy-playlist --break-match-filters "upload_date >= ${CUTOFF_DATE}")
+    echo -e "\033[1;32m📁 Directory:\033[0m $(pwd)"
+    echo -e "\033[1;35m⚡ Channel Shorts:\033[0m $DOWNLOAD_URL"
+    echo -e "\033[1;32m📅 Cutoff:\033[0m Only shorts on/after ${CUTOFF_DISPLAY} ($CUTOFF_DATE - Last 6 Months)"
+    echo -e "\033[1;35m🚀 Starting direct stream download in 1080p (Vertical HD)...\033[0m\n"
+elif [[ "$MODE" == "shorts-all" ]]; then
+    EXTRA_YTDLP_ARGS+=(--lazy-playlist)
+    echo -e "\033[1;32m📁 Directory:\033[0m $(pwd)"
+    echo -e "\033[1;35m⚡ Channel Shorts:\033[0m $DOWNLOAD_URL"
+    echo -e "\033[1;32m📅 Scope:\033[0m Entire Channel (All Shorts - Complete Archive)"
+    echo -e "\033[1;35m🚀 Starting direct stream download in 1080p (Vertical HD)...\033[0m\n"
 fi
 
 # 6. Streamed Download
@@ -278,7 +378,7 @@ yt-dlp \
     ${PROXY_ARG[@]+"${PROXY_ARG[@]}"} \
     "${JS_ARG[@]}" \
     "${EXTRA_YTDLP_ARGS[@]}" \
-    -f "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best" \
+    -f "$FORMAT_SPEC" \
     --merge-output-format mp4 \
     -o "%(upload_date)s - %(title)s [%(id)s].%(ext)s" \
     --progress \

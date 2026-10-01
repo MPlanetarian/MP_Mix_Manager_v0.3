@@ -16,9 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Optimized `get_cloud_backup_badge()` to exclude remote cloud paths (`*GoogleDrive*`, `*rclone*`) from being checked as files pending backup to the cloud, eliminating hundreds of remote `stat` calls.
   - Avoided redundant `mkdir -p` operations on FUSE mount points during startup when `PLAYLISTS_GENERATED` folders already exist.
 
-- **YouTube 1080p Downloader & Media Suite Expansion** (`scripts/MP_YouTube_Channel_Downloader.sh`, `MP_YouTube_Channel_Downloader.sh`):
-  - **Single YouTube Video Mode**: Download individual videos directly from any URL (`watch?v=`, `youtu.be/`, `/shorts/`) or 11-char video ID, with `--no-playlist` isolation and organized storage in `YOUTUBE_SINGLE_VIDEOS`.
-  - **Multi-Timeframe Channel Downloads**: Selectable download ranges including **Last 1 Month**, **Last 3 Months**, **Last 6 Months (Default)**, or **Entire Channel (All Videos - Complete Archive)**.
+- **YouTube 1080p Downloader (Videos & Shorts Suite Expansion)** (`scripts/MP_YouTube_Channel_Downloader.sh`, `MP_YouTube_Channel_Downloader.sh`):
+  - **Single YouTube Video & Shorts Mode**: Download individual videos or shorts directly from any URL (`watch?v=`, `youtu.be/`, `/shorts/`) or 11-char video ID, with `--no-playlist` isolation and organized storage (`YOUTUBE_SINGLE_VIDEOS` or `YOUTUBE_SINGLE_SHORTS`).
+  - **Dedicated YouTube Shorts Channel Mode**: Added options 6–9 for downloading channel shorts across **Last 1 Month**, **Last 3 Months**, **Last 6 Months**, or **Entire Channel (All Shorts)** targeting `/@channel/shorts` and saved to `YOUTUBE_[CHANNEL]_SHORTS_DOWNLOAD_[DATE]`.
+  - **Full 1080p Vertical Format Selection**: Configured format selection (`bestvideo[height<=1920][width<=1080]`) so vertical 1080x1920 shorts are downloaded in full 1080p HD without being downscaled to 480p.
+  - **Multi-Timeframe Channel Video Downloads**: Retained selectable download ranges for standard long-form videos (`/@channel/videos`).
   - **Smart URL & Handle Parsing**: Automatically recognizes single video links vs channel handles (`@channel`, `/channel/UC...`, `/c/...`), stripping quotes and whitespace from drag-and-drop inputs.
   - **Accelerated Streaming**: Preserves high-speed `--lazy-playlist` streaming, automatic Node/Deno JS engine detection, live network diagnostics, and optional proxy integration.
 - **Interactive Audio ID3/Vorbis Tag Customizer & Cover Selector**:
