@@ -1,0 +1,1 @@
+scripts/verify_lossless_spectral.sh

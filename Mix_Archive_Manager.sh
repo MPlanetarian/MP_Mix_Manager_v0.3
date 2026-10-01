@@ -2183,6 +2183,9 @@ show_stats() {
     else
         echo -e "  FLAC Files Missing Tracklists:            ${BOLD}${GREEN}0${NC} files (All complete!)"
     fi
+    local cloud_stat
+    cloud_stat=$(get_cloud_backup_badge 2>/dev/null)
+    [ -n "$cloud_stat" ] && echo -e "  ${cloud_stat}"
 
     # 5. Live Player Status & Audio Specifications
     if get_audacious_track_info 2>/dev/null; then
@@ -8249,15 +8252,18 @@ manage_audio_conversion() {
         echo -e "${BOLD}${MAGENTA}======================================================================${NC}\n"
         echo -e "  Supported Formats: ${BOLD}MP3, Ogg Vorbis, Opus, Apple AAC, Apple ALAC, FLAC, WAV${NC}"
         echo -e "  WAV Bit Depths:    ${BOLD}32-bit Float, 32-bit Int, 24-bit PCM, 16-bit 44.1kHz PCM${NC}\n"
-        echo -e "  ${BOLD}${CYAN}1)${NC} Convert Single Audio File (Interactive Selection)"
-        echo -e "  ${BOLD}${CYAN}2)${NC} Convert Current Staging WAVs (in ${PWD})"
-        echo -e "  ${BOLD}${CYAN}3)${NC} Convert All WAVs in CONVERTED_WAV_FILES/"
-        echo -e "  ${BOLD}${CYAN}4)${NC} Convert FLAC Outputs to MP3 (320kbps CBR) & Apple AAC"
-        echo -e "  ${BOLD}${CYAN}5)${NC} WAV-to-WAV Bit Depth Conversion (16/24/32-bit Float)"
-        echo -e "  ${BOLD}${CYAN}6)${NC} Split FLAC File into Parts (${GREEN}Split_FLAC_File.sh${NC})"
-        echo -e "  ${BOLD}${CYAN}7)${NC} Launch Full Interactive Converter CLI"
-        echo -e "  ${BOLD}${CYAN}8)${NC} Return to Main Menu\n"
-        read -r -p "Enter choice [1-8]: " conv_choice
+        echo -e "  ${BOLD}${CYAN} 1)${NC} Convert Single Audio File (Interactive Selection)"
+        echo -e "  ${BOLD}${CYAN} 2)${NC} Convert Current Staging WAVs (in ${PWD})"
+        echo -e "  ${BOLD}${CYAN} 3)${NC} Convert All WAVs in CONVERTED_WAV_FILES/"
+        echo -e "  ${BOLD}${CYAN} 4)${NC} Convert FLAC Outputs to MP3 (320kbps CBR) & Apple AAC"
+        echo -e "  ${BOLD}${CYAN} 5)${NC} WAV-to-WAV Bit Depth Conversion (16/24/32-bit Float)"
+        echo -e "  ${BOLD}${CYAN} 6)${NC} Split FLAC File into Parts (${GREEN}Split_FLAC_File.sh${NC})"
+        echo -e "  ${BOLD}${CYAN} 7)${NC} EBU R128 Loudness Scanner & True-Peak Analyzer (${GREEN}master_audio_loudness.py${NC})"
+        echo -e "  ${BOLD}${CYAN} 8)${NC} Master & Normalize Loudness (${GREEN}-14 LUFS Streaming / -16 LUFS Podcast / -23 LUFS${NC})"
+        echo -e "  ${BOLD}${CYAN} 9)${NC} Standard Red Book CUE Sheet Generator & Audio Splitter (${GREEN}generate_cue_sheet.py${NC})"
+        echo -e "  ${BOLD}${CYAN}10)${NC} Launch Full Interactive Converter CLI (${GREEN}convert_audio_format.sh${NC})"
+        echo -e "  ${BOLD}${CYAN} 0)${NC} Return to Main Menu\n"
+        read -r -p "Enter choice [0-10]: " conv_choice
 
         case "$conv_choice" in
             1)
@@ -8285,10 +8291,34 @@ manage_audio_conversion() {
                 press_enter
                 ;;
             7)
+                if [ -f "$SCRIPT_DIR/scripts/master_audio_loudness.py" ]; then
+                    python3 "$SCRIPT_DIR/scripts/master_audio_loudness.py"
+                else
+                    echo -e "\n${RED}Error: master_audio_loudness.py not found!${NC}"
+                fi
+                press_enter
+                ;;
+            8)
+                if [ -f "$SCRIPT_DIR/scripts/master_audio_loudness.py" ]; then
+                    python3 "$SCRIPT_DIR/scripts/master_audio_loudness.py"
+                else
+                    echo -e "\n${RED}Error: master_audio_loudness.py not found!${NC}"
+                fi
+                press_enter
+                ;;
+            9)
+                if [ -f "$SCRIPT_DIR/scripts/generate_cue_sheet.py" ]; then
+                    python3 "$SCRIPT_DIR/scripts/generate_cue_sheet.py"
+                else
+                    echo -e "\n${RED}Error: generate_cue_sheet.py not found!${NC}"
+                fi
+                press_enter
+                ;;
+            10)
                 bash "$script"
                 press_enter
                 ;;
-            8|[qQ])
+            0|8|[qQ]|[eE][xX][iI][tT])
                 return 0
                 ;;
             *)
@@ -10308,6 +10338,79 @@ get_os_update_status() {
     echo -e "$status"
 }
 
+_LAST_CLOUD_CHECK=0
+_CACHED_CLOUD_STATUS=""
+
+get_cloud_backup_badge() {
+    local now
+    now=$(date +%s 2>/dev/null || echo 0)
+    if [ $((now - _LAST_CLOUD_CHECK)) -lt 30 ] && [ -n "$_CACHED_CLOUD_STATUS" ]; then
+        echo -e "$_CACHED_CLOUD_STATUS"
+        return 0
+    fi
+
+    local state_file="$HOME/.config/mix-manager/cloud_backup_state.json"
+    local backup_time=0
+    local backup_date=""
+    local backup_provider=""
+
+    if [ -f "$state_file" ]; then
+        backup_time=$(grep -o '"timestamp": [0-9]*' "$state_file" 2>/dev/null | head -1 | awk '{print $2}')
+        backup_date=$(grep -o '"date": "[^"]*"' "$state_file" 2>/dev/null | head -1 | cut -d'"' -f4)
+        backup_provider=$(grep -o '"provider": "[^"]*"' "$state_file" 2>/dev/null | head -1 | cut -d'"' -f4)
+    fi
+
+    if [ -z "$backup_date" ]; then
+        local latest_log
+        latest_log=$(ls -t "$SCRIPT_DIR/BACKUP_LOGS"/backup_*.log 2>/dev/null | head -1)
+        if [ -n "$latest_log" ] && [ -f "$latest_log" ]; then
+            backup_time=$(stat -c %Y "$latest_log" 2>/dev/null || stat -f %m "$latest_log" 2>/dev/null || echo 0)
+            backup_date=$(date -d "@$backup_time" "+%Y-%m-%d %H:%M" 2>/dev/null || date -r "$backup_time" "+%Y-%m-%d %H:%M" 2>/dev/null || echo "Recently")
+            if [[ "$latest_log" =~ backup_([a-z0-9]+)_ ]]; then
+                backup_provider="${BASH_REMATCH[1]^^}"
+            fi
+        fi
+    fi
+
+    if [ -z "$backup_provider" ]; then
+        backup_provider="Google Drive"
+    fi
+
+    if [ -z "$backup_date" ] || [ "${backup_time:-0}" -eq 0 ]; then
+        _CACHED_CLOUD_STATUS="${BOLD}${CYAN}☁️  Cloud Backup:${NC} ${BOLD}${YELLOW}No backup recorded${NC} ${DIM}(Option 9 to sync)${NC}"
+        _LAST_CLOUD_CHECK="$now"
+        echo -e "$_CACHED_CLOUD_STATUS"
+        return 0
+    fi
+
+    local pending_count=0
+    local all_fdirs=()
+    while IFS= read -r fd; do
+        [ -n "$fd" ] && [ -d "$fd" ] && all_fdirs+=("$fd")
+    done < <(get_all_flac_output_dirs 2>/dev/null)
+
+    for fd in "${all_fdirs[@]}"; do
+        shopt -s nullglob nocaseglob
+        for f in "$fd"/*.flac; do
+            local fmtime
+            fmtime=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || echo 0)
+            if [ "$fmtime" -gt "$backup_time" ]; then
+                ((pending_count++))
+            fi
+        done
+        shopt -u nullglob nocaseglob
+    done
+
+    if [ "$pending_count" -eq 0 ]; then
+        _CACHED_CLOUD_STATUS="${BOLD}${CYAN}☁️  Cloud Backup (${backup_provider}):${NC} ${BOLD}${GREEN}Up-to-date${NC} ${DIM}(Last: ${backup_date})${NC}  ${BOLD}${BLUE}│${NC}  ${BOLD}${GREEN}0 pending${NC}"
+    else
+        _CACHED_CLOUD_STATUS="${BOLD}${CYAN}☁️  Cloud Backup (${backup_provider}):${NC} ${BOLD}${YELLOW}${pending_count} mix(es) pending sync${NC}  ${BOLD}${BLUE}│${NC}  ${DIM}Last: ${backup_date}${NC}"
+    fi
+
+    _LAST_CLOUD_CHECK="$now"
+    echo -e "$_CACHED_CLOUD_STATUS"
+}
+
 # Direct CLI invocation support for manager update & version commands
 if [ "$1" = "update" ] || [ "$1" = "--update" ]; then
     shift
@@ -10462,16 +10565,20 @@ manage_cloud_backup_suite() {
 manage_integrity_and_verification() {
     while true; do
         clear
-        echo -e "${BOLD}${MAGENTA}====================================================${NC}"
-        echo -e "${BOLD}${MAGENTA}    AUDIO INTEGRITY & FLAC VERIFICATION SUITE       ${NC}"
-        echo -e "${BOLD}${MAGENTA}====================================================${NC}"
+        echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
+        echo -e "${BOLD}${MAGENTA}    AUDIO INTEGRITY, BIT-ROT SCRUB & FLAC VERIFICATION SUITE          ${NC}"
+        echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
         echo ""
         echo -e "${BOLD}Select an operation:${NC}"
         echo -e "  ${BOLD}${CYAN}1)${NC} Manage Audio Integrity Checksums (${GREEN}SHA-256 Manifest & Verification${NC})"
         echo -e "  ${BOLD}${CYAN}2)${NC} Verify FLAC Files for Integrity & Corruption (${GREEN}Verify_FLAC_Files.sh${NC})"
+        echo -e "  ${BOLD}${CYAN}3)${NC} Lossless Legitimacy & Spectral Cutoff Inspector (${GREEN}Detect Fake FLACs / MP3 Transcodes${NC})"
+        echo -e "  ${BOLD}${CYAN}4)${NC} Run Non-Destructive Bit-Rot Scrub on All Mix Archives (${GREEN}scrub_mix_archive.sh${NC})"
+        echo -e "  ${BOLD}${CYAN}5)${NC} Automated Background Bit-Rot Scrub Timer (${GREEN}Systemd User Timer${NC})"
+        echo -e "  ${BOLD}${CYAN}6)${NC} View Bit-Rot Scrub History & Logs (${GREEN}VERIFY_LOGS${NC})"
         echo -e "  ${BOLD}${CYAN}0)${NC} Return to Main Menu"
         echo ""
-        read -r -p "Enter choice [0-2]: " aiv_choice
+        read -r -p "Enter choice [0-6]: " aiv_choice
         case "$aiv_choice" in
             1)
                 manage_audio_checksums
@@ -10479,6 +10586,36 @@ manage_integrity_and_verification() {
             2)
                 echo -e "\n${BOLD}${YELLOW}Starting FLAC File Integrity Scan...${NC}\n"
                 run_sub_script "Verify_FLAC_Files.sh"
+                press_enter
+                ;;
+            3)
+                if [ -f "$SCRIPT_DIR/scripts/verify_lossless_spectral.py" ]; then
+                    python3 "$SCRIPT_DIR/scripts/verify_lossless_spectral.py"
+                else
+                    echo -e "\n${RED}Error: verify_lossless_spectral.py not found!${NC}"
+                fi
+                press_enter
+                ;;
+            4)
+                echo -e "\n${BOLD}${YELLOW}Starting Non-Destructive Bit-Rot Scrub across all archives...${NC}\n"
+                run_sub_script "scrub_mix_archive.sh"
+                press_enter
+                ;;
+            5)
+                echo -e "\n${BOLD}${MAGENTA}--- Automated Background Bit-Rot Scrub Timer (Systemd) ---${NC}"
+                run_sub_script "scrub_mix_archive.sh" --timer-status
+                echo -e "  ${BOLD}${CYAN}1)${NC} Install & Enable Weekly Scrub Timer (Sundays 03:00 AM)"
+                echo -e "  ${BOLD}${CYAN}2)${NC} Disable & Uninstall Scrub Timer"
+                echo -e "  ${BOLD}${CYAN}0)${NC} Back"
+                read -r -p "Enter choice [0-2]: " t_choice
+                case "$t_choice" in
+                    1) run_sub_script "scrub_mix_archive.sh" --install-timer ;;
+                    2) run_sub_script "scrub_mix_archive.sh" --uninstall-timer ;;
+                esac
+                press_enter
+                ;;
+            6)
+                run_sub_script "scrub_mix_archive.sh" --logs
                 press_enter
                 ;;
             0|[qQ]|[eE][xX][iI][tT])
@@ -11590,6 +11727,8 @@ while true; do
     current_datetime=$(date "+%A, %B %d, %Y • %T %Z")
     echo -e "  ${os_badge}"
     echo -e "  ${BOLD}${CYAN}🔄 OS Updates:${NC} ${os_updates}  ${BOLD}${BLUE}│${NC}  ${BOLD}${CYAN}🐚 Shell:${NC} ${shell_info}  ${BOLD}${BLUE}│${NC}  ${BOLD}${CYAN}📅 Date:${NC} ${current_datetime}"
+    cloud_status=$(get_cloud_backup_badge 2>/dev/null)
+    [ -n "$cloud_status" ] && echo -e "  ${cloud_status}"
     if [ -n "${STARTUP_AUTOPLAY_NOTICE:-}" ]; then
         echo -e "  ${BOLD}${GREEN}${STARTUP_AUTOPLAY_NOTICE}${NC}"
     fi
@@ -11625,13 +11764,13 @@ while true; do
     echo -e "\n  ${BOLD}${BLUE}─── [ SECTION 1: MIX ARCHIVE WORKFLOW & INGESTION ] ─────────${NC}"
     echo -e "  ${BOLD}${CYAN} 0)${NC} Run Any Desktop Shortcuts — Linux (${GREEN}Games, Audio, Files, Tools, AI Servers — KDE Plasma${NC})"
     echo -e "  ${BOLD}${CYAN} 1)${NC} Run Mix Conversion (${GREEN}FLAC, MP3, WAV, or YouTube MP4${NC})"
-    echo -e "  ${BOLD}${CYAN} 2)${NC} Convert Audio Formats, Bit Depths & Split FLACs (${GREEN}WAV, MP3, AAC, FLAC Splitter${NC})"
+    echo -e "  ${BOLD}${CYAN} 2)${NC} Audio Conversion, EBU R128 Mastering & CUE Sheets (${GREEN}WAV, MP3, AAC, LUFS, CUE, Splitter${NC})"
     echo -e "  ${BOLD}${CYAN} 3)${NC} Retrieve Unconverted WAVs from Archive (${GREEN}MOVE_NOT_CONVERTED_WAVS.sh${NC})"
     echo -e "  ${BOLD}${CYAN} 4)${NC} Search & Import Mixes from Local Drives & SMB (${GREEN}search_and_import_mixes.sh / import_new_mixes.sh${NC})"
     echo -e "  ${BOLD}${CYAN} 5)${NC} Rename a Mix and Associated Assets (${GREEN}FLAC, Tracklist, Spek${NC})"
     echo -e "  ${BOLD}${CYAN} 6)${NC} Find & Remove Duplicate Audio Files / Mixes (${GREEN}Exact Content & Episode Match${NC})"
     echo -e "  ${BOLD}${CYAN} 7)${NC} Export / Copy Mixes to Specified Path (${GREEN}Audio, Covers, Tracklists, Spek${NC})"
-    echo -e "  ${BOLD}${CYAN} 8)${NC} Audio Integrity Checksums & FLAC Verification Suite (${GREEN}SHA-256 Manifest & Verification${NC})"
+    echo -e "  ${BOLD}${CYAN} 8)${NC} Audio Integrity, Bit-Rot Scrub & FLAC Verification (${GREEN}SHA-256, Bit-Rot Daemon, Fake FLAC${NC})"
     echo -e "  ${BOLD}${CYAN} 9)${NC} Cloud & Remote Backup Suite (${GREEN}Google Drive, iCloud, Dropbox, Custom Folder${NC})"
     echo -e "  ${BOLD}${CYAN}10)${NC} Storage Management & Multiple Mix Archives Setup (${GREEN}Drive Space, Rescan, Configure Archives${NC})"
     

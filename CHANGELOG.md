@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.4] - 2026-10-01
+
+- **Loudness Mastering, CUE Engine & Archive Bit-Rot Resilience Suite**:
+  - **EBU R128 Audio Loudness & True-Peak Mastering Suite** (`scripts/master_audio_loudness.py`, `master_audio_loudness.sh`):
+    - Full analysis of Integrated Loudness (LUFS), True-Peak max (dBTP), Loudness Range (LRA), and threshold headroom.
+    - Two-pass transparent linear normalization targeting Streaming (-14 LUFS / -1.0 dBTP for Spotify/YouTube/Apple), Podcasts (-16 LUFS), Broadcast (-23 LUFS EBU R128), and DJ/Club (-10.5 LUFS / -0.3 dBTP).
+    - Preserves metadata tags, sample rate fidelity, and dynamic expression without pumping or distortion.
+  - **Standard Red Book CUE Sheet Engine & Splitter** (`scripts/generate_cue_sheet.py`, `generate_cue_sheet.sh`):
+    - Generates 100% compliant CDRWIN / EAC Red Book `.cue` sheet files from text tracklists, timestamps, or Traktor `.nml` history.
+    - Frame-accurate CDDA timecode indexing (`MM:SS:FF` at 75 frames/second).
+    - Built-in audio splitter to cleanly cut full mixes into individual tagged FLAC/WAV tracks.
+  - **Lossless Legitimacy & Spectral Cutoff Inspector** (`scripts/verify_lossless_spectral.py`, `verify_lossless_spectral.sh`):
+    - Fast multi-segment FFT spectral power analysis detecting upscaled lossy transcodes ("Fake FLACs").
+    - Accurately detects low-pass brickwall shelves: MP3 128k (~16 kHz), MP3 192k (~18.5 kHz), and MP3 320k / AAC 256k (~20.5 kHz).
+    - Generates visual ASCII spectral power distribution charts and confidence ratings.
+  - **Automated Mix Archive Bit-Rot Scrubber & Systemd User Timer** (`scripts/scrub_mix_archive.sh`, `scrub_mix_archive.sh`):
+    - Non-destructive full-archive frame decode integrity audit (`flac -t` / `ffmpeg`) across all storage archives.
+    - Runs in low-priority background mode (`nice 19`, `ionice 3`) with zero impact on desktop or gaming tasks.
+    - Dispatches critical desktop notifications (`notify-send`) immediately upon detecting corruption.
+    - Includes automated Systemd User Timer (`mix-archive-scrub.timer`) for scheduled weekly background scrubs.
+  - **Real-Time Cloud Backup Live Badge**:
+    - Added live sync badge in the main startup banner and `show_stats()` indicating cloud backup state (`Up-to-date` vs `N mixes pending sync`).
+    - Tracks backup sessions in `~/.config/mix-manager/cloud_backup_state.json`.
+  - **Menu Expansions**:
+    - Enhanced **Option 2** with direct sub-options for EBU R128 scanner, 2-pass normalizer, and CUE generator.
+    - Enhanced **Option 8** with spectral cutoff inspector, non-destructive bit-rot scrub, systemd timer management, and scrub logs.
+
 ## [0.3.3] - 2026-10-01
 
 - **WAN2GP Server Manager & LTX-2.5 22B LoRA Expansion**:

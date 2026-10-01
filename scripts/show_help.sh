@@ -95,8 +95,8 @@ ${BOLD}AVAILABLE MENU OPTIONS (INTERACTIVE & DIRECT SHORTCUTS):${NC}
   ${BOLD}${BLUE}─── [ SECTION 1: MIX ARCHIVE WORKFLOW & INGESTION ] ─────────────────────────${NC}
    ${BOLD}${CYAN}1${NC}   ${BOLD}Run FLAC Conversion Process${NC}
        Batch transcode audio to FLAC using Make_SOF_FLAC_CONVERSION.sh.
-   ${BOLD}${CYAN}2${NC}   ${BOLD}Convert Audio Formats, Bit Depths & Split FLACs${NC}
-       Convert to WAV, MP3, AAC, 16/24-bit depths, or split cue/audio files.
+   ${BOLD}${CYAN}2${NC}   ${BOLD}Audio Conversion, EBU R128 Mastering & CUE Sheets${NC}
+       Convert formats, master to -14 LUFS, generate Red Book .cue sheets, or split tracks.
    ${BOLD}${CYAN}3${NC}   ${BOLD}Retrieve Unconverted WAVs from Archive${NC}
        Move pending uncompressed WAV files from archive storage to working space.
    ${BOLD}${CYAN}4${NC}   ${BOLD}Search & Import Mixes from Local Drives & SMB${NC}
@@ -107,8 +107,8 @@ ${BOLD}AVAILABLE MENU OPTIONS (INTERACTIVE & DIRECT SHORTCUTS):${NC}
        Scan for duplicate content by audio hash or matching episode stems.
    ${BOLD}${CYAN}7${NC}   ${BOLD}Export / Copy Mixes to Specified Path${NC}
        Export selected mixes with artwork, tracklists, and spectrogram assets.
-   ${BOLD}${CYAN}8${NC}   ${BOLD}Audio Integrity Checksums & FLAC Verification Suite${NC}
-       Generate and verify SHA-256 manifests and FLAC stream decode integrity.
+   ${BOLD}${CYAN}8${NC}   ${BOLD}Audio Integrity, Bit-Rot Scrub & FLAC Verification Suite${NC}
+       Generate SHA-256 manifests, verify decode integrity, detect fake FLACs & background scrub.
    ${BOLD}${CYAN}9${NC}   ${BOLD}Cloud & Remote Backup Suite${NC}
        Backup mixes to Google Drive, iCloud, Dropbox, or custom local/remote path.
   ${BOLD}${CYAN}10${NC}   ${BOLD}Storage Management & Multiple Mix Archives Setup${NC}

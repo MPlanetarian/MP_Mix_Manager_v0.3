@@ -450,6 +450,19 @@ EOF
 )
     echo "$summary_block" >> "$log_file"
 
+    mkdir -p "$HOME/.config/mix-manager" 2>/dev/null || true
+    cat << STATE_EOF > "$HOME/.config/mix-manager/cloud_backup_state.json"
+{
+  "timestamp": ${end_seconds:-$(date +%s)},
+  "date": "$today $end_time",
+  "provider": "$provider_name",
+  "destination": "$dest_target",
+  "status": "$summary_status",
+  "files_transferred": $total_files_transferred,
+  "log_file": "$log_file"
+}
+STATE_EOF
+
     echo ""
     echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
     if [ "$transfer_success" -eq 1 ]; then
