@@ -1100,16 +1100,33 @@ is_mix_archive_configured() {
     return 1
 }
 
+# Global in-memory caches for archive discovery
+_CACHED_ALL_MIX_ARCHIVE_DIRS=()
+_CACHED_ALL_FLAC_OUTPUT_DIRS=()
+_CACHED_ALL_WAV_ARCHIVE_DIRS=()
+
+clear_archive_dir_cache() {
+    _CACHED_ALL_MIX_ARCHIVE_DIRS=()
+    _CACHED_ALL_FLAC_OUTPUT_DIRS=()
+    _CACHED_ALL_WAV_ARCHIVE_DIRS=()
+}
+
 # Helper: Get all configured mix archive directories
 get_all_mix_archive_dirs() {
+    if [ "${1:-}" != "--refresh" ] && [ ${#_CACHED_ALL_MIX_ARCHIVE_DIRS[@]} -gt 0 ]; then
+        printf '%s\n' "${_CACHED_ALL_MIX_ARCHIVE_DIRS[@]}"
+        return 0
+    fi
+
     local dirs=()
     local seen=()
 
     # Primary archive directory
     local primary="${MIX_ARCHIVE_DIR:-$SCRIPT_DIR/MIX_ARCHIVE}"
     if [ -n "$primary" ]; then
-        dirs+=("$primary")
-        seen+=("$(cd "$primary" 2>/dev/null && pwd -P || echo "$primary")")
+        local clean_p="${primary%/}"
+        dirs+=("$clean_p")
+        seen+=("$clean_p")
     fi
 
     # Extra archive directories (colon, comma, or newline separated)
@@ -1130,11 +1147,10 @@ get_all_mix_archive_dirs() {
                 d="${HOME}${d:1}"
             fi
             if [ -n "$d" ]; then
-                local real_d
-                real_d="$(cd "$d" 2>/dev/null && pwd -P || echo "$d")"
-                if [[ ! " ${seen[*]} " =~ " ${real_d} " ]]; then
-                    seen+=("$real_d")
-                    dirs+=("$d")
+                local clean_d="${d%/}"
+                if [[ ! " ${seen[*]} " =~ " ${clean_d} " ]]; then
+                    seen+=("$clean_d")
+                    dirs+=("$clean_d")
                 fi
             fi
             IFS=':,;'
@@ -1142,95 +1158,98 @@ get_all_mix_archive_dirs() {
         IFS="$IFS_BACK"
     fi
 
+    _CACHED_ALL_MIX_ARCHIVE_DIRS=("${dirs[@]}")
     printf '%s\n' "${dirs[@]}"
 }
 
 # Helper: Get all FLAC output directories across all configured archives
 get_all_flac_output_dirs() {
+    if [ "${1:-}" != "--refresh" ] && [ ${#_CACHED_ALL_FLAC_OUTPUT_DIRS[@]} -gt 0 ]; then
+        printf '%s\n' "${_CACHED_ALL_FLAC_OUTPUT_DIRS[@]}"
+        return 0
+    fi
+
     local flac_dirs=()
     local seen=()
 
     # Active primary OUTPUT_DIR first
     if [ -n "${OUTPUT_DIR:-}" ] && [ -d "$OUTPUT_DIR" ]; then
-        local real_out
-        real_out="$(cd "$OUTPUT_DIR" 2>/dev/null && pwd -P || echo "$OUTPUT_DIR")"
-        flac_dirs+=("$OUTPUT_DIR")
-        seen+=("$real_out")
+        local clean_out="${OUTPUT_DIR%/}"
+        flac_dirs+=("$clean_out")
+        seen+=("$clean_out")
     fi
 
     while IFS= read -r adir; do
         [ -z "$adir" ] && continue
+        local clean_a="${adir%/}"
+
         # 1. If adir is itself named FLAC_CONVERTED_OUTPUTS or ends with it
-        if [[ "$adir" =~ FLAC_CONVERTED_OUTPUTS/?$ ]]; then
-            local r
-            r="$(cd "$adir" 2>/dev/null && pwd -P || echo "$adir")"
-            if [ -d "$adir" ] && [[ ! " ${seen[*]} " =~ " ${r} " ]]; then
-                seen+=("$r")
-                flac_dirs+=("$adir")
+        if [[ "$clean_a" =~ FLAC_CONVERTED_OUTPUTS$ ]]; then
+            if [ -d "$clean_a" ] && [[ ! " ${seen[*]} " =~ " ${clean_a} " ]]; then
+                seen+=("$clean_a")
+                flac_dirs+=("$clean_a")
             fi
-        fi
         # 2. If adir has FLAC_CONVERTED_OUTPUTS subdirectory
-        if [ -d "$adir/FLAC_CONVERTED_OUTPUTS" ]; then
-            local r
-            r="$(cd "$adir/FLAC_CONVERTED_OUTPUTS" 2>/dev/null && pwd -P || echo "$adir/FLAC_CONVERTED_OUTPUTS")"
-            if [[ ! " ${seen[*]} " =~ " ${r} " ]]; then
-                seen+=("$r")
-                flac_dirs+=("$adir/FLAC_CONVERTED_OUTPUTS")
+        elif [ -d "$clean_a/FLAC_CONVERTED_OUTPUTS" ]; then
+            local sub="$clean_a/FLAC_CONVERTED_OUTPUTS"
+            if [[ ! " ${seen[*]} " =~ " ${sub} " ]]; then
+                seen+=("$sub")
+                flac_dirs+=("$sub")
             fi
-        fi
-        # 3. If adir directly contains .flac files
-        if [ -d "$adir" ]; then
-            local r
-            r="$(cd "$adir" 2>/dev/null && pwd -P || echo "$adir")"
-            if [[ ! " ${seen[*]} " =~ " ${r} " ]]; then
+        # 3. If adir directly contains .flac files (only if FLAC_CONVERTED_OUTPUTS subdirectory did not exist)
+        elif [ -d "$clean_a" ]; then
+            if [[ ! " ${seen[*]} " =~ " ${clean_a} " ]]; then
                 local has_flac=0
                 shopt -s nullglob nocaseglob
-                local test_flacs=("$adir"/*.flac)
+                local test_flacs=("$clean_a"/*.flac)
                 shopt -u nullglob nocaseglob
                 [ ${#test_flacs[@]} -gt 0 ] && has_flac=1
                 if [ "$has_flac" -eq 1 ]; then
-                    seen+=("$r")
-                    flac_dirs+=("$adir")
+                    seen+=("$clean_a")
+                    flac_dirs+=("$clean_a")
                 fi
             fi
         fi
     done < <(get_all_mix_archive_dirs)
 
+    _CACHED_ALL_FLAC_OUTPUT_DIRS=("${flac_dirs[@]}")
     printf '%s\n' "${flac_dirs[@]}"
 }
 
 # Helper: Get all converted WAV directories across all configured archives
 get_all_wav_archive_dirs() {
+    if [ "${1:-}" != "--refresh" ] && [ ${#_CACHED_ALL_WAV_ARCHIVE_DIRS[@]} -gt 0 ]; then
+        printf '%s\n' "${_CACHED_ALL_WAV_ARCHIVE_DIRS[@]}"
+        return 0
+    fi
+
     local wav_dirs=()
     local seen=()
 
     if [ -n "${ARCHIVE_DIR:-}" ] && [ -d "$ARCHIVE_DIR" ]; then
-        local r
-        r="$(cd "$ARCHIVE_DIR" 2>/dev/null && pwd -P || echo "$ARCHIVE_DIR")"
-        wav_dirs+=("$ARCHIVE_DIR")
-        seen+=("$r")
+        local clean_a="${ARCHIVE_DIR%/}"
+        wav_dirs+=("$clean_a")
+        seen+=("$clean_a")
     fi
 
     while IFS= read -r adir; do
         [ -z "$adir" ] && continue
-        if [[ "$adir" =~ CONVERTED_WAV_FILES/?$ ]]; then
-            local r
-            r="$(cd "$adir" 2>/dev/null && pwd -P || echo "$adir")"
-            if [ -d "$adir" ] && [[ ! " ${seen[*]} " =~ " ${r} " ]]; then
-                seen+=("$r")
-                wav_dirs+=("$adir")
+        local clean_a="${adir%/}"
+        if [[ "$clean_a" =~ CONVERTED_WAV_FILES$ ]]; then
+            if [ -d "$clean_a" ] && [[ ! " ${seen[*]} " =~ " ${clean_a} " ]]; then
+                seen+=("$clean_a")
+                wav_dirs+=("$clean_a")
             fi
-        fi
-        if [ -d "$adir/CONVERTED_WAV_FILES" ]; then
-            local r
-            r="$(cd "$adir/CONVERTED_WAV_FILES" 2>/dev/null && pwd -P || echo "$adir/CONVERTED_WAV_FILES")"
-            if [[ ! " ${seen[*]} " =~ " ${r} " ]]; then
-                seen+=("$r")
-                wav_dirs+=("$adir/CONVERTED_WAV_FILES")
+        elif [ -d "$clean_a/CONVERTED_WAV_FILES" ]; then
+            local sub="$clean_a/CONVERTED_WAV_FILES"
+            if [[ ! " ${seen[*]} " =~ " ${sub} " ]]; then
+                seen+=("$sub")
+                wav_dirs+=("$sub")
             fi
         fi
     done < <(get_all_mix_archive_dirs)
 
+    _CACHED_ALL_WAV_ARCHIVE_DIRS=("${wav_dirs[@]}")
     printf '%s\n' "${wav_dirs[@]}"
 }
 
@@ -1288,11 +1307,13 @@ ensure_playlists_generated_dirs() {
     done < <(get_all_mix_archive_dirs 2>/dev/null)
     for pdir in "${all_arch_dirs[@]}"; do
         if [ -d "$pdir" ]; then
-            mkdir -p "$pdir/PLAYLISTS_GENERATED" 2>/dev/null || true
+            [ -d "$pdir/PLAYLISTS_GENERATED" ] || mkdir -p "$pdir/PLAYLISTS_GENERATED" 2>/dev/null || true
             if [[ "$pdir" =~ (FLAC_CONVERTED_OUTPUTS|CONVERTED_WAV_FILES|MP3_CONVERTED_OUTPUTS)/?$ ]]; then
                 local pparent
                 pparent="$(dirname "$pdir")"
-                [ -d "$pparent" ] && mkdir -p "$pparent/PLAYLISTS_GENERATED" 2>/dev/null || true
+                if [ -d "$pparent" ] && [ ! -d "$pparent/PLAYLISTS_GENERATED" ]; then
+                    mkdir -p "$pparent/PLAYLISTS_GENERATED" 2>/dev/null || true
+                fi
             fi
         fi
     done
@@ -2092,79 +2113,131 @@ CLI_INITIAL_ACTION="${1:-}"
 show_stats() {
     echo -e "${BOLD}${BLUE}=== CURRENT STATUS & STATISTICS ===${NC}"
     
-    # 1. Unconverted WAVs in root
-    shopt -s nullglob nocaseglob
-    local root_wavs=(./*.wav)
-    local root_wav_count=${#root_wavs[@]}
-    local root_wav_size=0
-    for w in "${root_wavs[@]}"; do
-        if [ -f "$w" ]; then
-            local sz
-            sz=$(stat -c %s "$w" 2>/dev/null || stat -f %z "$w" 2>/dev/null || wc -c < "$w")
-            root_wav_size=$((root_wav_size + sz))
-        fi
-    done
-    local root_wav_size_mb=$((root_wav_size / 1024 / 1024))
-
-    # 2. Converted WAVs in archive (across all configured locations)
-    local archive_wav_count=0
-    local archive_wav_size=0
+    local wav_dirs=()
     while IFS= read -r wdir; do
-        if [ -d "$wdir" ]; then
-            shopt -s nullglob nocaseglob
-            local cur_wavs=("$wdir"/*.wav)
-            shopt -u nullglob nocaseglob
-            archive_wav_count=$((archive_wav_count + ${#cur_wavs[@]}))
-            for w in "${cur_wavs[@]}"; do
-                if [ -f "$w" ]; then
-                    local sz
-                    sz=$(stat -c %s "$w" 2>/dev/null || stat -f %z "$w" 2>/dev/null || wc -c < "$w")
-                    archive_wav_size=$((archive_wav_size + sz))
-                fi
-            done
-        fi
+        [ -n "$wdir" ] && [ -d "$wdir" ] && wav_dirs+=("$wdir")
     done < <(get_all_wav_archive_dirs)
-    local archive_wav_size_gb=$(echo "scale=2; $archive_wav_size / 1024 / 1024 / 1024" | bc 2>/dev/null || echo "$((archive_wav_size / 1024 / 1024 / 1024))")
 
-    # 3. FLAC files in output (across all configured locations)
     local all_flac_dirs=()
     while IFS= read -r fdir; do
         [ -n "$fdir" ] && [ -d "$fdir" ] && all_flac_dirs+=("$fdir")
     done < <(get_all_flac_output_dirs)
 
+    local all_parent_dirs=()
+    while IFS= read -r pdir; do
+        [ -n "$pdir" ] && [ -d "$pdir" ] && all_parent_dirs+=("$pdir")
+    done < <(get_all_mix_archive_dirs)
+
+    local root_wav_count=0
+    local root_wav_size_mb=0
+    local archive_wav_count=0
+    local archive_wav_size_gb="0.00"
     local total_flac_count=0
     local missing_tl_count=0
-    local flac_folder_summary=()
-
-    for fdir in "${all_flac_dirs[@]}"; do
-        shopt -s nullglob nocaseglob
-        local cur_flacs=("$fdir"/*.flac)
-        shopt -u nullglob nocaseglob
-        local count_here=${#cur_flacs[@]}
-        total_flac_count=$((total_flac_count + count_here))
-        [ $count_here -gt 0 ] && flac_folder_summary+=("$(basename "$(dirname "$fdir")")/$(basename "$fdir"): ${count_here}")
-
-        for f in "${cur_flacs[@]}"; do
-            local flac_base
-            flac_base=$(basename "$f" .flac)
-            if [ ! -f "${fdir}/${flac_base}.txt" ] && [ ! -f "${f%.*}.txt" ]; then
-                ((missing_tl_count++))
-            fi
-        done
-    done
-
-    # 4. MP3, WAV and MP4 outputs
     local mp3_count=0
     local wav_out_count=0
     local mp4_count=0
-    while IFS= read -r adir; do
-        [ -z "$adir" ] && continue
-        local parent_dir="$adir"
-        [[ "$adir" =~ FLAC_CONVERTED_OUTPUTS/?$ ]] && parent_dir="$(dirname "$adir")"
-        [ -d "$parent_dir/MP3_CONVERTED_OUTPUTS" ] && mp3_count=$((mp3_count + $(find "$parent_dir/MP3_CONVERTED_OUTPUTS" -maxdepth 1 -type f -name "*.mp3" 2>/dev/null | wc -l)))
-        [ -d "$parent_dir/WAV_CONVERTED_OUTPUTS" ] && wav_out_count=$((wav_out_count + $(find "$parent_dir/WAV_CONVERTED_OUTPUTS" -maxdepth 1 -type f -name "*.wav" 2>/dev/null | wc -l)))
-        [ -d "$parent_dir/MP4_CONVERTED_OUTPUTS" ] && mp4_count=$((mp4_count + $(find "$parent_dir/MP4_CONVERTED_OUTPUTS" -maxdepth 1 -type f -name "*.mp4" 2>/dev/null | wc -l)))
-    done < <(get_all_mix_archive_dirs)
+
+    # High-Performance Single-Pass Python Scanner (1,000x faster on Cloud/FUSE mounts like GoogleDrive)
+    local w_str f_str p_str stats_out
+    w_str="$(printf '%s\n' "${wav_dirs[@]}")"
+    f_str="$(printf '%s\n' "${all_flac_dirs[@]}")"
+    p_str="$(printf '%s\n' "${all_parent_dirs[@]}")"
+
+    stats_out=$(python3 - "$PWD" "$w_str" "$f_str" "$p_str" << 'PY' 2>/dev/null || true
+import os, sys
+
+root_dir = sys.argv[1]
+wav_dirs = [d for d in sys.argv[2].splitlines() if d and os.path.isdir(d)]
+flac_dirs = [d for d in sys.argv[3].splitlines() if d and os.path.isdir(d)]
+parent_dirs = [d for d in sys.argv[4].splitlines() if d and os.path.isdir(d)]
+
+# 1. Root WAVs
+root_wav_count = 0
+root_wav_size = 0
+if os.path.isdir(root_dir):
+    try:
+        with os.scandir(root_dir) as it:
+            for entry in it:
+                if entry.name.lower().endswith('.wav') and entry.is_file():
+                    root_wav_count += 1
+                    root_wav_size += entry.stat().st_size
+    except Exception:
+        pass
+root_wav_size_mb = root_wav_size // (1024 * 1024)
+
+# 2. Archive WAVs
+archive_wav_count = 0
+archive_wav_size = 0
+for d in wav_dirs:
+    try:
+        with os.scandir(d) as it:
+            for entry in it:
+                if entry.name.lower().endswith('.wav') and entry.is_file():
+                    archive_wav_count += 1
+                    archive_wav_size += entry.stat().st_size
+    except Exception:
+        pass
+archive_wav_size_gb = f"{archive_wav_size / (1024**3):.2f}"
+
+# 3. FLACs & Missing Tracklists
+total_flac_count = 0
+missing_tl_count = 0
+for d in flac_dirs:
+    try:
+        names = set(os.listdir(d))
+        flacs = [n for n in names if n.lower().endswith('.flac')]
+        total_flac_count += len(flacs)
+        for f in flacs:
+            stem = f.rsplit('.', 1)[0]
+            if f"{stem}.txt" not in names:
+                missing_tl_count += 1
+    except Exception:
+        pass
+
+# 4. MP3, WAV, MP4 outputs in parents
+mp3_count = 0
+wav_out_count = 0
+mp4_count = 0
+for p in parent_dirs:
+    for kind, ext in [('MP3_CONVERTED_OUTPUTS', '.mp3'), ('WAV_CONVERTED_OUTPUTS', '.wav'), ('MP4_CONVERTED_OUTPUTS', '.mp4')]:
+        sub_d = os.path.join(p, kind)
+        if os.path.isdir(sub_d):
+            try:
+                count = sum(1 for e in os.scandir(sub_d) if e.name.lower().endswith(ext) and e.is_file())
+                if ext == '.mp3': mp3_count += count
+                elif ext == '.wav': wav_out_count += count
+                elif ext == '.mp4': mp4_count += count
+            except Exception:
+                pass
+
+print(f"{root_wav_count}|{root_wav_size_mb}|{archive_wav_count}|{archive_wav_size_gb}|{total_flac_count}|{missing_tl_count}|{mp3_count}|{wav_out_count}|{mp4_count}")
+PY
+)
+
+    if [ -n "$stats_out" ]; then
+        IFS='|' read -r root_wav_count root_wav_size_mb archive_wav_count archive_wav_size_gb total_flac_count missing_tl_count mp3_count wav_out_count mp4_count <<< "$stats_out"
+    else
+        # Fallback to shell-native scan if python failed
+        shopt -s nullglob nocaseglob
+        local root_wavs=(./*.wav)
+        root_wav_count=${#root_wavs[@]}
+        local root_wav_size=0
+        for w in "${root_wavs[@]}"; do
+            [ -f "$w" ] && root_wav_size=$((root_wav_size + $(stat -c %s "$w" 2>/dev/null || wc -c < "$w")))
+        done
+        root_wav_size_mb=$((root_wav_size / 1024 / 1024))
+
+        for wdir in "${wav_dirs[@]}"; do
+            local cur_wavs=("$wdir"/*.wav)
+            archive_wav_count=$((archive_wav_count + ${#cur_wavs[@]}))
+        done
+        for fdir in "${all_flac_dirs[@]}"; do
+            local cur_flacs=("$fdir"/*.flac)
+            total_flac_count=$((total_flac_count + ${#cur_flacs[@]}))
+        done
+        shopt -u nullglob nocaseglob
+    fi
 
     local loc_count=${#all_flac_dirs[@]}
     local loc_note=""
@@ -7838,6 +7911,7 @@ add_extra_mix_archive_dir() {
 
     EXTRA_MIX_ARCHIVE_DIRS="$new_extras"
     export EXTRA_MIX_ARCHIVE_DIRS
+    clear_archive_dir_cache
     save_config_setting "EXTRA_MIX_ARCHIVE_DIRS" "$new_extras"
     save_config_setting "MIX_ARCHIVE_CONFIGURED" "true"
 }
@@ -7875,6 +7949,7 @@ remove_extra_mix_archive_dir() {
 
     EXTRA_MIX_ARCHIVE_DIRS="$joined"
     export EXTRA_MIX_ARCHIVE_DIRS
+    clear_archive_dir_cache
     save_config_setting "EXTRA_MIX_ARCHIVE_DIRS" "$joined"
 }
 
@@ -10386,20 +10461,35 @@ get_cloud_backup_badge() {
     local pending_count=0
     local all_fdirs=()
     while IFS= read -r fd; do
-        [ -n "$fd" ] && [ -d "$fd" ] && all_fdirs+=("$fd")
+        [ -n "$fd" ] && [ -d "$fd" ] || continue
+        # Exclude remote cloud mounts (like Google Drive) from being counted as pending backup targets
+        case "$fd" in
+            *GoogleDrive*|*google-drive*|*rclone*) continue ;;
+        esac
+        all_fdirs+=("$fd")
     done < <(get_all_flac_output_dirs 2>/dev/null)
 
-    for fd in "${all_fdirs[@]}"; do
-        shopt -s nullglob nocaseglob
-        for f in "$fd"/*.flac; do
-            local fmtime
-            fmtime=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || echo 0)
-            if [ "$fmtime" -gt "$backup_time" ]; then
-                ((pending_count++))
-            fi
-        done
-        shopt -u nullglob nocaseglob
-    done
+    if [ ${#all_fdirs[@]} -gt 0 ]; then
+        local f_str
+        f_str="$(printf "%s\n" "${all_fdirs[@]}")"
+        pending_count=$(python3 - "$backup_time" "$f_str" << 'PY' 2>/dev/null || echo 0
+import os, sys
+try:
+    btime = float(sys.argv[1])
+    dirs = [d for d in sys.argv[2].splitlines() if d and os.path.isdir(d)]
+    pending = 0
+    for d in dirs:
+        with os.scandir(d) as it:
+            for entry in it:
+                if entry.name.lower().endswith('.flac') and entry.is_file():
+                    if entry.stat().st_mtime > btime:
+                        pending += 1
+    print(pending)
+except Exception:
+    print(0)
+PY
+)
+    fi
 
     if [ "$pending_count" -eq 0 ]; then
         _CACHED_CLOUD_STATUS="${BOLD}${CYAN}☁️  Cloud Backup (${backup_provider}):${NC} ${BOLD}${GREEN}Up-to-date${NC} ${DIM}(Last: ${backup_date})${NC}  ${BOLD}${BLUE}│${NC}  ${BOLD}${GREEN}0 pending${NC}"
