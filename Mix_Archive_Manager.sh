@@ -1014,6 +1014,45 @@ APPLESCRIPT
         fi
     else
         # default to tab or preferred terminal
+        # 1. Native Konsole DBus tab injection (instant and zero-failure on KDE Plasma)
+        local qdbus_bin=""
+        if command -v qdbus-qt6 >/dev/null 2>&1; then
+            qdbus_bin="qdbus-qt6"
+        elif command -v qdbus >/dev/null 2>&1; then
+            qdbus_bin="qdbus"
+        fi
+
+        if [ -n "$qdbus_bin" ]; then
+            local k_svc="${KONSOLE_DBUS_SERVICE:-}"
+            local k_win="${KONSOLE_DBUS_WINDOW:-}"
+
+            # If not in env, search DBus for any active Konsole process
+            if [ -z "$k_svc" ]; then
+                k_svc=$("$qdbus_bin" 2>/dev/null | grep -m1 -E "org\.kde\.konsole-[0-9]+" || true)
+            fi
+
+            if [ -n "$k_svc" ]; then
+                if [ -z "$k_win" ] || ! "$qdbus_bin" "$k_svc" "$k_win" org.kde.konsole.Window.sessionCount >/dev/null 2>&1; then
+                    for candidate_win in "/Windows/1" "/Windows/2" "/Windows/3"; do
+                        if "$qdbus_bin" "$k_svc" "$candidate_win" org.kde.konsole.Window.sessionCount >/dev/null 2>&1; then
+                            k_win="$candidate_win"
+                            break
+                        fi
+                    done
+                fi
+
+                if [ -n "$k_win" ]; then
+                    local session_id
+                    session_id=$("$qdbus_bin" "$k_svc" "$k_win" org.kde.konsole.Window.newSession "" "$PWD" 2>/dev/null || true)
+                    if [ -n "$session_id" ] && [ "$session_id" -gt 0 ] 2>/dev/null; then
+                        "$qdbus_bin" "$k_svc" "/Sessions/$session_id" org.kde.konsole.Session.setTitle 1 "$title" 2>/dev/null || true
+                        "$qdbus_bin" "$k_svc" "/Sessions/$session_id" org.kde.konsole.Session.runCommand "$cmd" 2>/dev/null || true
+                        return 0
+                    fi
+                fi
+            fi
+        fi
+
         if command -v konsole >/dev/null 2>&1; then
             nohup konsole --new-tab -p tabtitle="$title" --workdir "$PWD" -e bash -c "$cmd" >/dev/null 2>&1 &
             return 0
