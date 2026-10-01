@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.4] - 2026-10-01
 
+- **YouTube 1080p Downloader & Media Suite Expansion** (`scripts/MP_YouTube_Channel_Downloader.sh`, `MP_YouTube_Channel_Downloader.sh`):
+  - **Single YouTube Video Mode**: Download individual videos directly from any URL (`watch?v=`, `youtu.be/`, `/shorts/`) or 11-char video ID, with `--no-playlist` isolation and organized storage in `YOUTUBE_SINGLE_VIDEOS`.
+  - **Multi-Timeframe Channel Downloads**: Selectable download ranges including **Last 1 Month**, **Last 3 Months**, **Last 6 Months (Default)**, or **Entire Channel (All Videos - Complete Archive)**.
+  - **Smart URL & Handle Parsing**: Automatically recognizes single video links vs channel handles (`@channel`, `/channel/UC...`, `/c/...`), stripping quotes and whitespace from drag-and-drop inputs.
+  - **Accelerated Streaming**: Preserves high-speed `--lazy-playlist` streaming, automatic Node/Deno JS engine detection, live network diagnostics, and optional proxy integration.
 - **Interactive Audio ID3/Vorbis Tag Customizer & Cover Selector**:
   - Integrated into audio conversion pipelines (`Make_SOF_FLAC_CONVERSION.sh` and `scripts/convert_audio_format.sh`).
   - Prompts optionally before conversion to set common tags: Artist Name, Mix Title, Album, Release Year, Genre, and Description/Comment.

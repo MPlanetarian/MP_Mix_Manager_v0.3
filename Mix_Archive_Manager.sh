@@ -2568,7 +2568,7 @@ ${BOLD}${MAGENTA}===============================================================
     echo -e "  ${BOLD}${CYAN}3)${NC} 720p HD (1280x720 @ 30fps) - ${YELLOW}Fast Export & Compact File Size (Still Cover Art + Audio)${NC}"
     echo -e "  ${BOLD}${CYAN}4)${NC} Looping MP4-to-MP4 Video Creator (${GREEN}Loop MP4 with Segment Fades, Audio & Thumbnails${NC})"
     echo -e "  ${BOLD}${CYAN}5)${NC} Launch Universal Video Generator Wizard (${GREEN}generate_youtube_video.sh${NC})"
-    echo -e "  ${BOLD}${CYAN}6)${NC} Download YouTube Channel in 1080p (${GREEN}Last 6 Months, Optional Proxy - MP_YouTube_Channel_Downloader.sh${NC})"
+    echo -e "  ${BOLD}${CYAN}6)${NC} Download YouTube Video or Channel in 1080p (${GREEN}Single URL, 1/3/6 Mo, All Videos - MP_YouTube_Channel_Downloader.sh${NC})"
     echo -e "  ${BOLD}${CYAN}7)${NC} Cancel & Return to Main Menu
 "
     read -r -p "Enter choice [1-7, default: 2]: " v_choice
@@ -11392,7 +11392,7 @@ manage_visual_media_suite() {
         echo -e "  ${BOLD}${CYAN}4)${NC} View Cover Art by Mix Number (${GREEN}External Viewer${NC})"
         echo -e "  ${BOLD}${CYAN}5)${NC} Procedural Gradient .PPM Cover Art Generator (${GREEN}Netpbm P6 Binary, Palettes${NC})"
         echo -e "  ${BOLD}${CYAN}6)${NC} Synchronized Mix-Video Companion Player Daemon (${GREEN}Auto-play Video on Mix Start, Close on Stop${NC})"
-        echo -e "  ${BOLD}${CYAN}7)${NC} Download YouTube Channel in 1080p (${GREEN}MP_YouTube_Channel_Downloader.sh${NC})"
+        echo -e "  ${BOLD}${CYAN}7)${NC} Download YouTube Video or Channel in 1080p (${GREEN}Single URL, 1/3/6 Mo, All Videos - MP_YouTube_Channel_Downloader.sh${NC})"
         echo -e "  ${BOLD}${CYAN}0)${NC} Return to Main Menu"
         echo ""
         read -r -p "Enter choice [0-7]: " vm_choice
@@ -11783,7 +11783,7 @@ while true; do
     echo -e "  ${BOLD}${CYAN}16)${NC} Studio Hardware, Audio Interfaces & Master Volume Control (${GREEN}PipeWire, ALSA, MIDI, Mute${NC})"
     echo -e "  ${BOLD}${CYAN}17)${NC} Spectrogram Generation & Audio Frequency Analysis (${GREEN}Single & Multiple Spek, SoX, Praat${NC})"
     echo -e "  ${BOLD}${CYAN}18)${NC} Morning Alarm Clock & DJ Mix Playback Suite (${GREEN}Steam Games, Wake-Up Mixes, Scheduler${NC})"
-    echo -e "  ${BOLD}${CYAN}19)${NC} YouTube Video Suite (${GREEN}Generate 4K/1080p Videos & Download 1080p Channels${NC})"
+    echo -e "  ${BOLD}${CYAN}19)${NC} YouTube Video Suite (${GREEN}Generate 4K/1080p Videos & Download Videos/Channels${NC})"
     echo -e "  ${BOLD}${CYAN}20)${NC} Visual Media, Cover Art & Companion Video Suite (${GREEN}Cut/Split Video, Converters, PPM, Launchers${NC})"
     echo -e "  ${BOLD}${CYAN}21)${NC} Record Video of DJ Mix using GPU Screen Recorder (Linux) (${GREEN}New Desktop Window${NC})"
     echo -e "  ${BOLD}${CYAN}22)${NC} Listen to Your Top 5 Tracks Right Now (Pre-Selected - Special Option) $(get_top_5_status_badge)"
