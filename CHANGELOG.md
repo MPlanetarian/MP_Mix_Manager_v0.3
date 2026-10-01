@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.3] - 2026-10-01
+
+- **WAN2GP Server Manager & LTX-2.5 22B LoRA Expansion**:
+  - Expanded the WAN2GP Server Manager menu (Main Menu 31 -> Option 4, and direct Option 56) to 25 operations.
+  - Added dedicated options 20–23 for batch processing with LTX-2 2.5 22B and specialized LoRA models:
+    - **Option 20**: Run LTX-2 2.5 22B Batch Processor with EditAnything v2 LoRA
+    - **Option 21**: Run LTX-2 2.5 22B Batch Processor with BFS Head Swap IC-LoRA
+    - **Option 22**: Run LTX-2 2.5 22B Batch Processor with Deblur & Decompression LoRAs
+    - **Option 23**: Run LTX-2 2.5 22B Batch Processor (Clean Base / Video+Audio)
+    - **Option 24**: Scan & Remove Byte-for-Byte Duplicate Images (`remove_duplicate_images.py`)
+    - **Option 25**: Return to Main Menu
+  - Updated `launch_wan2gp_ltx_batch_terminal` in `Mix_Archive_Manager.sh` with direct `--lora` parameter dispatch and title tagging.
+  - Added `--lora editanything_ref` (EditAnything Reference v0.1 Standard) support in `scripts/wan2gp_ltx_batch.py`.
+
 ## [0.3.2] - 2026-09-28
 
 - **Monitor System Processes and Bash Commands with System Info**:

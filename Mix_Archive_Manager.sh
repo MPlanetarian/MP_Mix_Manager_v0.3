@@ -3280,8 +3280,11 @@ launch_wan2gp_flux_batch_terminal() {
 launch_wan2gp_ltx_batch_terminal() {
     local mode="$1"
     local model="${2:-2b}"
+    local lora="${3:-none}"
     local title="WAN2GP LTX Video ${model^^} Batch"
-    if [[ "$mode" == *"--no-control"* ]]; then
+    if [ -n "$lora" ] && [ "$lora" != "none" ]; then
+        title="WAN2GP LTX Video ${model^^} [${lora}]"
+    elif [[ "$mode" == *"--no-control"* ]]; then
         title="WAN2GP LTX Video ${model^^} (Pure I2V)"
     elif [[ "$mode" == *"--watch"* ]]; then
         title="WAN2GP LTX Video ${model^^} (Watch Mode)"
@@ -3289,7 +3292,11 @@ launch_wan2gp_ltx_batch_terminal() {
     local script="$SCRIPT_DIR/wan2gp_ltx_batch.py"
     [ ! -f "$script" ] && script="$SCRIPT_DIR/scripts/wan2gp_ltx_batch.py"
     [ ! -f "$script" ] && script="$HOME/wan2gp_ltx_batch.py"
-    local cmd="\"$script\" --model $model $mode; echo ''; echo 'Batch process finished. Press [Enter] to exit...'; read -r"
+    local lora_arg=""
+    if [ -n "$lora" ] && [ "$lora" != "none" ]; then
+        lora_arg="--lora $lora"
+    fi
+    local cmd="\"$script\" --model $model $lora_arg $mode; echo ''; echo 'Batch process finished. Press [Enter] to exit...'; read -r"
 
     if launch_in_terminal "$title" "$cmd" "tab"; then
         echo -e "${GREEN}✓ LTX Video ${model^^} Batch Processor launched in a new console tab/window.${NC}"
@@ -3402,10 +3409,14 @@ manage_wan2gp() {
         echo -e "  ${BOLD}${CYAN}17)${NC} Run LTX Video 13B Batch Video Processor [${BOLD}Pure Image-to-Video${NC}] (No Control Video)"
         echo -e "  ${BOLD}${CYAN}18)${NC} Run LTX Video 13B in ${BOLD}${GREEN}Watch Mode${NC} [${BOLD}${YELLOW}Single Control Video${NC}]"
         echo -e "  ${BOLD}${CYAN}19)${NC} Run LTX Video 13B in ${BOLD}${GREEN}Watch Mode${NC} [${BOLD}Pure Image-to-Video${NC}]"
-        echo -e "  ${BOLD}${CYAN}20)${NC} Scan & Remove Byte-for-Byte Duplicate Images (${GREEN}remove_duplicate_images.py${NC})"
-        echo -e "  ${BOLD}${CYAN}21)${NC} Return to Main Menu"
+        echo -e "  ${BOLD}${CYAN}20)${NC} Run LTX-2 2.5 22B Batch Processor [${BOLD}${YELLOW}EditAnything v2 LoRA${NC}]"
+        echo -e "  ${BOLD}${CYAN}21)${NC} Run LTX-2 2.5 22B Batch Processor [${BOLD}${YELLOW}BFS Head Swap IC-LoRA${NC}]"
+        echo -e "  ${BOLD}${CYAN}22)${NC} Run LTX-2 2.5 22B Batch Processor [${BOLD}${YELLOW}Deblur & Decompression LoRAs${NC}]"
+        echo -e "  ${BOLD}${CYAN}23)${NC} Run LTX-2 2.5 22B Batch Processor [${BOLD}${GREEN}Clean Base / Video+Audio${NC}]"
+        echo -e "  ${BOLD}${CYAN}24)${NC} Scan & Remove Byte-for-Byte Duplicate Images (${GREEN}remove_duplicate_images.py${NC})"
+        echo -e "  ${BOLD}${CYAN}25)${NC} Return to Main Menu"
         echo ""
-        read -r -p "Enter choice [1-21]: " w_choice
+        read -r -p "Enter choice [1-25]: " w_choice
 
         case $w_choice in
             1)
@@ -3502,9 +3513,25 @@ manage_wan2gp() {
                 launch_wan2gp_ltx_batch_terminal "--watch --no-control" "13b"
                 ;;
             20)
-                run_duplicate_image_remover
+                echo -e "\n${GREEN}Launching LTX-2 2.5 22B Batch Processor with EditAnything v2 LoRA...${NC}"
+                launch_wan2gp_ltx_batch_terminal "" "25_22b" "editanything_v2"
                 ;;
             21)
+                echo -e "\n${GREEN}Launching LTX-2 2.5 22B Batch Processor with BFS Head Swap IC-LoRA...${NC}"
+                launch_wan2gp_ltx_batch_terminal "" "25_22b" "bfs_head_swap"
+                ;;
+            22)
+                echo -e "\n${GREEN}Launching LTX-2 2.5 22B Batch Processor with Deblur LoRA...${NC}"
+                launch_wan2gp_ltx_batch_terminal "" "25_22b" "deblur"
+                ;;
+            23)
+                echo -e "\n${GREEN}Launching LTX-2 2.5 22B Batch Processor (Clean Base / Video+Audio)...${NC}"
+                launch_wan2gp_ltx_batch_terminal "" "25_22b" "none"
+                ;;
+            24)
+                run_duplicate_image_remover
+                ;;
+            25)
                 return 0
                 ;;
             *)

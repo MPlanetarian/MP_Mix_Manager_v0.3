@@ -116,6 +116,12 @@ AVAILABLE_LORAS = {
         "files": ["edit_anything_30k_v0.1_motion_transfer_r256.safetensors"],
         "multipliers": "1.0",
     },
+    "editanything_ref": {
+        "id": "editanything_ref",
+        "name": "EditAnything Reference v0.1 Standard",
+        "files": ["edit_anything_reference_v0.1_r128_ref_adaln_proj-role_embedding-ref_attn-ref_visual_proj.standard.safetensors"],
+        "multipliers": "1.0",
+    },
     "bfs_head_swap": {
         "id": "bfs_head_swap",
         "name": "BFS Head Swap (LTX-2 Video)",
