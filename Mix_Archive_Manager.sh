@@ -11591,20 +11591,20 @@ while true; do
     echo -e "  ${BOLD}${CYAN}27)${NC} Network Services, Congen & Internet Control (${GREEN}SSH, Samba, FTP, Congen KDE Connect, Block Internet${NC})"
     echo -e "  ${BOLD}${CYAN}28)${NC} Desktop Display Settings, Audio Routing & App Control (${GREEN}Wayland/X11/macOS/Windows, Close Apps${NC})"
     echo -e "  ${BOLD}${CYAN}29)${NC} Universal System Maintenance & Cleanup (${GREEN}Drive space, OS Updates, Package Clean, Logs${NC})"
-    echo -e "  ${BOLD}${CYAN}  m)${NC} Monitor System Processes and Bash Commands with System Info (${GREEN}MP_Monitor_Bash.sh, new Terminal tab${NC})"
-    echo -e "  ${BOLD}${CYAN}30)${NC} AI Assistant & Local LLM Servers Suite (${GREEN}Claude, GPT, Ollama, DeepSeek, WAN2GP, Beszel${NC})"
-    echo -e "  ${BOLD}${CYAN}31)${NC} Dynamic MOTD Banner Manager & Drive Burner (${GREEN}Last 3 Mixes, Netpbm, ISO USB Burner${NC})"
-    echo -e "  ${BOLD}${CYAN}32)${NC} Manager Settings, Themes, Shell CLI & Reboot (${GREEN}Themes, Migration, Bash CLI, Reboot${NC})"
+    echo -e "  ${BOLD}${CYAN}30)${NC} Monitor System Processes and Bash Commands with System Info (${GREEN}MP_Monitor_Bash.sh, new Terminal tab${NC})"
+    echo -e "  ${BOLD}${CYAN}31)${NC} AI Assistant & Local LLM Servers Suite (${GREEN}Claude, GPT, Ollama, DeepSeek, WAN2GP, Beszel${NC})"
+    echo -e "  ${BOLD}${CYAN}32)${NC} Dynamic MOTD Banner Manager & Drive Burner (${GREEN}Last 3 Mixes, Netpbm, ISO USB Burner${NC})"
+    echo -e "  ${BOLD}${CYAN}33)${NC} Manager Settings, Themes, Shell CLI & Reboot (${GREEN}Themes, Migration, Bash CLI, Reboot${NC})"
     
     echo -e "\n  ${BOLD}${BLUE}──────────────────────────────────────────────────────────────${NC}"
     get_manager_uptime
-    echo -e "  ${BOLD}${CYAN}33)${NC} Exit Manager ${DIM}(or 0 / q)${NC}"
+    echo -e "  ${BOLD}${CYAN}34)${NC} Exit Manager ${DIM}(or 0 / q)${NC}"
     echo ""
     if [ -n "$CLI_INITIAL_ACTION" ]; then
         choice="$CLI_INITIAL_ACTION"
         CLI_INITIAL_ACTION=""
     else
-        read -r -p "Enter choice [1-33, m, or q to exit]: " choice
+        read -r -p "Enter choice [1-34, or q to exit]: " choice
     fi
     
     case $choice in
@@ -11716,19 +11716,19 @@ while true; do
         29)
             manage_system_maintenance
             ;;
-        m|monitor|mp-monitor|bash-monitor)
+        30|m|monitor|mp-monitor|bash-monitor)
             manage_process_and_bash_monitor
             ;;
-        30)
+        31)
             manage_ai_and_servers
             ;;
-        31)
+        32)
             manage_motd_and_tools
             ;;
-        32)
+        33)
             manage_settings_and_system
             ;;
-        33|77|0|[qQ]|[eE][xX][iI][tT])
+        34|77|0|[qQ]|[eE][xX][iI][tT])
             exit_mix_manager
             ;;
         # ----------------------------------------------------------------------
@@ -11816,7 +11816,7 @@ while true; do
             manage_desktop_shortcuts
             ;;
         *)
-            echo -e "\n${RED}Invalid option! Please enter a number between 1 and 33, m, or q to exit.${NC}"
+            echo -e "\n${RED}Invalid option! Please enter a number between 1 and 34, or q to exit.${NC}"
             sleep 2
             ;;
     esac

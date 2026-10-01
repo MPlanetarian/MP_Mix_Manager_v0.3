@@ -155,18 +155,18 @@ ${BOLD}AVAILABLE MENU OPTIONS (INTERACTIVE & DIRECT SHORTCUTS):${NC}
        Configure Wayland/X11, display scaling, audio routing, or kill audio apps.
   ${BOLD}${CYAN}29${NC}   ${BOLD}Universal System Maintenance & Cleanup${NC}
        Reclaim drive space, clean package manager caches, update OS packages.
-       Submenu ${BOLD}${CYAN}8${NC} on macOS/Windows, ${BOLD}${CYAN}7${NC} on Linux/FreeBSD, or ${BOLD}${CYAN}m${NC}:
+       Submenu ${BOLD}${CYAN}8${NC} on macOS/Windows, ${BOLD}${CYAN}7${NC} on Linux/FreeBSD, or option ${BOLD}${CYAN}30${NC}:
        ${BOLD}Monitor System Processes and Bash Commands with System Info${NC}
        (MP_Monitor_Bash.sh, macOS and Linux, new terminal tab).
-  ${BOLD}${CYAN}m${NC}    ${BOLD}Monitor System Processes and Bash Commands with System Info${NC}
-       Same monitor, directly from the main menu. Also: monitor, mp-monitor.
-  ${BOLD}${CYAN}30${NC}   ${BOLD}AI Assistant & Local LLM Servers Suite${NC}
+  ${BOLD}${CYAN}30${NC}   ${BOLD}Monitor System Processes and Bash Commands with System Info${NC}
+       Launch MP_Monitor_Bash.sh in a new terminal tab. Also: m, monitor, mp-monitor.
+  ${BOLD}${CYAN}31${NC}   ${BOLD}AI Assistant & Local LLM Servers Suite${NC}
        Manage Claude, GPT, Ollama (:11434), DeepSeek (:3080), WAN2GP, and Beszel (:8090).
-  ${BOLD}${CYAN}31${NC}   ${BOLD}Dynamic MOTD Banner Manager & Drive Burner${NC}
+  ${BOLD}${CYAN}32${NC}   ${BOLD}Dynamic MOTD Banner Manager & Drive Burner${NC}
        Generate custom login MOTDs with recent mixes, or burn ISO images to USB.
-  ${BOLD}${CYAN}32${NC}   ${BOLD}Manager Settings, Themes, Shell CLI & Reboot${NC}
+  ${BOLD}${CYAN}33${NC}   ${BOLD}Manager Settings, Themes, Shell CLI & Reboot${NC}
        Switch color themes (Dracula, Nord, Cyberpunk, etc.), migrate paths, reboot.
-  ${BOLD}${CYAN}33${NC}   ${BOLD}Exit Manager${NC} (or 0 / q)
+  ${BOLD}${CYAN}34${NC}   ${BOLD}Exit Manager${NC} (or 0 / q)
        Exit the application cleanly.
 
 ${BOLD}DIRECT COMMAND SHORTCUTS:${NC}
