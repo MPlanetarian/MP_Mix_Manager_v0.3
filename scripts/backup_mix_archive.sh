@@ -89,6 +89,18 @@ detect_default_cloud_paths() {
             DROPBOX_PATH="$HOME/Dropbox/MIX_ARCHIVE"
         fi
     fi
+
+    # Auto-detect Google Drive remote in rclone if configured remote not present
+    if command -v rclone >/dev/null 2>&1; then
+        local configured_remote="${GDRIVE_REMOTE%%:*}"
+        if ! rclone listremotes 2>/dev/null | grep -qi "^${configured_remote}:"; then
+            if rclone listremotes 2>/dev/null | grep -qi "^google3:"; then
+                GDRIVE_REMOTE="google3:MIX_ARCHIVE/FLAC_CONVERTED_OUTPUTS"
+            elif rclone listremotes 2>/dev/null | grep -qi "^gdrive:"; then
+                GDRIVE_REMOTE="gdrive:MIX_ARCHIVE/FLAC_CONVERTED_OUTPUTS"
+            fi
+        fi
+    fi
 }
 detect_default_cloud_paths
 
