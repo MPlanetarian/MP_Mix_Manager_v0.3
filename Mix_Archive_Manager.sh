@@ -11960,13 +11960,13 @@ while true; do
     
     echo -e "\n  ${BOLD}${BLUE}──────────────────────────────────────────────────────────────${NC}"
     get_manager_uptime
-    echo -e "  ${BOLD}${CYAN}34)${NC} Exit Manager ${DIM}(or 0 / q)${NC}"
+    echo -e "  ${BOLD}${CYAN}34)${NC} Exit Manager ${DIM}(or q / exit)${NC}"
     echo ""
     if [ -n "$CLI_INITIAL_ACTION" ]; then
         choice="$CLI_INITIAL_ACTION"
         CLI_INITIAL_ACTION=""
     else
-        read -r -p "Enter choice [1-34, or q to exit]: " choice
+        read -r -p "Enter choice [0-34, or q to exit]: " choice
     fi
     
     case $choice in
@@ -12090,7 +12090,7 @@ while true; do
         33)
             manage_settings_and_system
             ;;
-        34|77|0|[qQ]|[eE][xX][iI][tT])
+        34|77|[qQ]|[eE][xX][iI][tT])
             exit_mix_manager
             ;;
         # ----------------------------------------------------------------------
@@ -12174,11 +12174,11 @@ while true; do
         congen|kdeconnect|congen-launch)
             manage_congen
             ;;
-        [Ss]|shortcuts|desktop-shortcuts|ds|kioclient|run-shortcuts|desktop_shortcuts)
+        0|[Ss]|shortcuts|desktop-shortcuts|ds|kioclient|run-shortcuts|desktop_shortcuts)
             manage_desktop_shortcuts
             ;;
         *)
-            echo -e "\n${RED}Invalid option! Please enter a number between 1 and 34, or q to exit.${NC}"
+            echo -e "\n${RED}Invalid option! Please enter a number between 0 and 34, or q to exit.${NC}"
             sleep 2
             ;;
     esac
