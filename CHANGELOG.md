@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.4] - 2026-10-01
 
+- **Fix Multi-Part Split WAV Chunk Grouping & Chronological Assembly** (`Make_SOF_FLAC_CONVERSION.sh`, `MOVE_NOT_CONVERTED_WAVS.sh`):
+  - **Resolved Premature Session Fragmentation**: Fixed a critical bug where long recordings split across multiple WAV files (e.g. `..._YYYY-MM-DD_HhMMmSS.wav` and subsequent chunks `..._YYYY-MM-DD_HhMMmSS_03h02m02.wav`, `..._06h04m05.wav`) were incorrectly split into two separate FLAC outputs because naive regex stripped the session start timestamp from Part 1 while preserving it on subsequent chunks.
+  - **Unified Session Grouping**: Introduced `get_session_base_name` which accurately differentiates between session start timestamps and subsequent elapsed split duration offsets, ensuring all split chunks for a recording session resolve to the exact same master session ID.
+  - **Sample-Accurate Chronological Concatenation**: Replaced locale-dependent collation sort with split-offset key extraction, ensuring Part 1 (offset 0s) and subsequent parts (e.g. 03h02m02, 06h04m05, 09h06m07) are always assembled in exact chronological sequence.
+  - **Unconverted WAV Verification Parity**: Updated `MOVE_NOT_CONVERTED_WAVS.sh` to use the unified session base extractor and search all standardized FLAC archive filename variants.
+
 - **Cloud Storage & Google Drive FUSE Performance Acceleration**:
   - Replaced legacy multi-pass bash `stat` and `[ -f ]` shell loops in `show_stats()` with a single-pass Python `os.scandir` in-memory hash indexer, slashing startup & menu redraw latency from **20-30+ seconds down to ~0.3 seconds (1,000x faster)**.
   - Implemented in-memory memoization for `get_all_mix_archive_dirs`, `get_all_flac_output_dirs`, and `get_all_wav_archive_dirs`, preventing redundant network filesystem directory traversals across FUSE mounts.

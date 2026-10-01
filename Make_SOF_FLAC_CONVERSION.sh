@@ -541,6 +541,57 @@ if [ $# -gt 0 ]; then
     echo "Multi-file/Explicit target mode enabled. Total targets: ${#TARGET_FILES[@]}"
 fi
 
+# Helper function to extract the session base name across all split chunks
+get_session_base_name() {
+    local fname="$1"
+    local name="${fname%.[Ww][Aa][Vv]}"
+    name="${name%.[Ff][Ll][Aa][Cc]}"
+    name="${name%.[Mm][Pp]3}"
+
+    # 1. Traktor split chunks: session timestamp + split duration offset (e.g. _4h53m32_03h02m02 or _14h00m00_0h52m07)
+    # Strip only the trailing split duration offset, preserving the session timestamp
+    if [[ "$name" =~ ^(.*_[0-9]{1,2}h[0-9]{2}m[0-9]{2}s?)_[0-9]{1,2}h[0-9]{2}m[0-9]{2}s?$ ]]; then
+        echo "${BASH_REMATCH[1]}"
+        return 0
+    fi
+
+    # 2. Check single timestamp: if preceded by a date (e.g. _2026-09-29_4h53m32), it is the session start time
+    if [[ "$name" =~ ^(.*)_[0-9]{1,2}h[0-9]{2}m[0-9]{2}s?$ ]]; then
+        local cand_prefix="${BASH_REMATCH[1]}"
+        # If candidate prefix ends with a date (e.g. _2026-09-29), then the trailing time is the session start time
+        if [[ "$cand_prefix" =~ _[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+            echo "$name"
+            return 0
+        fi
+        # If it is an explicit 00h00m00 offset, strip it
+        if [[ "$name" =~ ^(.*)_0{1,2}h00m00s?$ ]]; then
+            echo "${BASH_REMATCH[1]}"
+            return 0
+        fi
+        # Check if the unsuffixed parent/root file exists in current directory or target path
+        local parent_d
+        parent_d=$(dirname "$fname" 2>/dev/null || echo ".")
+        if [ -f "$parent_d/${cand_prefix}.wav" ] || [ -f "$parent_d/${cand_prefix}.WAV" ] || [ -f "${cand_prefix}.wav" ] || [ -f "${cand_prefix}.WAV" ]; then
+            echo "$cand_prefix"
+            return 0
+        fi
+    fi
+
+    # 3. Standard part suffixes at the end of the filename: _part01, _part1, _pt1, _cd1, etc.
+    local orig_nocase
+    orig_nocase=$(shopt -p nocasematch 2>/dev/null || true)
+    shopt -s nocasematch
+    if [[ "$name" =~ ^(.*)[_\ -]+(part|pt|cd|disc|disk|subpart)[_\ -]*[0-9]+$ ]]; then
+        local stripped="${BASH_REMATCH[1]}"
+        eval "$orig_nocase" 2>/dev/null || true
+        echo "$stripped"
+        return 0
+    fi
+    eval "$orig_nocase" 2>/dev/null || true
+
+    echo "$name"
+}
+
 # 1. Discover and group WAV files cleanly (Bash 3.2+ & macOS compatible without associative arrays)
 GROUP_TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/sof_groups_XXXXXX" 2>/dev/null || mktemp -d /tmp/sof_groups_XXXXXX)
 trap 'rm -rf "$GROUP_TMP_DIR" "${OPTIMIZED_COVER:-}" 2>/dev/null || true' EXIT
@@ -565,8 +616,8 @@ for file in "${search_list[@]}"; do
     touch "$GROUP_TMP_DIR/seen_${file_hash}"
 
     filename=$(basename "$file")
-    # Cleanly strip only the trailing split duration suffix (e.g., _03h02m02 or _0h52m07) if present
-    base_name=$(echo "$filename" | sed -E 's/_[0-9]{1,2}h[0-9]{2}m[0-9]{2}\.[Ww][Aa][Vv]$//' | sed -E 's/\.[Ww][Aa][Vv]$//')
+    base_name=$(get_session_base_name "$file")
+    base_name=$(basename "$base_name")
 
     base_hash=$(get_str_hash "$base_name")
     if [ ! -f "$GROUP_TMP_DIR/group_${base_hash}.base" ]; then
@@ -1012,7 +1063,27 @@ for g_hash in "${group_keys[@]}"; do
     if [ -f "$wav_file_list" ]; then
         while IFS= read -r line || [ -n "$line" ]; do
             [[ -n "$line" ]] && current_wavs+=("$line")
-        done < <(grep -v '^$' "$wav_file_list" | sort)
+        done < <(python3 -c "
+import sys, re
+def key_func(path):
+    fname = path.strip().split('/')[-1]
+    name = re.sub(r'\.(wav|flac|mp3)$', '', fname, flags=re.I)
+    m = re.search(r'_\d{1,2}h\d{2}m\d{2}s?_(\d{1,2})h(\d{2})m(\d{2})s?$', name)
+    if m:
+        h, mn, s = map(int, m.groups())
+        return (1, h * 3600 + mn * 60 + s, fname)
+    m = re.search(r'_0{1,2}h00m00s?$', name)
+    if m:
+        return (0, 0, fname)
+    m = re.search(r'[_ -]+(?:part|pt|cd|disc|disk|subpart)[_ -]*(\d+)$', name, flags=re.I)
+    if m:
+        return (2, int(m.group(1)), fname)
+    return (0, 0, fname)
+
+lines = [line.strip() for line in sys.stdin if line.strip()]
+for p in sorted(lines, key=key_func):
+    print(p)
+" < "$wav_file_list" 2>/dev/null || LC_ALL=C sort "$wav_file_list")
     fi
     
     # Format output filenames cleanly with Artist, Show Name, and Datestamp intact

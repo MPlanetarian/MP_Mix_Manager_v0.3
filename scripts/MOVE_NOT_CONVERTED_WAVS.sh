@@ -98,10 +98,61 @@ fi
 
 retrieved_count=0
 
+get_session_base_name() {
+    local fname="$1"
+    local name="${fname%.[Ww][Aa][Vv]}"
+    name="${name%.[Ff][Ll][Aa][Cc]}"
+    name="${name%.[Mm][Pp]3}"
+
+    # 1. Traktor split chunks: session timestamp + split duration offset (e.g. _4h53m32_03h02m02 or _14h00m00_0h52m07)
+    # Strip only the trailing split duration offset, preserving the session timestamp
+    if [[ "$name" =~ ^(.*_[0-9]{1,2}h[0-9]{2}m[0-9]{2}s?)_[0-9]{1,2}h[0-9]{2}m[0-9]{2}s?$ ]]; then
+        echo "${BASH_REMATCH[1]}"
+        return 0
+    fi
+
+    # 2. Check single timestamp: if preceded by a date (e.g. _2026-09-29_4h53m32), it is the session start time
+    if [[ "$name" =~ ^(.*)_[0-9]{1,2}h[0-9]{2}m[0-9]{2}s?$ ]]; then
+        local cand_prefix="${BASH_REMATCH[1]}"
+        # If candidate prefix ends with a date (e.g. _2026-09-29), then the trailing time is the session start time
+        if [[ "$cand_prefix" =~ _[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+            echo "$name"
+            return 0
+        fi
+        # If it is an explicit 00h00m00 offset, strip it
+        if [[ "$name" =~ ^(.*)_0{1,2}h00m00s?$ ]]; then
+            echo "${BASH_REMATCH[1]}"
+            return 0
+        fi
+        local parent_d
+        parent_d=$(dirname "$fname" 2>/dev/null || echo ".")
+        if [ -f "$parent_d/${cand_prefix}.wav" ] || [ -f "$parent_d/${cand_prefix}.WAV" ] || [ -f "${cand_prefix}.wav" ] || [ -f "${cand_prefix}.WAV" ]; then
+            echo "$cand_prefix"
+            return 0
+        fi
+    fi
+
+    # 3. Standard part suffixes at the end of the filename: _part01, _part1, _pt1, _cd1, etc.
+    local orig_nocase
+    orig_nocase=$(shopt -p nocasematch 2>/dev/null || true)
+    shopt -s nocasematch
+    if [[ "$name" =~ ^(.*)[_\ -]+(part|pt|cd|disc|disk|subpart)[_\ -]*[0-9]+$ ]]; then
+        local stripped="${BASH_REMATCH[1]}"
+        eval "$orig_nocase" 2>/dev/null || true
+        echo "$stripped"
+        return 0
+    fi
+    eval "$orig_nocase" 2>/dev/null || true
+
+    echo "$name"
+}
+
 flac_exists_in_any_archive() {
     local base="$1"
+    local clean_base
+    clean_base=$(echo "$base" | sed 's/__/_/g')
     for fd in "${flac_scan_dirs[@]}"; do
-        if [ -f "$fd/${base}.flac" ]; then
+        if [ -f "$fd/${base}.flac" ] || [ -f "$fd/${clean_base}.flac" ] || [ -f "$fd/MPlanetarian - Stream of Frequency - ${clean_base}.flac" ] || [ -f "$fd/MPlanetarian_-_Stream_of_Frequency_-_${clean_base}.flac" ]; then
             return 0
         fi
     done
@@ -111,8 +162,9 @@ flac_exists_in_any_archive() {
 for wav in "${wav_files[@]}"; do
     filename=$(basename "$wav")
     
-    # Strip split segment suffixes and extensions to find the core base name
-    base_name=$(echo "$filename" | sed -E 's/_[0-9]{2}h[0-9]{2}m[0-9]{2}(\.[Ww][Aa][Vv])?$//' | sed -E 's/\.[Ww][Aa][Vv]$//')
+    # Extract session base name cleanly
+    base_name=$(get_session_base_name "$wav")
+    base_name=$(basename "$base_name")
     
     if ! flac_exists_in_any_archive "$base_name"; then
         echo " [UNCONVERTED] Moving $filename to staging directory..."
