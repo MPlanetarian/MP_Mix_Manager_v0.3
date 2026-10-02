@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Mix Archive Manager
+GenericName=Music Archive Manager
+Comment=Launch Stream of Frequency Mix Archive Manager in Konsole
+Exec=/var/home/mplanetarian/.local/bin/launch-manager
+Icon=utilities-terminal
+Terminal=false
+Categories=AudioVideo;Audio;Utility;
+StartupNotify=true
+X-KDE-GlobalAccel-CommandShortcut=true

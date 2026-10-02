@@ -1138,7 +1138,7 @@ _CACHED_INTERNET_STATUS=""
 is_internet_connected() {
     local now
     now=$(date +%s 2>/dev/null || echo 0)
-    if [ $((now - _LAST_INTERNET_CHECK)) -lt 8 ] && [ -n "$_CACHED_INTERNET_STATUS" ]; then
+    if [ $((now - _LAST_INTERNET_CHECK)) -lt 30 ] && [ -n "$_CACHED_INTERNET_STATUS" ]; then
         [ "$_CACHED_INTERNET_STATUS" = "online" ]
         return $?
     fi
@@ -1153,8 +1153,8 @@ is_internet_connected() {
     fi
 
     # Fast TCP probe to public DNS (no DNS lookup required)
-    if timeout 0.8 bash -c 'cat < /dev/null > /dev/tcp/1.1.1.1/53' 2>/dev/null || \
-       timeout 0.8 bash -c 'cat < /dev/null > /dev/tcp/8.8.8.8/53' 2>/dev/null; then
+    if timeout 0.35 bash -c 'cat < /dev/null > /dev/tcp/1.1.1.1/53' 2>/dev/null || \
+       timeout 0.35 bash -c 'cat < /dev/null > /dev/tcp/8.8.8.8/53' 2>/dev/null; then
         _CACHED_INTERNET_STATUS="online"
         return 0
     fi
@@ -6698,21 +6698,21 @@ def current_matches():
 # is thrown away when Audacious restores the previous song.
 last = None
 stable = 0
-deadline = time.time() + 20
+deadline = time.time() + 4
 while time.time() < deadline:
     try:
         current = length()
     except Exception:
-        time.sleep(0.3)
+        time.sleep(0.2)
         continue
-    if current > 0 and current == last:
+    if current == last:
         stable += 1
-        if stable >= 4:
+        if stable >= 3:
             break
     else:
         stable = 0
         last = current
-    time.sleep(0.3)
+    time.sleep(0.2)
 
 def find_index():
     total = length()
@@ -6732,12 +6732,12 @@ def ensure_index():
         player.Add(uri)
     except Exception:
         return None
-    wait_until = time.time() + 5
+    wait_until = time.time() + 2.5
     while time.time() < wait_until:
         found = find_index()
         if found is not None:
             return found
-        time.sleep(0.2)
+        time.sleep(0.15)
     return None
 
 try:
@@ -6745,10 +6745,10 @@ try:
 except Exception:
     shuffle_on = False
 
-for _attempt in range(6):
+for _attempt in range(3):
     found = ensure_index()
     if found is None:
-        time.sleep(0.4)
+        time.sleep(0.3)
         continue
     try:
         if shuffle_on and bool(player.Shuffle()):
@@ -6759,11 +6759,11 @@ for _attempt in range(6):
         if shuffle_on and not bool(player.Shuffle()):
             player.ToggleShuffle()
     except Exception:
-        time.sleep(0.4)
+        time.sleep(0.3)
         continue
     held = True
-    for _sample in range(5):
-        time.sleep(0.3)
+    for _sample in range(4):
+        time.sleep(0.2)
         if not current_matches():
             held = False
             break

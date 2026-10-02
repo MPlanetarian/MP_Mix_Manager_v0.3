@@ -33,8 +33,8 @@ is_online() {
     if command -v ip >/dev/null 2>&1; then
         ip route 2>/dev/null | grep -q "^default" || return 1
     fi
-    timeout 0.8 bash -c 'cat < /dev/null > /dev/tcp/1.1.1.1/53' 2>/dev/null && return 0
-    timeout 0.8 bash -c 'cat < /dev/null > /dev/tcp/8.8.8.8/53' 2>/dev/null && return 0
+    timeout 0.35 bash -c 'cat < /dev/null > /dev/tcp/1.1.1.1/53' 2>/dev/null && return 0
+    timeout 0.35 bash -c 'cat < /dev/null > /dev/tcp/8.8.8.8/53' 2>/dev/null && return 0
     return 1
 }
 
