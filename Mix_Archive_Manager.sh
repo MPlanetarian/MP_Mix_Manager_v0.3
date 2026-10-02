@@ -805,6 +805,10 @@ open_startup_mix_spek() {
         return 0
     fi
 
+    if ! is_internet_connected && is_remote_or_cloud_path "$selected_mix"; then
+        return 0
+    fi
+
     local spek=""
     spek="$(find_mix_spek "$selected_mix" 2>/dev/null || true)"
     if [ -z "$spek" ] || [ ! -s "$spek" ]; then
@@ -1100,6 +1104,60 @@ is_mix_archive_configured() {
     return 1
 }
 
+# Global in-memory caches for network and archive discovery
+_LAST_INTERNET_CHECK=0
+_CACHED_INTERNET_STATUS=""
+
+is_internet_connected() {
+    local now
+    now=$(date +%s 2>/dev/null || echo 0)
+    if [ $((now - _LAST_INTERNET_CHECK)) -lt 8 ] && [ -n "$_CACHED_INTERNET_STATUS" ]; then
+        [ "$_CACHED_INTERNET_STATUS" = "online" ]
+        return $?
+    fi
+
+    _LAST_INTERNET_CHECK="$now"
+    # Quick check for default route (if no default route, definitely offline)
+    if command -v ip >/dev/null 2>&1; then
+        if ! ip route 2>/dev/null | grep -q "^default"; then
+            _CACHED_INTERNET_STATUS="offline"
+            return 1
+        fi
+    fi
+
+    # Fast TCP probe to public DNS (no DNS lookup required)
+    if timeout 0.8 bash -c 'cat < /dev/null > /dev/tcp/1.1.1.1/53' 2>/dev/null || \
+       timeout 0.8 bash -c 'cat < /dev/null > /dev/tcp/8.8.8.8/53' 2>/dev/null; then
+        _CACHED_INTERNET_STATUS="online"
+        return 0
+    fi
+
+    _CACHED_INTERNET_STATUS="offline"
+    return 1
+}
+
+is_remote_or_cloud_path() {
+    local p="$1"
+    [ -z "$p" ] && return 1
+    case "$p" in
+        *GoogleDrive*|*google-drive*|*rclone*|*Dropbox*|*dropbox*|*iCloud*|*icloud*|*OneDrive*|*onedrive*|*Nextcloud*|*nextcloud*)
+            return 0
+            ;;
+    esac
+    if [ -f /proc/mounts ]; then
+        while read -r _ mpoint fstype _; do
+            case "$fstype" in
+                fuse.rclone|nfs|nfs4|cifs|smbfs|fuse.sshfs|davfs)
+                    if [[ "$p" == "$mpoint"* ]]; then
+                        return 0
+                    fi
+                    ;;
+            esac
+        done < /proc/mounts 2>/dev/null
+    fi
+    return 1
+}
+
 # Global in-memory caches for archive discovery
 _CACHED_ALL_MIX_ARCHIVE_DIRS=()
 _CACHED_ALL_FLAC_OUTPUT_DIRS=()
@@ -1125,8 +1183,10 @@ get_all_mix_archive_dirs() {
     local primary="${MIX_ARCHIVE_DIR:-$SCRIPT_DIR/MIX_ARCHIVE}"
     if [ -n "$primary" ]; then
         local clean_p="${primary%/}"
-        dirs+=("$clean_p")
-        seen+=("$clean_p")
+        if is_internet_connected || ! is_remote_or_cloud_path "$clean_p"; then
+            dirs+=("$clean_p")
+            seen+=("$clean_p")
+        fi
     fi
 
     # Extra archive directories (colon, comma, or newline separated)
@@ -1148,6 +1208,9 @@ get_all_mix_archive_dirs() {
             fi
             if [ -n "$d" ]; then
                 local clean_d="${d%/}"
+                if ! is_internet_connected && is_remote_or_cloud_path "$clean_d"; then
+                    continue
+                fi
                 if [[ ! " ${seen[*]} " =~ " ${clean_d} " ]]; then
                     seen+=("$clean_d")
                     dirs+=("$clean_d")
@@ -1254,7 +1317,7 @@ get_all_wav_archive_dirs() {
 }
 
 # Determine target working archive directory
-if is_mix_archive_configured && [ -d "$MIX_ARCHIVE_DIR" ]; then
+if is_mix_archive_configured && ! { ! is_internet_connected && is_remote_or_cloud_path "$MIX_ARCHIVE_DIR"; } && [ -d "$MIX_ARCHIVE_DIR" ]; then
     cd "$MIX_ARCHIVE_DIR" || exit 1
 else
     # Fallback to Application Root Folder 'MIX_ARCHIVE'
@@ -1268,8 +1331,10 @@ else
 fi
 
 # Resolve relative storage paths to active archive folder
-if [ -n "${MIX_ARCHIVE_DIR:-}" ] && [ -d "$MIX_ARCHIVE_DIR" ]; then
-    mkdir -p "$MIX_ARCHIVE_DIR"/{FLAC_CONVERTED_OUTPUTS,CONVERTED_WAV_FILES,MP3_CONVERTED_OUTPUTS,WAV_CONVERTED_OUTPUTS,MP4_CONVERTED_OUTPUTS} 2>/dev/null || true
+if [ -n "${MIX_ARCHIVE_DIR:-}" ] && ! { ! is_internet_connected && is_remote_or_cloud_path "$MIX_ARCHIVE_DIR"; } && [ -d "$MIX_ARCHIVE_DIR" ]; then
+    if ! is_remote_or_cloud_path "$MIX_ARCHIVE_DIR"; then
+        mkdir -p "$MIX_ARCHIVE_DIR"/{FLAC_CONVERTED_OUTPUTS,CONVERTED_WAV_FILES,MP3_CONVERTED_OUTPUTS,WAV_CONVERTED_OUTPUTS,MP4_CONVERTED_OUTPUTS} 2>/dev/null || true
+    fi
     if [ ! -d "$OUTPUT_DIR" ] && [ -d "$MIX_ARCHIVE_DIR/$OUTPUT_DIR" ]; then
         OUTPUT_DIR="$MIX_ARCHIVE_DIR/$OUTPUT_DIR"
     elif [ ! -d "$OUTPUT_DIR" ]; then
@@ -1306,6 +1371,10 @@ ensure_playlists_generated_dirs() {
         [ -n "$adir" ] && all_arch_dirs+=("$adir")
     done < <(get_all_mix_archive_dirs 2>/dev/null)
     for pdir in "${all_arch_dirs[@]}"; do
+        # Never perform mkdir or file modifications on remote/cloud mounts
+        if is_remote_or_cloud_path "$pdir"; then
+            continue
+        fi
         if [ -d "$pdir" ]; then
             [ -d "$pdir/PLAYLISTS_GENERATED" ] || mkdir -p "$pdir/PLAYLISTS_GENERATED" 2>/dev/null || true
             if [[ "$pdir" =~ (FLAC_CONVERTED_OUTPUTS|CONVERTED_WAV_FILES|MP3_CONVERTED_OUTPUTS)/?$ ]]; then
@@ -2112,6 +2181,9 @@ CLI_INITIAL_ACTION="${1:-}"
 
 show_stats() {
     echo -e "${BOLD}${BLUE}=== CURRENT STATUS & STATISTICS ===${NC}"
+    if ! is_internet_connected; then
+        echo -e "  ${DIM}${YELLOW}⚡ Offline Mode: Cloud storage excluded from scan${NC}"
+    fi
     
     local wav_dirs=()
     while IFS= read -r wdir; do
@@ -6330,7 +6402,11 @@ collect_converted_mix_dirs() {
 
     add_converted_dir() {
         cand="$1"
-        [ -n "$cand" ] && [ -d "$cand" ] || return 0
+        [ -n "$cand" ] || return 0
+        if ! is_internet_connected && is_remote_or_cloud_path "$cand"; then
+            return 0
+        fi
+        [ -d "$cand" ] || return 0
         resolved="$(cd "$cand" 2>/dev/null && pwd -P)" || return 0
         case "$seen" in
             *"|$resolved|"*) return 0 ;;
@@ -6371,6 +6447,9 @@ select_startup_mix() {
     local list d
     list="$(mktemp "${TMPDIR:-/tmp}/sof_startup_XXXXXX")"
     while IFS= read -r d; do
+        if ! is_internet_connected && is_remote_or_cloud_path "$d"; then
+            continue
+        fi
         [ -d "$d" ] || continue
         find "$d" -maxdepth 1 -type f \( -iname '*.flac' -o -iname '*.mp3' -o -iname '*.wav' \) -print >> "$list"
     done < <(collect_converted_mix_dirs)
@@ -6656,6 +6735,11 @@ execute_startup_autoplay() {
     local selected_mix=""
     selected_mix="$(select_startup_mix)" || true
     if [ -z "$selected_mix" ] || [ ! -s "$selected_mix" ]; then
+        return 0
+    fi
+
+    if ! is_internet_connected && is_remote_or_cloud_path "$selected_mix"; then
+        STARTUP_AUTOPLAY_NOTICE="Latest mix is on cloud storage (offline, playback skipped)"
         return 0
     fi
     STARTUP_AUTOPLAY_NOTICE="Latest converted mix: $(basename "$selected_mix")"
@@ -10121,6 +10205,8 @@ get_current_weather() {
         w_data=$("$weather_sh" get 2>/dev/null)
         if [ -n "$w_data" ]; then
             echo -e "  ${BOLD}${CYAN}🌤️  Weather:${NC} ${WHITE}${w_data}${NC}  ${DIM}(${WEATHER_LOCATION})${NC}"
+        elif ! is_internet_connected; then
+            echo -e "  ${BOLD}${CYAN}🌤️  Weather:${NC} ${YELLOW}Offline (No Internet Connection)${NC}  ${DIM}(${WEATHER_LOCATION})${NC}"
         fi
     fi
 }
@@ -10471,7 +10557,11 @@ get_os_update_status() {
                 status="${GREEN}Up to date${NC}"
             fi
         else
-            status="${GREEN}Up to date${NC}"
+            if is_internet_connected; then
+                status="${GREEN}Up to date${NC}"
+            else
+                status="${GREEN}Up to date${NC} ${DIM}(Offline)${NC}"
+            fi
         fi
     fi
 
@@ -10487,6 +10577,13 @@ get_cloud_backup_badge() {
     local now
     now=$(date +%s 2>/dev/null || echo 0)
     if [ $((now - _LAST_CLOUD_CHECK)) -lt 30 ] && [ -n "$_CACHED_CLOUD_STATUS" ]; then
+        echo -e "$_CACHED_CLOUD_STATUS"
+        return 0
+    fi
+
+    if ! is_internet_connected; then
+        _CACHED_CLOUD_STATUS="${BOLD}${CYAN}☁️  Cloud Backup:${NC} ${BOLD}${YELLOW}Offline (No Internet Connection)${NC}  ${BOLD}${BLUE}│${NC}  ${DIM}Cloud sync paused (Option 9 when online)${NC}"
+        _LAST_CLOUD_CHECK="$now"
         echo -e "$_CACHED_CLOUD_STATUS"
         return 0
     fi
@@ -11882,8 +11979,13 @@ while true; do
     os_updates=$(get_os_update_status)
     shell_info="Bash ${BASH_VERSION%%(*}"
     current_datetime=$(date "+%A, %B %d, %Y • %T %Z")
+    if is_internet_connected; then
+        net_status="${GREEN}Online${NC}"
+    else
+        net_status="${YELLOW}Offline (LAN Only)${NC}"
+    fi
     echo -e "  ${os_badge}"
-    echo -e "  ${BOLD}${CYAN}🔄 OS Updates:${NC} ${os_updates}  ${BOLD}${BLUE}│${NC}  ${BOLD}${CYAN}🐚 Shell:${NC} ${shell_info}  ${BOLD}${BLUE}│${NC}  ${BOLD}${CYAN}📅 Date:${NC} ${current_datetime}"
+    echo -e "  ${BOLD}${CYAN}🔄 OS Updates:${NC} ${os_updates}  ${BOLD}${BLUE}│${NC}  ${BOLD}${CYAN}🌐 Network:${NC} ${net_status}  ${BOLD}${BLUE}│${NC}  ${BOLD}${CYAN}🐚 Shell:${NC} ${shell_info}  ${BOLD}${BLUE}│${NC}  ${BOLD}${CYAN}📅 Date:${NC} ${current_datetime}"
     cloud_status=$(get_cloud_backup_badge 2>/dev/null)
     [ -n "$cloud_status" ] && echo -e "  ${cloud_status}"
     if [ -n "${STARTUP_AUTOPLAY_NOTICE:-}" ]; then

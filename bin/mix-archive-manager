@@ -87,13 +87,25 @@ fi
 
 # If an external drive was specified in config, wait briefly for mount
 if [ -n "${MIX_ARCHIVE_DIR:-}" ] && [ ! -d "$MIX_ARCHIVE_DIR" ]; then
-    echo "Waiting for archive storage to mount..."
-    for i in {1..15}; do
-        if [ -d "$MIX_ARCHIVE_DIR" ]; then
-            break
-        fi
-        sleep 1
-    done
+    _is_offline=0
+    case "$MIX_ARCHIVE_DIR" in
+        *GoogleDrive*|*google-drive*|*rclone*|*Dropbox*|*iCloud*|*OneDrive*|*Nextcloud*)
+            if ! timeout 0.8 bash -c 'cat < /dev/null > /dev/tcp/1.1.1.1/53' 2>/dev/null; then
+                _is_offline=1
+            fi
+            ;;
+    esac
+    if [ "$_is_offline" -eq 1 ]; then
+        echo "Notice: Configured archive storage is cloud-hosted and internet is offline. Proceeding with local storage..."
+    else
+        echo "Waiting for archive storage to mount..."
+        for i in {1..15}; do
+            if [ -d "$MIX_ARCHIVE_DIR" ]; then
+                break
+            fi
+            sleep 1
+        done
+    fi
 fi
 
 if [ -f "$SCRIPT" ]; then

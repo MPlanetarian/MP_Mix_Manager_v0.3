@@ -134,11 +134,23 @@ def resolve_location_coordinates(loc_str, cache_dir=None):
         except Exception:
             pass
 
+    def is_online():
+        try:
+            import socket
+            s = socket.create_connection(('1.1.1.1', 53), timeout=0.3)
+            s.close()
+            return True
+        except Exception:
+            return False
+
+    if not is_online():
+        return 51.6214, -3.9436, loc_str
+
     # Fallback to fast wttr.in JSON geocoding query
     try:
         encoded = urllib.parse.quote(loc_str)
         req = urllib.request.Request(f"https://wttr.in/{encoded}?format=j1", headers={'User-Agent': 'curl/8.0'})
-        with urllib.request.urlopen(req, timeout=1.2) as resp:
+        with urllib.request.urlopen(req, timeout=0.8) as resp:
             data = json.loads(resp.read().decode('utf-8'))
             area = data.get('nearest_area', [{}])[0]
             lat = float(area.get('latitude', 51.6214))
