@@ -1050,15 +1050,22 @@ APPLESCRIPT
                     session_id=$("$qdbus_bin" "$k_svc" "$k_win" org.kde.konsole.Window.newSession "" "$PWD" 2>/dev/null || true)
                     if [ -n "$session_id" ] && [ "$session_id" -gt 0 ] 2>/dev/null; then
                         "$qdbus_bin" "$k_svc" "/Sessions/$session_id" org.kde.konsole.Session.setTitle 1 "$title" 2>/dev/null || true
-                        "$qdbus_bin" "$k_svc" "/Sessions/$session_id" org.kde.konsole.Session.runCommand "$cmd" 2>/dev/null || true
-                        return 0
+                        if "$qdbus_bin" "$k_svc" "/Sessions/$session_id" org.kde.konsole.Session.runCommand "$cmd" >/dev/null 2>&1; then
+                            return 0
+                        else
+                            # DBus runCommand was rejected (e.g. security-sensitive DBus API disabled in Konsole settings)
+                            # Close the newly created empty session so it doesn't leave an orphaned shell tab
+                            local child_pid
+                            child_pid=$("$qdbus_bin" "$k_svc" "/Sessions/$session_id" org.kde.konsole.Session.processId 2>/dev/null || true)
+                            [ -n "$child_pid" ] && [ "$child_pid" -gt 0 ] 2>/dev/null && kill -9 "$child_pid" 2>/dev/null || true
+                        fi
                     fi
                 fi
             fi
         fi
 
         if command -v konsole >/dev/null 2>&1; then
-            nohup konsole --new-tab -p tabtitle="$title" --workdir "$PWD" -e bash -c "$cmd" >/dev/null 2>&1 &
+            nohup konsole --separate --workdir "$PWD" -p tabtitle="$title" -e bash -c "$cmd" >/dev/null 2>&1 &
             return 0
         elif command -v xdg-terminal-exec >/dev/null 2>&1; then
             nohup xdg-terminal-exec bash -c "$cmd" >/dev/null 2>&1 &
@@ -3451,7 +3458,15 @@ launch_wan2gp_flux_batch_terminal() {
     local script="$SCRIPT_DIR/wan2gp_flux_batch.py"
     [ ! -f "$script" ] && script="$SCRIPT_DIR/scripts/wan2gp_flux_batch.py"
     [ ! -f "$script" ] && script="$HOME/wan2gp_flux_batch.py"
-    local cmd="\"$script\" $mode; echo ''; echo 'Batch process finished. Press [Enter] to exit...'; read -r"
+    [ ! -f "$script" ] && script="$HOME/Documents/BASH_SCRIPTS/scripts/wan2gp_flux_batch.py"
+
+    if [ ! -f "$script" ]; then
+        echo -e "${RED}Error: wan2gp_flux_batch.py not found!${NC}"
+        press_enter
+        return 1
+    fi
+    chmod +x "$script" 2>/dev/null || true
+    local cmd="bash \"$script\" $mode; echo ''; echo 'Batch process finished. Press [Enter] to exit...'; read -r"
 
     if launch_in_terminal "$title" "$cmd" "tab"; then
         echo -e "${GREEN}✓ Flux 2 Klein 9B Batch Processor launched in a new console tab/window.${NC}"
@@ -3479,11 +3494,19 @@ launch_wan2gp_ltx_batch_terminal() {
     local script="$SCRIPT_DIR/wan2gp_ltx_batch.py"
     [ ! -f "$script" ] && script="$SCRIPT_DIR/scripts/wan2gp_ltx_batch.py"
     [ ! -f "$script" ] && script="$HOME/wan2gp_ltx_batch.py"
+    [ ! -f "$script" ] && script="$HOME/Documents/BASH_SCRIPTS/scripts/wan2gp_ltx_batch.py"
+
+    if [ ! -f "$script" ]; then
+        echo -e "${RED}Error: wan2gp_ltx_batch.py not found!${NC}"
+        press_enter
+        return 1
+    fi
+    chmod +x "$script" 2>/dev/null || true
     local lora_arg=""
     if [ -n "$lora" ] && [ "$lora" != "none" ]; then
         lora_arg="--lora $lora"
     fi
-    local cmd="\"$script\" --model $model $lora_arg $mode; echo ''; echo 'Batch process finished. Press [Enter] to exit...'; read -r"
+    local cmd="bash \"$script\" --model $model $lora_arg $mode; echo ''; echo 'Batch process finished. Press [Enter] to exit...'; read -r"
 
     if launch_in_terminal "$title" "$cmd" "tab"; then
         echo -e "${GREEN}✓ LTX Video ${model^^} Batch Processor launched in a new console tab/window.${NC}"
