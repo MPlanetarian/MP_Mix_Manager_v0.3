@@ -1034,6 +1034,7 @@ APPLESCRIPT
             if [ -z "$k_svc" ]; then
                 k_svc=$("$qdbus_bin" 2>/dev/null | grep -m1 -E "org\.kde\.konsole-[0-9]+" || true)
             fi
+            k_svc=$(echo "$k_svc" | xargs)
 
             if [ -n "$k_svc" ]; then
                 if [ -z "$k_win" ] || ! "$qdbus_bin" "$k_svc" "$k_win" org.kde.konsole.Window.sessionCount >/dev/null 2>&1; then
@@ -1048,9 +1049,28 @@ APPLESCRIPT
                 if [ -n "$k_win" ]; then
                     local session_id
                     session_id=$("$qdbus_bin" "$k_svc" "$k_win" org.kde.konsole.Window.newSession "" "$PWD" 2>/dev/null || true)
+                    session_id=$(echo "$session_id" | xargs)
                     if [ -n "$session_id" ] && [ "$session_id" -gt 0 ] 2>/dev/null; then
                         "$qdbus_bin" "$k_svc" "/Sessions/$session_id" org.kde.konsole.Session.setTitle 1 "$title" 2>/dev/null || true
+
+                        # Wait briefly for bash to finish MOTD / .bashrc initialization so input is not flushed
+                        for ((_w=0; _w<25; _w++)); do
+                            local disp
+                            disp=$("$qdbus_bin" "$k_svc" "/Sessions/$session_id" org.kde.konsole.Session.getAllDisplayedText 2>/dev/null || true)
+                            if [[ "$disp" =~ (\$) || "$disp" =~ (\#) || "$disp" =~ (@) ]]; then
+                                break
+                            fi
+                            sleep 0.08
+                        done
+
                         if "$qdbus_bin" "$k_svc" "/Sessions/$session_id" org.kde.konsole.Session.runCommand "$cmd" >/dev/null 2>&1; then
+                            # Verify command was accepted; if shell is still idle at prompt after 0.25s, retry once
+                            sleep 0.25
+                            local check_disp
+                            check_disp=$("$qdbus_bin" "$k_svc" "/Sessions/$session_id" org.kde.konsole.Session.getAllDisplayedText 2>/dev/null || true)
+                            if [[ "$check_disp" =~ \$\ $ ]] || [[ "$check_disp" =~ @.*:\~.*\$ ]]; then
+                                "$qdbus_bin" "$k_svc" "/Sessions/$session_id" org.kde.konsole.Session.runCommand "$cmd" >/dev/null 2>&1 || true
+                            fi
                             return 0
                         else
                             # DBus runCommand was rejected (e.g. security-sensitive DBus API disabled in Konsole settings)
@@ -3433,9 +3453,11 @@ switch_to_x11() {
 launch_wan2gp_terminal() {
     local profile="$1"
     local title="WAN2GP (Profile $profile)"
-    local script="$SCRIPT_DIR/wan2gp.sh"
-    [ ! -f "$script" ] && script="$SCRIPT_DIR/scripts/wan2gp.sh"
+    local script="$SCRIPT_DIR/scripts/wan2gp.sh"
+    [ ! -f "$script" ] && script="$SCRIPT_DIR/wan2gp.sh"
     [ ! -f "$script" ] && script="$HOME/wan2gp.sh"
+    [ ! -f "$script" ] && script="/var/home/mplanetarian/MP_Mix_Manager_v0.3/scripts/wan2gp.sh"
+    [ ! -f "$script" ] && script="$HOME/Documents/BASH_SCRIPTS/wan2gp.sh"
     local cmd="bash \"$script\" \"$profile\"; echo ''; echo 'WAN2GP finished. Press [Enter] to exit...'; read -r"
 
     if launch_in_terminal "$title" "$cmd" "tab"; then
@@ -3455,10 +3477,11 @@ launch_wan2gp_flux_batch_terminal() {
     if [[ "$mode" == *"--multi-control"* ]]; then
         title="WAN2GP Flux Multi-Control Batch"
     fi
-    local script="$SCRIPT_DIR/wan2gp_flux_batch.py"
-    [ ! -f "$script" ] && script="$SCRIPT_DIR/scripts/wan2gp_flux_batch.py"
+    local script="$SCRIPT_DIR/scripts/wan2gp_flux_batch.py"
+    [ ! -f "$script" ] && script="$SCRIPT_DIR/wan2gp_flux_batch.py"
     [ ! -f "$script" ] && script="$HOME/wan2gp_flux_batch.py"
     [ ! -f "$script" ] && script="$HOME/Documents/BASH_SCRIPTS/scripts/wan2gp_flux_batch.py"
+    [ ! -f "$script" ] && script="/var/home/mplanetarian/MP_Mix_Manager_v0.3/scripts/wan2gp_flux_batch.py"
 
     if [ ! -f "$script" ]; then
         echo -e "${RED}Error: wan2gp_flux_batch.py not found!${NC}"
@@ -3491,10 +3514,11 @@ launch_wan2gp_ltx_batch_terminal() {
     elif [[ "$mode" == *"--watch"* ]]; then
         title="WAN2GP LTX Video ${model^^} (Watch Mode)"
     fi
-    local script="$SCRIPT_DIR/wan2gp_ltx_batch.py"
-    [ ! -f "$script" ] && script="$SCRIPT_DIR/scripts/wan2gp_ltx_batch.py"
+    local script="$SCRIPT_DIR/scripts/wan2gp_ltx_batch.py"
+    [ ! -f "$script" ] && script="$SCRIPT_DIR/wan2gp_ltx_batch.py"
     [ ! -f "$script" ] && script="$HOME/wan2gp_ltx_batch.py"
     [ ! -f "$script" ] && script="$HOME/Documents/BASH_SCRIPTS/scripts/wan2gp_ltx_batch.py"
+    [ ! -f "$script" ] && script="/var/home/mplanetarian/MP_Mix_Manager_v0.3/scripts/wan2gp_ltx_batch.py"
 
     if [ ! -f "$script" ]; then
         echo -e "${RED}Error: wan2gp_ltx_batch.py not found!${NC}"
