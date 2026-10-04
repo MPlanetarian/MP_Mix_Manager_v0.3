@@ -331,6 +331,7 @@ convert_file() {
         local sz
         sz=$(ls -lh "$out_file" 2>/dev/null | awk '{print $5}')
         echo -e "  ${GREEN}✓ Done:${NC} $out_file (${CYAN}${sz}${NC})\n"
+        prompt_split_audio "$out_file"
         return 0
     else
         # Fallback without artwork embedding if muxing failed
@@ -338,12 +339,40 @@ convert_file() {
             local sz
             sz=$(ls -lh "$out_file" 2>/dev/null | awk '{print $5}')
             echo -e "  ${GREEN}✓ Done (audio only):${NC} $out_file (${CYAN}${sz}${NC})\n"
+            prompt_split_audio "$out_file"
             return 0
         else
             echo -e "  ${RED}✗ Error converting $in_file!${NC}\n"
             return 1
         fi
     fi
+}
+
+prompt_split_audio() {
+    local converted_file="$1"
+    [ -f "$converted_file" ] || return 0
+    if [ ! -t 0 ] && [ ! -r /dev/tty ]; then
+        return 0
+    fi
+    echo -e "${BOLD}${BLUE}──────────────────────────────────────────────────────────────────────${NC}"
+    local ask_split=""
+    read -r -p "Would you like to split '$(basename "$converted_file")' into separate parts/sets? [y/N]: " ask_split </dev/tty || ask_split=""
+    case "$ask_split" in
+        [yY]|[yY][eE][sS])
+            local splitter_bin=""
+            for sc in "$SCRIPT_DIR/Split_FLAC_File.sh" "$PARENT_DIR/Split_FLAC_File.sh" "$SCRIPT_DIR/scripts/Split_FLAC_File.sh" "./Split_FLAC_File.sh"; do
+                if [ -f "$sc" ]; then splitter_bin="$sc"; break; fi
+            done
+            if [ -n "$splitter_bin" ]; then
+                bash "$splitter_bin" "$converted_file" </dev/tty || true
+            else
+                echo -e "${RED}Warning: Split_FLAC_File.sh not found!${NC}"
+            fi
+            ;;
+        *)
+            echo -e "${DIM}Skipped splitting for $(basename "$converted_file").${NC}"
+            ;;
+    esac
 }
 
 echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
@@ -431,12 +460,12 @@ case "$scope_choice" in
         else
             # Search for keyword
             shopt -s nullglob nocaseglob
-            candidates=(*"$user_input"*.[wW][aA][vV] *"$user_input"*.[fF][lL][aA][cC])
+            candidates=(*"$user_input"*.[wW][aA][vV] *"$user_input"*.[fF][lL][aA][cC] *"$user_input"*.[oO][gG][gG] *"$user_input"*.[mM][pP]3)
             for fd in "${all_flac_dirs[@]}"; do
-                [ -d "$fd" ] && candidates+=("$fd"/*"$user_input"*.[fF][lL][aA][cC] "$fd"/*"$user_input"*.[wW][aA][vV])
+                [ -d "$fd" ] && candidates+=("$fd"/*"$user_input"*.[fF][lL][aA][cC] "$fd"/*"$user_input"*.[wW][aA][vV] "$fd"/*"$user_input"*.[oO][gG][gG] "$fd"/*"$user_input"*.[mM][pP]3)
             done
             for wd in "${all_wav_dirs[@]}"; do
-                [ -d "$wd" ] && candidates+=("$wd"/*"$user_input"*.[wW][aA][vV])
+                [ -d "$wd" ] && candidates+=("$wd"/*"$user_input"*.[wW][aA][vV] "$wd"/*"$user_input"*.[oO][gG][gG])
             done
             shopt -u nullglob nocaseglob
             if [ ${#candidates[@]} -eq 0 ]; then
@@ -463,13 +492,13 @@ case "$scope_choice" in
         ;;
     2)
         shopt -s nullglob nocaseglob
-        wav_files=(*.[wW][aA][vV])
+        wav_files=(*.[wW][aA][vV] *.[oO][gG][gG])
         shopt -u nullglob nocaseglob
         if [ ${#wav_files[@]} -eq 0 ]; then
-            echo -e "${RED}No WAV files found in current directory!${NC}"
+            echo -e "${RED}No WAV or OGG files found in current directory!${NC}"
             exit 1
         fi
-        echo -e "\nFound ${#wav_files[@]} WAV file(s)."
+        echo -e "\nFound ${#wav_files[@]} audio file(s)."
         read -r -e -p "Enter output directory [default: $DEFAULT_OUT_DIR]: " custom_out
         final_out="${custom_out:-$DEFAULT_OUT_DIR}"
 
@@ -486,14 +515,14 @@ case "$scope_choice" in
         shopt -s nullglob nocaseglob
         wav_files=()
         for wd in "${all_wav_dirs[@]}"; do
-            [ -d "$wd" ] && wav_files+=("$wd"/*.[wW][aA][vV])
+            [ -d "$wd" ] && wav_files+=("$wd"/*.[wW][aA][vV] "$wd"/*.[oO][gG][gG])
         done
         shopt -u nullglob nocaseglob
         if [ ${#wav_files[@]} -eq 0 ]; then
-            echo -e "${RED}No WAV files found across configured WAV archives!${NC}"
+            echo -e "${RED}No WAV or OGG files found across configured WAV/OGG archives!${NC}"
             exit 1
         fi
-        echo -e "\nFound ${#wav_files[@]} WAV file(s) across ${#all_wav_dirs[@]} archive location(s)."
+        echo -e "\nFound ${#wav_files[@]} audio file(s) across ${#all_wav_dirs[@]} archive location(s)."
         read -r -e -p "Enter output directory [default: $DEFAULT_OUT_DIR]: " custom_out
         final_out="${custom_out:-$DEFAULT_OUT_DIR}"
 

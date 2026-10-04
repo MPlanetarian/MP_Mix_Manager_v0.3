@@ -243,7 +243,7 @@ fi
 choose_conversion_output() {
     OUTPUT_FORMAT="${SOF_OUTPUT_FORMAT:-}"
     case "$OUTPUT_FORMAT" in
-        flac|mp3|wav|mp4) return 0 ;;
+        flac|mp3|wav|mp4|ogg) return 0 ;;
     esac
     OUTPUT_FORMAT=""
     if [ ! -r /dev/tty ]; then
@@ -253,12 +253,13 @@ choose_conversion_output() {
     while true; do
         {
             echo "=================================================="
-            echo "The WAV files in this folder are ready to convert."
+            echo "The audio files in this folder are ready to convert."
             echo "Choose the output before conversion starts."
             echo "  1) FLAC lossless          (default, press Enter)"
             echo "  2) MP3 320 kbps"
             echo "  3) WAV 24-bit"
             echo "  4) MP4 YouTube video      (1080p, still cover art)"
+            echo "  5) OGG Vorbis             (320 kbps / quality 8)"
             echo "  0) Cancel"
             echo "=================================================="
         } >/dev/tty
@@ -269,8 +270,9 @@ choose_conversion_output() {
             2) OUTPUT_FORMAT="mp3"; return 0 ;;
             3) OUTPUT_FORMAT="wav"; return 0 ;;
             4) OUTPUT_FORMAT="mp4"; return 0 ;;
+            5) OUTPUT_FORMAT="ogg"; return 0 ;;
             0|[qQ]) echo "Conversion cancelled." >/dev/tty; exit 0 ;;
-            *) echo "Choose 1, 2, 3, 4, or 0." >/dev/tty ;;
+            *) echo "Choose 1, 2, 3, 4, 5, or 0." >/dev/tty ;;
         esac
     done
 }
@@ -462,6 +464,11 @@ case "$OUTPUT_FORMAT" in
         OUTPUT_LABEL="MP4"
         OUTPUT_DIR="${MP4_OUTPUT_DIR:-MP4_CONVERTED_OUTPUTS}"
         ;;
+    ogg)
+        OUTPUT_EXT="ogg"
+        OUTPUT_LABEL="OGG"
+        OUTPUT_DIR="${OGG_OUTPUT_DIR:-OGG_CONVERTED_OUTPUTS}"
+        ;;
     *)
         OUTPUT_FORMAT="flac"
         OUTPUT_EXT="flac"
@@ -547,6 +554,7 @@ get_session_base_name() {
     local name="${fname%.[Ww][Aa][Vv]}"
     name="${name%.[Ff][Ll][Aa][Cc]}"
     name="${name%.[Mm][Pp]3}"
+    name="${name%.[Oo][Gg][Gg]}"
 
     # 1. Traktor split chunks: session timestamp + split duration offset (e.g. _4h53m32_03h02m02 or _14h00m00_0h52m07)
     # Strip only the trailing split duration offset, preserving the session timestamp
@@ -571,7 +579,7 @@ get_session_base_name() {
         # Check if the unsuffixed parent/root file exists in current directory or target path
         local parent_d
         parent_d=$(dirname "$fname" 2>/dev/null || echo ".")
-        if [ -f "$parent_d/${cand_prefix}.wav" ] || [ -f "$parent_d/${cand_prefix}.WAV" ] || [ -f "${cand_prefix}.wav" ] || [ -f "${cand_prefix}.WAV" ]; then
+        if [ -f "$parent_d/${cand_prefix}.wav" ] || [ -f "$parent_d/${cand_prefix}.WAV" ] || [ -f "$parent_d/${cand_prefix}.ogg" ] || [ -f "$parent_d/${cand_prefix}.OGG" ] || [ -f "${cand_prefix}.wav" ] || [ -f "${cand_prefix}.WAV" ] || [ -f "${cand_prefix}.ogg" ] || [ -f "${cand_prefix}.OGG" ]; then
             echo "$cand_prefix"
             return 0
         fi
@@ -592,7 +600,7 @@ get_session_base_name() {
     echo "$name"
 }
 
-# 1. Discover and group WAV files cleanly (Bash 3.2+ & macOS compatible without associative arrays)
+# 1. Discover and group audio files cleanly (Bash 3.2+ & macOS compatible without associative arrays)
 GROUP_TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/sof_groups_XXXXXX" 2>/dev/null || mktemp -d /tmp/sof_groups_XXXXXX)
 trap 'rm -rf "$GROUP_TMP_DIR" "${OPTIMIZED_COVER:-}" 2>/dev/null || true' EXIT
 
@@ -601,7 +609,7 @@ declare -a group_keys=()
 if [ ${#TARGET_FILES[@]} -gt 0 ]; then
     search_list=("${TARGET_FILES[@]}")
 else
-    search_list=(./*.wav)
+    search_list=(./*.[wW][aA][vV] ./*.[oO][gG][gG])
 fi
 
 for file in "${search_list[@]}"; do
@@ -1294,6 +1302,20 @@ for p in sorted(lines, key=key_func):
                 conversion_status=0
             fi
             ;;
+        ogg)
+            echo " -> Converting to Ogg Vorbis (320 kbps / quality 8) with tags..."
+            if ffmpeg -y -i "$session_audio" \
+              -c:a libvorbis -q:a 8 \
+              -metadata artist="$eff_artist" \
+              -metadata album="$eff_album" \
+              -metadata title="$eff_title" \
+              -metadata date="$eff_year" \
+              -metadata genre="$eff_genre" \
+              -metadata comment="$eff_comment" \
+              "$output_path" >/dev/null 2>&1; then
+                conversion_status=0
+            fi
+            ;;
         *)
             echo " -> Converting to FLAC with cover art and tags..."
             if ffmpeg -y -i "$session_audio" -i "$OPTIMIZED_COVER" \
@@ -1332,7 +1354,31 @@ for p in sorted(lines, key=key_func):
           "$spek_image" > /dev/null 2>&1
     fi
 
-    echo " -> Moving successfully processed WAV files to '$ARCHIVE_DIR'..."
+    # Interactive prompt to split the converted audio file
+    echo ""
+    echo "=================================================="
+    echo "✓ Audio Conversion Finished: $(basename "$output_path")"
+    echo "=================================================="
+    local ask_split=""
+    read -r -p "Would you like to split '$output_filename' into separate parts/sets? [y/N]: " ask_split </dev/tty || ask_split=""
+    case "$ask_split" in
+        [yY]|[yY][eE][sS])
+            local splitter_bin=""
+            for sc in "$SCRIPT_DIR/Split_FLAC_File.sh" "$SCRIPT_DIR/scripts/Split_FLAC_File.sh" "./Split_FLAC_File.sh"; do
+                if [ -f "$sc" ]; then splitter_bin="$sc"; break; fi
+            done
+            if [ -n "$splitter_bin" ]; then
+                bash "$splitter_bin" "$output_path" </dev/tty || true
+            else
+                echo "WARNING: Split_FLAC_File.sh not found!"
+            fi
+            ;;
+        *)
+            echo " -> Skipping splitting."
+            ;;
+    esac
+
+    echo " -> Moving successfully processed files to '$ARCHIVE_DIR'..."
     for w in "${current_wavs[@]}"; do
         if [ -f "$w" ]; then
             mv "$w" "$ARCHIVE_DIR/"

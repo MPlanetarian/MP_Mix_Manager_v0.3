@@ -14,6 +14,51 @@ An enterprise-grade workstation orchestration console and media management suite
 
 ---
 
+## 🌌 Spotlight Feature: MPlanetarian Dreamworlds Edition & Interactive TUI Navigation
+
+> [!IMPORTANT]
+> **Experience the new default aesthetic and seamless keyboard control!** Mix Archive Manager now defaults to the **MPlanetarian Dreamworlds** theme — inspired by the iconic KDE Plasma Sweet / Nice neon aesthetic (sweet hot pink, electric coral, vibrant orange, electric cyan, and neon violet). It features a smooth **animated 24-bit TrueColor rainbow ASCII banner** (`MP Mix Archive Manager`) and a modern **interactive TUI menu system** with arrow-key navigation, instant Enter selection, and single-key `Esc` returns across all menus.
+
+```mermaid
+flowchart TD
+    A["🌈 MPlanetarian Dreamworlds [Default]"] --> B["✨ 24-bit TrueColor Animated Rainbow ASCII Banner"]
+    A --> C["⌨️ Interactive TUI Navigation (↑/↓ Arrows, Enter, Esc)"]
+    A --> D["🔊 Audio Chime on Theme Switch & Storage Config (Options 10/13)"]
+    C --> E["🚀 Instant Return: Press Esc in Any Submenu to Return to Previous Screen"]
+```
+
+### 🎨 Dreamworlds & TUI Features:
+- 🌈 **MPlanetarian Dreamworlds Palette**: Hand-crafted 24-bit TrueColor RGB scheme (`#f72585`, `#ed254e`, `#ff7200`, `#bd93f9`, `#9b59b6`, `#00c1e4`, `#00f5ff`) matching KDE Plasma Sweet / Nice themes.
+- ✨ **Animated & Static Rainbow ASCII Banner**: Live animated wave header on launch and static TrueColor banner at the top of the main menu whenever Dreamworlds is active.
+- ⌨️ **Interactive Arrow-Key Navigation**: Navigate effortlessly using `Up` and `Down` arrow keys, jump with `Home` and `End`, type numbers or letters to quick-search, press `Enter` to select, and press `Esc` to instantly return to the previous screen (or exit at the main menu).
+- 🔊 **System Sound Feedback**: Plays soothing system audio chimes via PipeWire / ALSA when switching to Dreamworlds or configuring mix archive storage locations (Options 10 and 13).
+
+---
+
+## ✂️ Auto-Split DJ Mixes & Multi-Part Spek Spectrogram Generation
+
+> [!TIP]
+> **Recorded a 4-hour live stream with 4 different DJ sets?** When converting large audio files, Mix Archive Manager now automatically prompts you every time: *"Would you like to split the audio file?"*. It slices the audio into equal or custom parts, saves the split files into the **exact same directory**, and offers to generate **individual 1080p Spek spectrograms** for every split part!
+
+```mermaid
+flowchart LR
+    A["🎧 Audio Conversion Finishes (WAV / FLAC / MP3 / OGG)"] --> B{"✂️ Split Audio File? [y/N]"}
+    B -- Yes --> C["🔢 Choose Number of Parts (e.g. 4 DJ Mixes)"]
+    C --> D["📁 Output Split Parts to Same Directory"]
+    D --> E{"📊 Generate Spek Spectrograms for All Parts? [Y/n]"}
+    E -- Yes --> F["🖼️ 1920x1080 Logarithmic Spectrogram for Each Part"]
+    B -- No --> G["✅ Continue Ingestion / Archive Workflow"]
+    E -- No --> G
+```
+
+### 🎛️ Audio Splitting & Spectrogram Highlights:
+- 🔁 **Every-Time Conversion Prompt**: Never miss splitting a multi-DJ recording session. Immediately upon conversion completion, the system asks if you want to split the file.
+- 📁 **Same Output Directory**: All split parts are saved right alongside the converted audio file.
+- 📊 **Batch Spek Spectrogram Generation**: One-click generation of ultra-clean 1920x1080 logarithmic audio spectrograms for every individual split set, proving lossless frequency cutoffs and audio mastering health.
+- 🦭 **Full Ogg Vorbis Support**: Seamlessly ingest and convert to/from Ogg Vorbis (`.ogg`) at audiophile quality (Q8 / Q10 / 320 kbps) across all single and batch conversion routines.
+
+---
+
 ## ⏰ Brand New Feature: MPlanetarians Alarm Clock (Wake Up Edition) — Wake Up with a Random Mix & a Random Steam Video Game (Linux Only Support at the Moment)
 
 > [!IMPORTANT]

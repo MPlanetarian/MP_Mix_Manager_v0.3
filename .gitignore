@@ -42,6 +42,7 @@ PLAYLISTS_GENERATED/*
 !PLAYLISTS_GENERATED/.gitkeep
 !assets/Cover.png
 !Cover.png
+Cover_old.png
 
 # Media files
 *.wav

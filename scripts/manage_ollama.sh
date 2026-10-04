@@ -16,13 +16,25 @@ BOLD='\033[1m'
 NC='\033[0m' # No Color
 
 OLLAMA_CONTAINER="${OLLAMA_CONTAINER:-ollama-container}"
-OLLAMA_HOST="${OLLAMA_HOST:-127.0.0.1}"
+OLLAMA_HOST="${OLLAMA_HOST:-0.0.0.0}"
 OLLAMA_PORT="${OLLAMA_PORT:-11434}"
+if [[ "$OLLAMA_HOST" =~ :[0-9]+$ ]]; then
+    OLLAMA_PORT="${OLLAMA_HOST##*:}"
+    OLLAMA_HOST="${OLLAMA_HOST%:*}"
+fi
+OLLAMA_BIND="${OLLAMA_HOST}:${OLLAMA_PORT}"
 OLLAMA_URL="http://${OLLAMA_HOST}:${OLLAMA_PORT}"
+if [ "$OLLAMA_HOST" = "0.0.0.0" ]; then
+    OLLAMA_CHECK_URL="http://127.0.0.1:${OLLAMA_PORT}"
+else
+    OLLAMA_CHECK_URL="${OLLAMA_URL}"
+fi
 LOG_FILE="/tmp/ollama-serve.log"
 
 is_ollama_running() {
-    if curl -s --connect-timeout 1 "${OLLAMA_URL}/" 2>/dev/null | grep -qi "Ollama is running"; then
+    if curl -s --connect-timeout 1 "${OLLAMA_CHECK_URL}/" 2>/dev/null | grep -qi "Ollama is running"; then
+        return 0
+    elif curl -s --connect-timeout 1 "http://127.0.0.1:${OLLAMA_PORT}/" 2>/dev/null | grep -qi "Ollama is running"; then
         return 0
     elif pgrep -f "ollama serve" >/dev/null 2>&1; then
         return 0
@@ -49,40 +61,44 @@ start_ollama_bg() {
     if is_ollama_running; then
         local pids
         pids=$(get_ollama_pids)
-        echo -e "${GREEN}✓ Ollama server is already running (PID: ${pids% }, URL: ${OLLAMA_URL}).${NC}"
+        echo -e "${GREEN}✓ Ollama server is already running (PID: ${pids% }, URL: ${OLLAMA_CHECK_URL}).${NC}"
         return 0
     fi
 
     ensure_container_started
 
-    echo -e "Launching 'ollama serve' in background via distrobox (${OLLAMA_CONTAINER})..."
-    nohup distrobox enter -T "$OLLAMA_CONTAINER" -- ollama serve >"$LOG_FILE" 2>&1 &
+    echo -e "Launching 'ollama serve' in background via distrobox (${OLLAMA_CONTAINER}) [listening on ${OLLAMA_BIND}]..."
+    nohup distrobox enter -T "$OLLAMA_CONTAINER" -- env OLLAMA_HOST="${OLLAMA_BIND}" OLLAMA_ORIGINS="*" ollama serve >"$LOG_FILE" 2>&1 &
     local launch_pid=$!
 
     echo -e "Waiting for Ollama API endpoint to become responsive..."
     local ready=false
     for _ in {1..20}; do
-        if curl -s --connect-timeout 1 "${OLLAMA_URL}/" 2>/dev/null | grep -qi "Ollama is running"; then
+        if curl -s --connect-timeout 1 "${OLLAMA_CHECK_URL}/" 2>/dev/null | grep -qi "Ollama is running"; then
             ready=true
             break
         fi
         sleep 0.5
     done
 
+    local LAN_IP
+    LAN_IP=$(ip -4 addr show wlp2s0 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' || hostname -I 2>/dev/null | awk '{print $1}')
+
     if [ "$ready" = "true" ]; then
         local pids
         pids=$(get_ollama_pids)
         echo -e "${BOLD}${GREEN}✓ Ollama server successfully started!${NC}"
         echo -e "  • Status:       ${GREEN}RUNNING${NC}"
-        echo -e "  • Endpoint:     ${BOLD}${CYAN}${OLLAMA_URL}${NC}"
+        echo -e "  • Local:        ${BOLD}${CYAN}http://127.0.0.1:${OLLAMA_PORT}${NC}"
+        [ -n "$LAN_IP" ] && echo -e "  • LAN Endpoint: ${BOLD}${CYAN}http://${LAN_IP}:${OLLAMA_PORT}${NC}"
         echo -e "  • PID(s):       ${YELLOW}${pids% }${NC}"
         echo -e "  • Log File:     ${LOG_FILE}"
         if command -v notify-send >/dev/null 2>&1; then
-            notify-send -a "Ollama" -i "dialog-ok" "Ollama Server" "✓ Ollama server is live on ${OLLAMA_URL}" 2>/dev/null || true
+            notify-send -a "Ollama" -i "dialog-ok" "Ollama Server" "✓ Ollama server is live on http://${LAN_IP:-127.0.0.1}:${OLLAMA_PORT}" 2>/dev/null || true
         fi
         return 0
     else
-        echo -e "${RED}Warning: Ollama server did not respond on ${OLLAMA_URL} within 10s.${NC}"
+        echo -e "${RED}Warning: Ollama server did not respond on ${OLLAMA_CHECK_URL} within 10s.${NC}"
         echo -e "${YELLOW}Check logs with: tail -n 20 ${LOG_FILE}${NC}"
         return 1
     fi
@@ -93,16 +109,16 @@ start_ollama_window() {
     if is_ollama_running; then
         local pids
         pids=$(get_ollama_pids)
-        echo -e "${GREEN}✓ Ollama server is already running (PID: ${pids% }, URL: ${OLLAMA_URL}).${NC}"
+        echo -e "${GREEN}✓ Ollama server is already running (PID: ${pids% }, URL: ${OLLAMA_CHECK_URL}).${NC}"
         return 0
     fi
 
     ensure_container_started
 
     local TITLE="Ollama Server (${OLLAMA_CONTAINER})"
-    local CMD="distrobox enter ${OLLAMA_CONTAINER} -- ollama serve; echo ''; echo 'Ollama server exited. Press [Enter] to close...'; read -r"
+    local CMD="distrobox enter ${OLLAMA_CONTAINER} -- env OLLAMA_HOST=${OLLAMA_BIND} OLLAMA_ORIGINS=\"*\" ollama serve; echo ''; echo 'Ollama server exited. Press [Enter] to close...'; read -r"
 
-    echo -e "Opening terminal window for 'ollama serve'..."
+    echo -e "Opening terminal window for 'ollama serve' [listening on ${OLLAMA_BIND}]..."
     if command -v konsole >/dev/null 2>&1; then
         konsole --new-tab -p tabtitle="$TITLE" -e bash -c "$CMD" &
     elif command -v xdg-terminal-exec >/dev/null 2>&1; then
@@ -119,7 +135,7 @@ start_ollama_window() {
     echo -e "Waiting for Ollama to initialize..."
     sleep 2
     if is_ollama_running; then
-        echo -e "${BOLD}${GREEN}✓ Ollama server running in new window (${OLLAMA_URL}).${NC}"
+        echo -e "${BOLD}${GREEN}✓ Ollama server running in new window (${OLLAMA_CHECK_URL}).${NC}"
         return 0
     else
         echo -e "${YELLOW}Terminal window launched. Please check the new window for server logs.${NC}"
@@ -177,16 +193,24 @@ show_status() {
     echo -e "${BOLD}${MAGENTA}                    OLLAMA SERVER STATUS & MODELS                     ${NC}"
     echo -e "${BOLD}${MAGENTA}======================================================================${NC}\n"
 
+    local LAN_IP
+    LAN_IP=$(ip -4 addr show wlp2s0 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' || hostname -I 2>/dev/null | awk '{print $1}')
+
     if is_ollama_running; then
         local pids
         pids=$(get_ollama_pids)
         echo -e "  Server Status:    ${BOLD}${GREEN}● RUNNING${NC} (PID: ${pids% })"
-        echo -e "  API Endpoint:     ${BOLD}${CYAN}${OLLAMA_URL}${NC}"
+        echo -e "  Local Endpoint:   ${BOLD}${CYAN}http://127.0.0.1:${OLLAMA_PORT}${NC}"
+        [ -n "$LAN_IP" ] && echo -e "  LAN Endpoint:     ${BOLD}${CYAN}http://${LAN_IP}:${OLLAMA_PORT}${NC}"
+        if systemctl --user is-active --quiet ollama-caddy.service 2>/dev/null; then
+            echo -e "  HTTPS Endpoints:  ${BOLD}${CYAN}https://${LAN_IP:-127.0.0.1}:8443${NC} | ${BOLD}${CYAN}https://${LAN_IP:-127.0.0.1}:11436${NC}"
+        fi
         echo -e "  HTTP Health:      ${GREEN}HTTP 200 OK (Ollama is running)${NC}"
         echo -e "  Container:        ${GREEN}${OLLAMA_CONTAINER}${NC} (distrobox/podman)"
     else
         echo -e "  Server Status:    ${BOLD}${RED}○ STOPPED${NC}"
-        echo -e "  API Endpoint:     ${BOLD}${CYAN}${OLLAMA_URL}${NC} (Offline)"
+        echo -e "  Local Endpoint:   ${BOLD}${CYAN}http://127.0.0.1:${OLLAMA_PORT}${NC} (Offline)"
+        [ -n "$LAN_IP" ] && echo -e "  LAN Endpoint:     ${BOLD}${CYAN}http://${LAN_IP}:${OLLAMA_PORT}${NC} (Offline)"
         echo -e "  Container:        ${YELLOW}${OLLAMA_CONTAINER}${NC}"
     fi
 
@@ -201,7 +225,7 @@ show_status() {
     echo -e "${BOLD}Installed Local Models in Ollama:${NC}"
     if is_ollama_running; then
         local model_list
-        model_list=$(curl -s "${OLLAMA_URL}/api/tags" 2>/dev/null)
+        model_list=$(curl -s "${OLLAMA_CHECK_URL}/api/tags" 2>/dev/null)
         if [ -n "$model_list" ] && command -v jq >/dev/null 2>&1; then
             echo "$model_list" | jq -r '.models[]? | "  • \(.name) (\((.size / 1073741824 * 10 | floor) / 10) GB, \(.details.parameter_size // "N/A"), \(.details.quantization_level // "N/A"))"' 2>/dev/null
         else
@@ -224,7 +248,7 @@ run_chat_cli() {
     echo -e "\n${BOLD}${BLUE}=== CHAT WITH LOCAL OLLAMA MODEL ===${NC}\n"
     local models=()
     if is_ollama_running && command -v jq >/dev/null 2>&1; then
-        mapfile -t models < <(curl -s "${OLLAMA_URL}/api/tags" 2>/dev/null | jq -r '.models[]?.name' 2>/dev/null)
+        mapfile -t models < <(curl -s "${OLLAMA_CHECK_URL}/api/tags" 2>/dev/null | jq -r '.models[]?.name' 2>/dev/null)
     fi
 
     if [ ${#models[@]} -eq 0 ]; then

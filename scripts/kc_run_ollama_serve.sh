@@ -22,7 +22,7 @@ if ! podman ps --filter "name=ollama-container" --format "{{.Names}}" 2>/dev/nul
 fi
 
 TITLE="Ollama Server (ollama-container)"
-CMD="distrobox enter ollama-container -- ollama serve; echo ''; echo 'Ollama server exited. Press [Enter] to close...'; read -r"
+CMD="distrobox enter ollama-container -- env OLLAMA_HOST=0.0.0.0:11434 OLLAMA_ORIGINS=\"*\" ollama serve; echo ''; echo 'Ollama server exited. Press [Enter] to close...'; read -r"
 
 if command -v konsole >/dev/null 2>&1; then
     konsole --new-tab -p tabtitle="$TITLE" -e bash -c "$CMD" &
@@ -33,5 +33,5 @@ elif command -v gnome-terminal >/dev/null 2>&1; then
 elif command -v xterm >/dev/null 2>&1; then
     nohup xterm -T "$TITLE" -e bash -c "$CMD" >/dev/null 2>&1 &
 else
-    nohup distrobox enter -T ollama-container -- ollama serve >/tmp/ollama-serve.log 2>&1 &
+    nohup distrobox enter -T ollama-container -- env OLLAMA_HOST=0.0.0.0:11434 OLLAMA_ORIGINS="*" ollama serve >/tmp/ollama-serve.log 2>&1 &
 fi

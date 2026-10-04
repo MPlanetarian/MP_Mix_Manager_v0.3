@@ -2,12 +2,23 @@
 
 # Colors for terminal styling & Theme Engine
 set_theme_colors() {
-    local theme_name="${1:-cyberpunk}"
+    local theme_name="${1:-dreamworlds}"
     NC='\033[0m'
     BOLD='\033[1m'
     DIM='\033[2m'
     
     case "$theme_name" in
+        dreamworlds|mplanetarian_dreamworlds|mplanetarian|default)
+            # MPlanetarian Dreamworlds [Default]
+            # Based on the Sweet / Nice KDE Plasma Palette (No Green - Neon Aesthetic)
+            RED='\033[38;2;237;37;78m'       # Sweet Neon Red / Coral (#ed254e)
+            GREEN='\033[38;2;0;229;255m'     # Sweet Bright Aqua Cyan (#00e5ff) - Sweet theme accent
+            YELLOW='\033[38;2;255;170;0m'    # Sweet Electric Amber / Gold (#ffaa00)
+            BLUE='\033[38;2;155;89;182m'     # Soft Sweet Lavender (#9b59b6)
+            MAGENTA='\033[38;2;247;37;133m'  # Sweet Neon Hot Pink (#f72585)
+            CYAN='\033[38;2;0;193;228m'      # Sweet Electric Cyan (#00c1e4)
+            CURRENT_THEME="dreamworlds"
+            ;;
         dracula)
             RED='\033[38;5;212m'     # Dracula Coral Pink / Red
             GREEN='\033[38;5;84m'    # Dracula Neon Green
@@ -101,6 +112,264 @@ set_theme_colors() {
     esac
 }
 
+# UI Sound Effects player
+play_sound_effect() {
+    local sound_type="${1:-storage}"
+    local sound_file=""
+    
+    if [ "$sound_type" = "dreamworlds" ] || [ "$sound_type" = "theme" ]; then
+        for cand in \
+            "/usr/share/sounds/Oxygen-Sys-Special.ogg" \
+            "/usr/share/sounds/oxygen/stereo/dialog-special.ogg" \
+            "/usr/share/sounds/ocean/stereo/theme-demo.oga" \
+            "/usr/share/sounds/ocean/stereo/desktop-login.oga" \
+            "/usr/share/sounds/freedesktop/stereo/service-login.oga"; do
+            if [ -f "$cand" ]; then sound_file="$cand"; break; fi
+        done
+    elif [ "$sound_type" = "storage" ]; then
+        for cand in \
+            "/usr/share/sounds/ocean/stereo/device-added.oga" \
+            "/usr/share/sounds/freedesktop/stereo/device-added.oga" \
+            "/usr/share/sounds/Oxygen-Sys-App-Positive.ogg" \
+            "/usr/share/sounds/ocean/stereo/completion-success.oga"; do
+            if [ -f "$cand" ]; then sound_file="$cand"; break; fi
+        done
+    fi
+    
+    if [ -n "$sound_file" ]; then
+        if command -v pw-play >/dev/null 2>&1; then
+            pw-play "$sound_file" >/dev/null 2>&1 &
+        elif command -v paplay >/dev/null 2>&1; then
+            paplay "$sound_file" >/dev/null 2>&1 &
+        elif command -v canberra-gtk-play >/dev/null 2>&1; then
+            canberra-gtk-play -f "$sound_file" >/dev/null 2>&1 &
+        elif command -v aplay >/dev/null 2>&1; then
+            aplay -q "$sound_file" >/dev/null 2>&1 &
+        fi
+    fi
+}
+
+show_dreamworlds_ascii_banner() {
+    local animate="${1:-false}"
+    if [ "$CURRENT_THEME" = "dreamworlds" ]; then
+        local anim_script="$SCRIPT_DIR/scripts/render_ascii_animation.py"
+        [ ! -f "$anim_script" ] && anim_script="$SCRIPT_DIR/render_ascii_animation.py"
+        if [ -f "$anim_script" ]; then
+            if [ "$animate" = "true" ]; then
+                python3 "$anim_script" --animate 2>/dev/null || python3 "$anim_script" 2>/dev/null
+            else
+                python3 "$anim_script" 2>/dev/null
+            fi
+        fi
+    fi
+}
+
+# Key reader for interactive navigation
+read_nav_key() {
+    local k=""
+    local rest=""
+    IFS= read -rsn1 k || return 1
+    if [[ "$k" == $'\x1b' || "$k" == $'\e' ]]; then
+        IFS= read -rsn4 -t 0.05 rest || true
+        case "$rest" in
+            "[A"|"OA") echo "UP" ;;
+            "[B"|"OB") echo "DOWN" ;;
+            "[C"|"OC") echo "RIGHT" ;;
+            "[D"|"OD") echo "LEFT" ;;
+            "[5~")     echo "PAGE_UP" ;;
+            "[6~")     echo "PAGE_DOWN" ;;
+            "[H"|"[1~") echo "HOME" ;;
+            "[F"|"[4~") echo "END" ;;
+            *)         echo "ESC" ;;
+        esac
+    elif [[ -z "$k" || "$k" == $'\n' || "$k" == $'\r' ]]; then
+        echo "ENTER"
+    elif [[ "$k" == $'\x7f' || "$k" == $'\x08' ]]; then
+        echo "BACKSPACE"
+    else
+        echo "CHAR:$k"
+    fi
+}
+
+# Interactive Submenu Runner
+run_interactive_submenu() {
+    local menu_title="$1"
+    local menu_header="$2"
+    local -n _opts_ref="$3"
+    local cur_idx="${4:-0}"
+    local total_opts="${#_opts_ref[@]}"
+    
+    if [ "$total_opts" -eq 0 ]; then
+        REPLY="0"
+        return 0
+    fi
+    
+    # Ensure starting cur_idx is on a selectable item
+    local start_attempts=0
+    while [ "$start_attempts" -lt "$total_opts" ]; do
+        IFS='|' read -r k_chk _ _ <<< "${_opts_ref[$cur_idx]}"
+        if [ "$k_chk" != "SECTION" ] && [ "$k_chk" != "SEP" ]; then
+            break
+        fi
+        cur_idx=$(( (cur_idx + 1) % total_opts ))
+        ((start_attempts++))
+    done
+    
+    # Non-interactive fallback
+    if [ ! -t 0 ]; then
+        clear
+        if [ -n "$menu_title" ]; then
+            echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
+            echo -e "${BOLD}${MAGENTA}       ${menu_title}${NC}"
+            echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
+        fi
+        [ -n "$menu_header" ] && echo -e "$menu_header"
+        for opt_entry in "${_opts_ref[@]}"; do
+            IFS='|' read -r o_key o_label o_extra <<< "$opt_entry"
+            if [ "$o_key" = "SECTION" ]; then
+                echo -e "\n  ${BOLD}${BLUE}─── [ ${o_label} ] ─────────${NC}"
+                continue
+            elif [ "$o_key" = "SEP" ]; then
+                echo -e "  ${BOLD}${BLUE}──────────────────────────────────────────────────────────────────────────${NC}"
+                continue
+            fi
+            echo -e "  ${BOLD}${CYAN}${o_key})${NC} ${o_label} ${DIM}${o_extra}${NC}"
+        done
+        echo ""
+        read -r -p "Enter choice: " REPLY
+        return 0
+    fi
+    
+    local typed_buffer=""
+    
+    while true; do
+        clear
+        if [ -n "$menu_title" ]; then
+            echo -e "${BOLD}${MAGENTA}╭──────────────────────────────────────────────────────────────────────────╮${NC}"
+            printf "${BOLD}${MAGENTA}│ %-72s │${NC}\n" "  ${menu_title}"
+            echo -e "${BOLD}${MAGENTA}╰──────────────────────────────────────────────────────────────────────────╯${NC}"
+            [ -n "$menu_header" ] && echo -e "$menu_header"
+            echo -e "  ${DIM}${BLUE}Use [↑/↓] Arrow Keys to navigate, [Enter] to select, [Esc] to return immediately${NC}\n"
+        else
+            [ -n "$menu_header" ] && echo -e "$menu_header"
+            echo -e "  ${DIM}${BLUE}Use [↑/↓] Arrow Keys to navigate, [Enter] to select, [Esc] or 'q' to exit${NC}\n"
+        fi
+        
+        local idx=0
+        for opt_entry in "${_opts_ref[@]}"; do
+            IFS='|' read -r o_key o_label o_extra <<< "$opt_entry"
+            if [ "$o_key" = "SECTION" ]; then
+                echo -e "\n  ${BOLD}${BLUE}─── [ ${o_label} ] ─────────${NC}"
+                ((idx++))
+                continue
+            elif [ "$o_key" = "SEP" ]; then
+                echo -e "  ${BOLD}${BLUE}──────────────────────────────────────────────────────────────────────────${NC}"
+                ((idx++))
+                continue
+            fi
+            local prefix="    "
+            local key_display="${BOLD}${CYAN}[$(printf "%2s" "$o_key")]${NC}"
+            local label_display="${o_label}"
+            local extra_display=""
+            [ -n "$o_extra" ] && extra_display="${DIM}${o_extra}${NC}"
+            
+            if [ "$idx" -eq "$cur_idx" ]; then
+                prefix="${BOLD}${MAGENTA} ▶ ❯${NC}"
+                echo -e "${prefix} ${BOLD}${YELLOW}[$(printf "%2s" "$o_key")]${NC} ${BOLD}${GREEN}${label_display}${NC} ${extra_display}"
+            else
+                echo -e "${prefix} ${key_display} ${label_display} ${extra_display}"
+            fi
+            ((idx++))
+        done
+        
+        echo ""
+        echo -e "  ${BOLD}${BLUE}──────────────────────────────────────────────────────────────────────────${NC}"
+        IFS='|' read -r cur_key cur_lbl cur_ext <<< "${_opts_ref[$cur_idx]}"
+        if [ -n "$typed_buffer" ]; then
+            echo -e "  ${BOLD}${CYAN}Selection:${NC} ${BOLD}${YELLOW}${typed_buffer}${NC} ▏ ${DIM}(Press Enter to confirm, Esc to return/exit)${NC}"
+        else
+            echo -e "  ${BOLD}${CYAN}Selection:${NC} ${DIM}[Option ${cur_key}: ${cur_lbl}]${NC} ▏ ${DIM}[↑/↓ to Navigate, Enter to Select, Esc to Return/Exit]${NC}"
+        fi
+        
+        local key_action
+        key_action=$(read_nav_key)
+        
+        case "$key_action" in
+            UP|PAGE_UP)
+                local hops=0
+                while [ "$hops" -lt "$total_opts" ]; do
+                    cur_idx=$(( (cur_idx - 1 + total_opts) % total_opts ))
+                    IFS='|' read -r k_chk _ _ <<< "${_opts_ref[$cur_idx]}"
+                    [ "$k_chk" != "SECTION" ] && [ "$k_chk" != "SEP" ] && break
+                    ((hops++))
+                done
+                typed_buffer=""
+                ;;
+            DOWN|PAGE_DOWN)
+                local hops=0
+                while [ "$hops" -lt "$total_opts" ]; do
+                    cur_idx=$(( (cur_idx + 1) % total_opts ))
+                    IFS='|' read -r k_chk _ _ <<< "${_opts_ref[$cur_idx]}"
+                    [ "$k_chk" != "SECTION" ] && [ "$k_chk" != "SEP" ] && break
+                    ((hops++))
+                done
+                typed_buffer=""
+                ;;
+            HOME)
+                cur_idx=0
+                while [ "$cur_idx" -lt "$total_opts" ]; do
+                    IFS='|' read -r k_chk _ _ <<< "${_opts_ref[$cur_idx]}"
+                    [ "$k_chk" != "SECTION" ] && [ "$k_chk" != "SEP" ] && break
+                    ((cur_idx++))
+                done
+                typed_buffer=""
+                ;;
+            END)
+                cur_idx=$(( total_opts - 1 ))
+                while [ "$cur_idx" -ge 0 ]; do
+                    IFS='|' read -r k_chk _ _ <<< "${_opts_ref[$cur_idx]}"
+                    [ "$k_chk" != "SECTION" ] && [ "$k_chk" != "SEP" ] && break
+                    ((cur_idx--))
+                done
+                typed_buffer=""
+                ;;
+            ENTER)
+                if [ -n "$typed_buffer" ]; then
+                    REPLY="$typed_buffer"
+                else
+                    IFS='|' read -r sel_key _ _ <<< "${_opts_ref[$cur_idx]}"
+                    REPLY="$sel_key"
+                fi
+                return 0
+                ;;
+            ESC)
+                REPLY="ESC"
+                return 0
+                ;;
+            BACKSPACE)
+                typed_buffer="${typed_buffer%?}"
+                ;;
+            CHAR:*)
+                local ch="${key_action#CHAR:}"
+                typed_buffer+="$ch"
+                local m_idx=0
+                for opt_entry in "${_opts_ref[@]}"; do
+                    IFS='|' read -r o_key _ _ <<< "$opt_entry"
+                    if [ "$o_key" = "$typed_buffer" ]; then
+                        cur_idx=$m_idx
+                        break
+                    fi
+                    ((m_idx++))
+                done
+                if [ "$typed_buffer" = "q" ] || [ "$typed_buffer" = "Q" ] || [ "$typed_buffer" = "b" ] || [ "$typed_buffer" = "B" ]; then
+                    REPLY="$typed_buffer"
+                    return 0
+                fi
+                ;;
+        esac
+    done
+}
+
 load_theme() {
     local theme_file="$HOME/.config/mix-manager/theme"
     if [ -f "$theme_file" ]; then
@@ -111,7 +380,7 @@ load_theme() {
             return
         fi
     fi
-    set_theme_colors "cyberpunk"
+    set_theme_colors "dreamworlds"
 }
 
 save_theme() {
@@ -119,6 +388,9 @@ save_theme() {
     mkdir -p "$HOME/.config/mix-manager" 2>/dev/null
     echo "$new_theme" > "$HOME/.config/mix-manager/theme" 2>/dev/null
     set_theme_colors "$new_theme"
+    if [ "$new_theme" = "dreamworlds" ] || [ "$new_theme" = "mplanetarian_dreamworlds" ] || [ "$new_theme" = "default" ]; then
+        play_sound_effect "dreamworlds"
+    fi
 }
 
 load_theme
@@ -7548,78 +7820,80 @@ run_bash_cli() {
 
 manage_themes() {
     while true; do
-        clear
-        echo -e "${BOLD}${MAGENTA}====================================================${NC}"
-        echo -e "${BOLD}${MAGENTA}       Themes & Color Palette Switcher              ${NC}"
-        echo -e "${BOLD}${MAGENTA}====================================================${NC}"
-        echo -e "  Current Active Theme: ${BOLD}${YELLOW}${CURRENT_THEME}${NC}"
-        echo ""
-        echo -e "  ${BOLD}${CYAN} 1)${NC} Cyberpunk     ${DIM}[Neon Hot Pink, Electric Cyan & High-Volt Yellow]${NC} $([ "$CURRENT_THEME" = "cyberpunk" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
-        echo -e "  ${BOLD}${CYAN} 2)${NC} Dracula       ${DIM}[Vampiric Purple, Neon Green & Coral Pink]${NC}        $([ "$CURRENT_THEME" = "dracula" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
-        echo -e "  ${BOLD}${CYAN} 3)${NC} Nord          ${DIM}[Arctic Slate, Frost Polar Ice & Sage Aurora]${NC}     $([ "$CURRENT_THEME" = "nord" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
-        echo -e "  ${BOLD}${CYAN} 4)${NC} The Matrix    ${DIM}[Pure Phosphor Green, Terminal Crimson & Mint]${NC}    $([ "$CURRENT_THEME" = "matrix" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
-        echo -e "  ${BOLD}${CYAN} 5)${NC} Solarized     ${DIM}[Warm Amber, Solar Yellow, Cyan & Terracotta]${NC}     $([ "$CURRENT_THEME" = "solarized" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
-        echo -e "  ${BOLD}${CYAN} 6)${NC} Tokyo Night   ${DIM}[Deep Violet, Lavender, Soft Blue & Coral]${NC}        $([ "$CURRENT_THEME" = "tokyo" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
-        echo -e "  ${BOLD}${CYAN} 7)${NC} Monokai       ${DIM}[Electric Pink, Tangerine, Lime & Vivid Blue]${NC}     $([ "$CURRENT_THEME" = "monokai" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
-        echo -e "  ${BOLD}${CYAN} 8)${NC} Gruvbox       ${DIM}[Retro Warm Earth, Dusty Rose, Rust & Gold]${NC}       $([ "$CURRENT_THEME" = "gruvbox" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
-        echo -e "  ${BOLD}${CYAN} 9)${NC} Emerald Isle  ${DIM}[Deep Ocean, Spring Emerald & Mint Cyan]${NC}          $([ "$CURRENT_THEME" = "emerald" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
-        echo -e "  ${BOLD}${CYAN}10)${NC} Classic ANSI  ${DIM}[Standard 16-Color Terminal Fallback]${NC}             $([ "$CURRENT_THEME" = "classic" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
-        echo ""
-        echo -e "  ${BOLD}${CYAN} 0)${NC} Return to Main Menu ${DIM}(or b / q)${NC}"
-        echo ""
-        read -r -p "Select theme [1-10, or 0 to return]: " tchoice
+        local opts=(
+            "1|MPlanetarian Dreamworlds [Default]|[Sweet Hot Pink, Electric Cyan, Lavender & Violet] $([ "$CURRENT_THEME" = "dreamworlds" ] && echo -e "${GREEN}★ ACTIVE (DEFAULT)${NC}")"
+            "2|Cyberpunk|[Neon Hot Pink, Electric Cyan & High-Volt Yellow] $([ "$CURRENT_THEME" = "cyberpunk" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
+            "3|Dracula|[Vampiric Purple, Neon Green & Coral Pink] $([ "$CURRENT_THEME" = "dracula" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
+            "4|Nord|[Arctic Slate, Frost Polar Ice & Sage Aurora] $([ "$CURRENT_THEME" = "nord" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
+            "5|The Matrix|[Pure Phosphor Green, Terminal Crimson & Mint] $([ "$CURRENT_THEME" = "matrix" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
+            "6|Solarized|[Warm Amber, Solar Yellow, Cyan & Terracotta] $([ "$CURRENT_THEME" = "solarized" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
+            "7|Tokyo Night|[Deep Violet, Lavender, Soft Blue & Coral] $([ "$CURRENT_THEME" = "tokyo" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
+            "8|Monokai|[Electric Pink, Tangerine, Lime & Vivid Blue] $([ "$CURRENT_THEME" = "monokai" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
+            "9|Gruvbox|[Retro Warm Earth, Dusty Rose, Rust & Gold] $([ "$CURRENT_THEME" = "gruvbox" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
+            "10|Emerald Isle|[Deep Ocean, Spring Emerald & Mint Cyan] $([ "$CURRENT_THEME" = "emerald" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
+            "11|Classic ANSI|[Standard 16-Color Terminal Fallback] $([ "$CURRENT_THEME" = "classic" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
+            "0|Return to Main Menu|(or Esc / q)"
+        )
+        run_interactive_submenu "Themes & Color Palette Switcher" "  Current Active Theme: ${BOLD}${YELLOW}${CURRENT_THEME}${NC}\n" opts 0
+        local tchoice="$REPLY"
         case "$tchoice" in
-            1)
+            1|dreamworlds|default)
+                save_theme "dreamworlds"
+                echo -e "\n${BOLD}${GREEN}✓ Theme switched to MPlanetarian Dreamworlds [Default]!${NC}"
+                show_dreamworlds_ascii_banner true
+                sleep 0.8
+                ;;
+            2|cyberpunk)
                 save_theme "cyberpunk"
                 echo -e "\n${GREEN}✓ Theme switched to Cyberpunk!${NC}"
                 sleep 0.8
                 ;;
-            2)
+            3|dracula)
                 save_theme "dracula"
                 echo -e "\n${GREEN}✓ Theme switched to Dracula!${NC}"
                 sleep 0.8
                 ;;
-            3)
+            4|nord)
                 save_theme "nord"
                 echo -e "\n${GREEN}✓ Theme switched to Nord!${NC}"
                 sleep 0.8
                 ;;
-            4)
+            5|matrix)
                 save_theme "matrix"
                 echo -e "\n${GREEN}✓ Theme switched to The Matrix!${NC}"
                 sleep 0.8
                 ;;
-            5)
+            6|solarized)
                 save_theme "solarized"
                 echo -e "\n${GREEN}✓ Theme switched to Solarized!${NC}"
                 sleep 0.8
                 ;;
-            6)
+            7|tokyo)
                 save_theme "tokyo"
                 echo -e "\n${GREEN}✓ Theme switched to Tokyo Night!${NC}"
                 sleep 0.8
                 ;;
-            7)
+            8|monokai)
                 save_theme "monokai"
                 echo -e "\n${GREEN}✓ Theme switched to Monokai!${NC}"
                 sleep 0.8
                 ;;
-            8)
+            9|gruvbox)
                 save_theme "gruvbox"
                 echo -e "\n${GREEN}✓ Theme switched to Gruvbox!${NC}"
                 sleep 0.8
                 ;;
-            9)
+            10|emerald)
                 save_theme "emerald"
                 echo -e "\n${GREEN}✓ Theme switched to Emerald Isle!${NC}"
                 sleep 0.8
                 ;;
-            10)
+            11|classic)
                 save_theme "classic"
                 echo -e "\n${GREEN}✓ Theme switched to Classic ANSI!${NC}"
                 sleep 0.8
                 ;;
-            0|[bB]|[qQ])
+            0|[bB]|[qQ]|ESC)
                 return 0
                 ;;
             *)
@@ -8217,21 +8491,37 @@ configure_mix_archive_folder() {
         fi
         echo ""
 
-        echo -e "${BOLD}${BLUE}─── [ PRIMARY ARCHIVE CONFIGURATION ] ────────────────────────────────${NC}"
-        echo -e "  ${BOLD}${CYAN}1)${NC} Enter New Primary Mix Archive Folder Path ${GREEN}(Custom Directory Path)${NC}"
-        echo -e "  ${BOLD}${CYAN}2)${NC} Auto-Detect & Select Primary from Connected Drives / Volumes"
-        echo -e "  ${BOLD}${CYAN}3)${NC} Reset Primary to Application Root Folder ${YELLOW}(${SCRIPT_DIR}/MIX_ARCHIVE)${NC}"
-        echo ""
-        echo -e "${BOLD}${BLUE}─── [ MULTIPLE / ADDITIONAL MIX ARCHIVE LOCATIONS ] ──────────────────${NC}"
-        echo -e "  ${BOLD}${CYAN}4)${NC} Add New Additional Mix Archive Storage Location Folder"
-        echo -e "  ${BOLD}${CYAN}5)${NC} Remove an Additional Mix Archive Storage Location"
-        echo -e "  ${BOLD}${CYAN}6)${NC} Auto-Detect & Add Other Mix Folders from Connected Drives"
-        echo -e "  ${BOLD}${CYAN}7)${NC} View Detailed Space & Mix Inventory Across All Storage Folders"
-        echo -e "  ${BOLD}${CYAN}8)${NC} Clear All Additional Mix Archive Storage Locations"
-        echo -e "${BOLD}${BLUE}----------------------------------------------------------------------${NC}"
-        echo -e "  ${BOLD}0)${NC} Return to Main Menu ${DIM}(or q)${NC}\n"
+        local cfg_opts=(
+            "1|Enter New Primary Mix Archive Folder Path|(Custom Directory Path)"
+            "2|Auto-Detect & Select Primary from Connected Drives / Volumes|"
+            "3|Reset Primary to Application Root Folder|(${SCRIPT_DIR}/MIX_ARCHIVE)"
+            "4|Add New Additional Mix Archive Storage Location Folder|"
+            "5|Remove an Additional Mix Archive Storage Location|"
+            "6|Auto-Detect & Add Other Mix Folders from Connected Drives|"
+            "7|View Detailed Space & Mix Inventory Across All Storage Folders|"
+            "8|Clear All Additional Mix Archive Storage Locations|"
+            "0|Return to Main Menu|(or Esc / q)"
+        )
+        local status_hdr="  • Primary Archive Path     : ${BOLD}${CYAN}${current_path:-$SCRIPT_DIR/MIX_ARCHIVE}${NC} ${DIM}(${prim_flacs} FLACs)${NC}\n  • Primary Status           : ${status_str}\n"
+        if [ ${#extra_list[@]} -gt 0 ]; then
+            status_hdr+="  • Additional Storage Paths :\n"
+            local e_idx=1
+            for ed in "${extra_list[@]}"; do
+                local ed_stat="${RED}Not Found${NC}"
+                local ed_flacs=0
+                if [ -d "$ed" ]; then
+                    ed_flacs=$(find "$ed" -maxdepth 2 -type f -name "*.flac" 2>/dev/null | wc -l)
+                    ed_stat="${GREEN}Accessible (${ed_flacs} FLACs)${NC}"
+                fi
+                status_hdr+="      ${BOLD}${CYAN}[${e_idx}]${NC} ${WHITE}${ed}${NC} ➔ ${ed_stat}\n"
+                ((e_idx++))
+            done
+        else
+            status_hdr+="  • Additional Storage Paths : ${DIM}None configured (Single Archive Mode)${NC}\n"
+        fi
         
-        read -r -p "Enter choice [1-8, 0 to return]: " opt
+        run_interactive_submenu "CONFIGURE MIX ARCHIVE STORAGE FOLDERS (PRIMARY & MULTIPLE)" "$status_hdr" cfg_opts 0
+        local opt="$REPLY"
         case "$opt" in
             1)
                 echo ""
@@ -8282,6 +8572,7 @@ configure_mix_archive_folder() {
                 save_config_setting "MIX_ARCHIVE_CONFIGURED" "true"
                 
                 cd "$new_dir" 2>/dev/null || true
+                play_sound_effect "storage"
                 echo -e "\n${GREEN}✓ Primary Mix Archive Folder successfully configured and saved!${NC}"
                 echo -e "  Primary Location: ${BOLD}${WHITE}${new_dir}${NC}"
                 sleep 2
@@ -8343,6 +8634,7 @@ configure_mix_archive_folder() {
                     save_config_setting "MIX_ARCHIVE_DIR" "$chosen_dir"
                     save_config_setting "MIX_ARCHIVE_CONFIGURED" "true"
                     cd "$chosen_dir" 2>/dev/null || true
+                    play_sound_effect "storage"
                     echo -e "\n${GREEN}✓ Primary Mix Archive Folder successfully set to:${NC} ${BOLD}${WHITE}${chosen_dir}${NC}"
                     sleep 2
                 fi
@@ -8361,6 +8653,7 @@ configure_mix_archive_folder() {
                 save_config_setting "MIX_ARCHIVE_DIR" "$root_archive"
                 save_config_setting "MIX_ARCHIVE_CONFIGURED" "true"
                 cd "$root_archive" 2>/dev/null || true
+                play_sound_effect "storage"
                 echo -e "\n${GREEN}✓ Primary Mix Archive Folder reset to Application Root Folder:${NC} ${BOLD}${WHITE}${root_archive}${NC}"
                 sleep 2
                 ;;
@@ -8397,6 +8690,7 @@ configure_mix_archive_folder() {
                 fi
                 
                 add_extra_mix_archive_dir "$add_dir"
+                play_sound_effect "storage"
                 echo -e "\n${GREEN}✓ Additional Mix Archive Location successfully added and saved!${NC}"
                 echo -e "  Location: ${BOLD}${WHITE}${add_dir}${NC}"
                 sleep 2
@@ -8482,6 +8776,7 @@ configure_mix_archive_folder() {
                 if [[ "$sel_cand" =~ ^[0-9]+$ ]] && [ "$sel_cand" -ge 1 ] && [ "$sel_cand" -le "${#unique_candidates[@]}" ]; then
                     local chosen_extra="${unique_candidates[$((sel_cand - 1))]}"
                     add_extra_mix_archive_dir "$chosen_extra"
+                    play_sound_effect "storage"
                     echo -e "\n${GREEN}✓ Added additional mix archive location:${NC} ${chosen_extra}"
                     sleep 2
                 fi
@@ -8500,7 +8795,7 @@ configure_mix_archive_folder() {
                     sleep 1.5
                 fi
                 ;;
-            0|[qQ])
+            0|[qQ]|ESC)
                 return 0
                 ;;
         esac
@@ -8519,24 +8814,22 @@ manage_audio_conversion() {
     fi
 
     while true; do
-        clear
-        echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
-        echo -e "${BOLD}${MAGENTA}                AUDIO FORMAT & BIT DEPTH CONVERTER                    ${NC}"
-        echo -e "${BOLD}${MAGENTA}======================================================================${NC}\n"
-        echo -e "  Supported Formats: ${BOLD}MP3, Ogg Vorbis, Opus, Apple AAC, Apple ALAC, FLAC, WAV${NC}"
-        echo -e "  WAV Bit Depths:    ${BOLD}32-bit Float, 32-bit Int, 24-bit PCM, 16-bit 44.1kHz PCM${NC}\n"
-        echo -e "  ${BOLD}${CYAN} 1)${NC} Convert Single Audio File (Interactive Selection)"
-        echo -e "  ${BOLD}${CYAN} 2)${NC} Convert Current Staging WAVs (in ${PWD})"
-        echo -e "  ${BOLD}${CYAN} 3)${NC} Convert All WAVs in CONVERTED_WAV_FILES/"
-        echo -e "  ${BOLD}${CYAN} 4)${NC} Convert FLAC Outputs to MP3 (320kbps CBR) & Apple AAC"
-        echo -e "  ${BOLD}${CYAN} 5)${NC} WAV-to-WAV Bit Depth Conversion (16/24/32-bit Float)"
-        echo -e "  ${BOLD}${CYAN} 6)${NC} Split FLAC File into Parts (${GREEN}Split_FLAC_File.sh${NC})"
-        echo -e "  ${BOLD}${CYAN} 7)${NC} EBU R128 Loudness Scanner & True-Peak Analyzer (${GREEN}master_audio_loudness.py${NC})"
-        echo -e "  ${BOLD}${CYAN} 8)${NC} Master & Normalize Loudness (${GREEN}-14 LUFS Streaming / -16 LUFS Podcast / -23 LUFS${NC})"
-        echo -e "  ${BOLD}${CYAN} 9)${NC} Standard Red Book CUE Sheet Generator & Audio Splitter (${GREEN}generate_cue_sheet.py${NC})"
-        echo -e "  ${BOLD}${CYAN}10)${NC} Launch Full Interactive Converter CLI (${GREEN}convert_audio_format.sh${NC})"
-        echo -e "  ${BOLD}${CYAN} 0)${NC} Return to Main Menu\n"
-        read -r -p "Enter choice [0-10]: " conv_choice
+        local conv_opts=(
+            "1|Convert Single Audio File|(Interactive Selection & Auto-Split Prompt)"
+            "2|Convert Current Staging WAV / OGG Files|(in ${PWD})"
+            "3|Convert All WAV / OGG in CONVERTED_WAV_FILES/|(Archive batch)"
+            "4|Convert FLAC Outputs to MP3 & OGG Vorbis|(320kbps CBR / Vorbis q8)"
+            "5|WAV-to-WAV Bit Depth Conversion|(16/24/32-bit Float)"
+            "6|Split Audio File into Parts & Generate Spek Spectrograms|(FLAC, MP3, OGG, WAV)"
+            "7|EBU R128 Loudness Scanner & True-Peak Analyzer|(master_audio_loudness.py)"
+            "8|Master & Normalize Loudness|(-14 LUFS Streaming / -16 LUFS Podcast / -23 LUFS)"
+            "9|Standard Red Book CUE Sheet Generator & Audio Splitter|(generate_cue_sheet.py)"
+            "10|Launch Full Interactive Converter CLI|(convert_audio_format.sh)"
+            "0|Return to Main Menu|(or Esc / q)"
+        )
+        local conv_hdr="  Supported Formats: ${BOLD}FLAC, MP3, Ogg Vorbis, Opus, Apple AAC, WAV${NC}\n  WAV Bit Depths:    ${BOLD}32-bit Float, 32-bit Int, 24-bit PCM, 16-bit 44.1kHz PCM${NC}\n"
+        run_interactive_submenu "AUDIO FORMAT & BIT DEPTH CONVERTER" "$conv_hdr" conv_opts 0
+        local conv_choice="$REPLY"
 
         case "$conv_choice" in
             1)
@@ -8591,7 +8884,7 @@ manage_audio_conversion() {
                 bash "$script"
                 press_enter
                 ;;
-            0|8|[qQ]|[eE][xX][iI][tT])
+            0|[qQ]|[eE][xX][iI][tT]|ESC)
                 return 0
                 ;;
             *)
@@ -10865,21 +11158,17 @@ manage_cloud_backup_suite() {
 
 manage_integrity_and_verification() {
     while true; do
-        clear
-        echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
-        echo -e "${BOLD}${MAGENTA}    AUDIO INTEGRITY, BIT-ROT SCRUB & FLAC VERIFICATION SUITE          ${NC}"
-        echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
-        echo ""
-        echo -e "${BOLD}Select an operation:${NC}"
-        echo -e "  ${BOLD}${CYAN}1)${NC} Manage Audio Integrity Checksums (${GREEN}SHA-256 Manifest & Verification${NC})"
-        echo -e "  ${BOLD}${CYAN}2)${NC} Verify FLAC Files for Integrity & Corruption (${GREEN}Verify_FLAC_Files.sh${NC})"
-        echo -e "  ${BOLD}${CYAN}3)${NC} Lossless Legitimacy & Spectral Cutoff Inspector (${GREEN}Detect Fake FLACs / MP3 Transcodes${NC})"
-        echo -e "  ${BOLD}${CYAN}4)${NC} Run Non-Destructive Bit-Rot Scrub on All Mix Archives (${GREEN}scrub_mix_archive.sh${NC})"
-        echo -e "  ${BOLD}${CYAN}5)${NC} Automated Background Bit-Rot Scrub Timer (${GREEN}Systemd User Timer${NC})"
-        echo -e "  ${BOLD}${CYAN}6)${NC} View Bit-Rot Scrub History & Logs (${GREEN}VERIFY_LOGS${NC})"
-        echo -e "  ${BOLD}${CYAN}0)${NC} Return to Main Menu"
-        echo ""
-        read -r -p "Enter choice [0-6]: " aiv_choice
+        local opts=(
+            "1|Manage Audio Integrity Checksums|(SHA-256 Manifest & Verification)"
+            "2|Verify FLAC Files for Integrity & Corruption|(Verify_FLAC_Files.sh)"
+            "3|Lossless Legitimacy & Spectral Cutoff Inspector|(Detect Fake FLACs / MP3 Transcodes)"
+            "4|Run Non-Destructive Bit-Rot Scrub on All Mix Archives|(scrub_mix_archive.sh)"
+            "5|Automated Background Bit-Rot Scrub Timer|(Systemd User Timer)"
+            "6|View Bit-Rot Scrub History & Logs|(VERIFY_LOGS)"
+            "0|Return to Main Menu|(or Esc / q)"
+        )
+        run_interactive_submenu "AUDIO INTEGRITY, BIT-ROT SCRUB & FLAC VERIFICATION" "" opts 0
+        local aiv_choice="$REPLY"
         case "$aiv_choice" in
             1)
                 manage_audio_checksums
@@ -10905,10 +11194,13 @@ manage_integrity_and_verification() {
             5)
                 echo -e "\n${BOLD}${MAGENTA}--- Automated Background Bit-Rot Scrub Timer (Systemd) ---${NC}"
                 run_sub_script "scrub_mix_archive.sh" --timer-status
-                echo -e "  ${BOLD}${CYAN}1)${NC} Install & Enable Weekly Scrub Timer (Sundays 03:00 AM)"
-                echo -e "  ${BOLD}${CYAN}2)${NC} Disable & Uninstall Scrub Timer"
-                echo -e "  ${BOLD}${CYAN}0)${NC} Back"
-                read -r -p "Enter choice [0-2]: " t_choice
+                local t_opts=(
+                    "1|Install & Enable Weekly Scrub Timer|(Sundays 03:00 AM)"
+                    "2|Disable & Uninstall Scrub Timer|"
+                    "0|Back|(or Esc)"
+                )
+                run_interactive_submenu "Automated Bit-Rot Scrub Timer" "" t_opts 0
+                local t_choice="$REPLY"
                 case "$t_choice" in
                     1) run_sub_script "scrub_mix_archive.sh" --install-timer ;;
                     2) run_sub_script "scrub_mix_archive.sh" --uninstall-timer ;;
@@ -10919,7 +11211,7 @@ manage_integrity_and_verification() {
                 run_sub_script "scrub_mix_archive.sh" --logs
                 press_enter
                 ;;
-            0|[qQ]|[eE][xX][iI][tT])
+            0|[qQ]|[eE][xX][iI][tT]|ESC)
                 return 0
                 ;;
             *)
@@ -10932,29 +11224,26 @@ manage_integrity_and_verification() {
 
 manage_storage_and_archive_config() {
     while true; do
-        clear
-        echo -e "${BOLD}${MAGENTA}====================================================${NC}"
-        echo -e "${BOLD}${MAGENTA}     STORAGE MANAGEMENT & ARCHIVE CONFIGURATION     ${NC}"
-        echo -e "${BOLD}${MAGENTA}====================================================${NC}"
         local archive_disp=""
         if is_mix_archive_configured; then
             archive_disp="${GREEN}${MIX_ARCHIVE_DIR}${NC}"
         else
             archive_disp="${RED}Not Configured${NC} ${DIM}(Root: ${SCRIPT_DIR}/MIX_ARCHIVE)${NC}"
         fi
-        echo -e "  Primary Archive : ${archive_disp}"
+        local extra_disp=""
         if [ -n "${EXTRA_MIX_ARCHIVE_DIRS:-}" ]; then
-            echo -e "  Extra Archives  : ${CYAN}${EXTRA_MIX_ARCHIVE_DIRS}${NC}"
+            extra_disp="\n  Extra Archives  : ${CYAN}${EXTRA_MIX_ARCHIVE_DIRS}${NC}"
         fi
-        echo ""
-        echo -e "${BOLD}Select an operation:${NC}"
-        echo -e "  ${BOLD}${CYAN}1)${NC} Show Mix Storage Drive Space Remaining (${GREEN}All Configured Mix Drives${NC})"
-        echo -e "  ${BOLD}${CYAN}2)${NC} Show All Attached Drives Space Remaining (${GREEN}Get_All_Drive_Space.sh${NC})"
-        echo -e "  ${BOLD}${CYAN}3)${NC} Refresh Archive Status & File Counts (${GREEN}Rescan WAVs, FLACs & Tracklists${NC})"
-        echo -e "  ${BOLD}${CYAN}4)${NC} Configure Mix Archive Storage Locations (${GREEN}Option 13: Primary & Multiple Folders${NC})"
-        echo -e "  ${BOLD}${CYAN}0)${NC} Return to Main Menu"
-        echo ""
-        read -r -p "Enter choice [0-4, or 13]: " stg_choice
+        local stg_hdr="  Primary Archive : ${archive_disp}${extra_disp}\n"
+        local opts=(
+            "1|Show Mix Storage Drive Space Remaining|(All Configured Mix Drives)"
+            "2|Show All Attached Drives Space Remaining|(Get_All_Drive_Space.sh)"
+            "3|Refresh Archive Status & File Counts|(Rescan WAVs, FLACs & Tracklists)"
+            "4|Configure Mix Archive Storage Locations|(Option 13: Primary & Multiple Folders)"
+            "0|Return to Main Menu|(or Esc / q)"
+        )
+        run_interactive_submenu "STORAGE MANAGEMENT & ARCHIVE CONFIGURATION" "$stg_hdr" opts 0
+        local stg_choice="$REPLY"
         case "$stg_choice" in
             1)
                 show_mix_drive_space
@@ -10971,7 +11260,7 @@ manage_storage_and_archive_config() {
             4|13)
                 configure_mix_archive_folder
                 ;;
-            0|[qQ]|[eE][xX][iI][tT])
+            0|[qQ]|[eE][xX][iI][tT]|ESC)
                 return 0
                 ;;
             *)
@@ -10984,20 +11273,16 @@ manage_storage_and_archive_config() {
 
 manage_tracklist_suite() {
     while true; do
-        clear
-        echo -e "${BOLD}${MAGENTA}====================================================${NC}"
-        echo -e "${BOLD}${MAGENTA}   TRACKLIST MANAGEMENT, SCANNING & METADATA SUITE  ${NC}"
-        echo -e "${BOLD}${MAGENTA}====================================================${NC}"
-        echo ""
-        echo -e "${BOLD}Select an operation:${NC}"
-        echo -e "  ${BOLD}${CYAN}1)${NC} Tracklist Management Suite (${GREEN}Browse, Search, View, Export HTML & PDF${NC})"
-        echo -e "  ${BOLD}${CYAN}2)${NC} Search for Mix & Auto-Play with Live Tracklist View (${GREEN}cliamp Window${NC})"
-        echo -e "  ${BOLD}${CYAN}3)${NC} Scan & Generate Missing Tracklists (${GREEN}Check_Find_Tracklists.sh${NC})"
-        echo -e "  ${BOLD}${CYAN}4)${NC} Generate Master Tracklist HTML Index (${GREEN}Generate_Master_Tracklist.sh${NC})"
-        echo -e "  ${BOLD}${CYAN}5)${NC} Launch MusicBrainz Picard Meta Tag Editor (${GREEN}Auto-install if missing${NC})"
-        echo -e "  ${BOLD}${CYAN}0)${NC} Return to Main Menu"
-        echo ""
-        read -r -p "Enter choice [0-5]: " tl_choice
+        local opts=(
+            "1|Tracklist Management Suite|(Browse, Search, View, Export HTML & PDF)"
+            "2|Search for Mix & Auto-Play with Live Tracklist View|(cliamp Window)"
+            "3|Scan & Generate Missing Tracklists|(Check_Find_Tracklists.sh)"
+            "4|Generate Master Tracklist HTML Index|(Generate_Master_Tracklist.sh)"
+            "5|Launch MusicBrainz Picard Meta Tag Editor|(Auto-install if missing)"
+            "0|Return to Main Menu|(or Esc / q)"
+        )
+        run_interactive_submenu "TRACKLIST MANAGEMENT, SCANNING & METADATA SUITE" "" opts 0
+        local tl_choice="$REPLY"
         case "$tl_choice" in
             1)
                 manage_tracklists
@@ -11022,7 +11307,7 @@ manage_tracklist_suite() {
             5)
                 launch_or_install_picard
                 ;;
-            0|[qQ]|[eE][xX][iI][tT])
+            0|[qQ]|[eE][xX][iI][tT]|ESC)
                 return 0
                 ;;
             *)
@@ -11049,26 +11334,20 @@ generate_archive_folder_playlists_menu() {
 
 manage_playlists_and_history() {
     while true; do
-        clear
-        echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
-        echo -e "${BOLD}${MAGENTA}            CUSTOM PLAYLISTS & TRAKTOR HISTORY SUITE                  ${NC}"
-        echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
-        echo ""
-        echo -e "${BOLD}Select an operation:${NC}"
-        echo -e "  ${BOLD}${CYAN}1)${NC} Custom Mix Playlists Suite (${GREEN}.m3u / .m3u8 / .xspf - Create, Edit & Launch${NC})"
-        echo -e "  ${BOLD}${CYAN}2)${NC} Generate Mix Archive Folder Playlists (${GREEN}.m3u / .m3u8 / .xspf ➔ PLAYLISTS_GENERATED${NC})"
         local t_ver
         t_ver="$(get_traktor_version_mac 2>/dev/null | tr -d '\r\n')"
         t_ver="${t_ver:-3}"
-        if [ -n "$t_ver" ] && [ "$t_ver" != "3" ]; then
-            echo -e "  ${BOLD}${CYAN}3)${NC} Generate Playlist from History Files on Traktor 3 (${GREEN}v${t_ver} Key Sorted / Decks Ready${NC})"
-        else
-            echo -e "  ${BOLD}${CYAN}3)${NC} Generate Playlist from History Files on Traktor 3 (${GREEN}Key Sorted / Decks Ready${NC})"
-        fi
-        echo -e "  ${BOLD}${CYAN}4)${NC} Listen to Your Top 5 Tracks Right Now (Special Option) $(get_top_5_status_badge)"
-        echo -e "  ${BOLD}${CYAN}0)${NC} Return to Main Menu"
-        echo ""
-        read -r -p "Enter choice [0-4]: " ph_choice
+        local tr_lbl="Generate Playlist from History Files on Traktor 3"
+        [ -n "$t_ver" ] && [ "$t_ver" != "3" ] && tr_lbl="Generate Playlist from History Files on Traktor ${t_ver}"
+        local opts=(
+            "1|Custom Mix Playlists Suite|(.m3u / .m3u8 / .xspf - Create, Edit & Launch)"
+            "2|Generate Mix Archive Folder Playlists|(.m3u / .m3u8 / .xspf ➔ PLAYLISTS_GENERATED)"
+            "3|${tr_lbl}|(Key Sorted / Decks Ready)"
+            "4|Listen to Your Top 5 Tracks Right Now|$(get_top_5_status_badge)"
+            "0|Return to Main Menu|(or Esc / q)"
+        )
+        run_interactive_submenu "CUSTOM PLAYLISTS & TRAKTOR HISTORY SUITE" "" opts 0
+        local ph_choice="$REPLY"
         case "$ph_choice" in
             1)
                 manage_playlists_menu
@@ -11082,7 +11361,7 @@ manage_playlists_and_history() {
             4|top5|top-5|top|special)
                 manage_top_5_tracks
                 ;;
-            0|[qQ]|[eE][xX][iI][tT])
+            0|[qQ]|[eE][xX][iI][tT]|ESC)
                 return 0
                 ;;
             *)
@@ -11121,17 +11400,13 @@ manage_top_5_tracks() {
 
 manage_daws_suite() {
     while true; do
-        clear
-        echo -e "${BOLD}${MAGENTA}====================================================${NC}"
-        echo -e "${BOLD}${MAGENTA}       DIGITAL AUDIO WORKSTATIONS (DAWS) SUITE      ${NC}"
-        echo -e "${BOLD}${MAGENTA}====================================================${NC}"
-        echo ""
-        echo -e "${BOLD}Select an operation:${NC}"
-        echo -e "  ${BOLD}${CYAN}1)${NC} Digital Audio Workstations (DAWs) Menu (${GREEN}Reaper, Logic Pro, FL Studio, Traktor, Ardour, Bitwig...${NC})"
-        echo -e "  ${BOLD}${CYAN}2)${NC} Open Mix WAV/FLAC Audio File in DAW (${GREEN}Direct Mix Search/Select & Dispatch${NC})"
-        echo -e "  ${BOLD}${CYAN}0)${NC} Return to Main Menu"
-        echo ""
-        read -r -p "Enter choice [0-2]: " daw_choice
+        local opts=(
+            "1|Digital Audio Workstations (DAWs) Menu|(Reaper, Logic Pro, FL Studio, Traktor, Ardour, Bitwig...)"
+            "2|Open Mix WAV/FLAC Audio File in DAW|(Direct Mix Search/Select & Dispatch)"
+            "0|Return to Main Menu|(or Esc / q)"
+        )
+        run_interactive_submenu "DIGITAL AUDIO WORKSTATIONS (DAWS) SUITE" "" opts 0
+        local daw_choice="$REPLY"
         case "$daw_choice" in
             1)
                 manage_daws
@@ -11139,7 +11414,7 @@ manage_daws_suite() {
             2)
                 open_mix_in_daw
                 ;;
-            0|[qQ]|[eE][xX][iI][tT])
+            0|[qQ]|[eE][xX][iI][tT]|ESC)
                 return 0
                 ;;
             *)
@@ -11152,17 +11427,13 @@ manage_daws_suite() {
 
 manage_studio_hardware_and_volume() {
     while true; do
-        clear
-        echo -e "${BOLD}${MAGENTA}====================================================${NC}"
-        echo -e "${BOLD}${MAGENTA}   STUDIO HARDWARE, INTERFACES & VOLUME CONTROL     ${NC}"
-        echo -e "${BOLD}${MAGENTA}====================================================${NC}"
-        echo ""
-        echo -e "${BOLD}Select an operation:${NC}"
-        echo -e "  ${BOLD}${CYAN}1)${NC} Studio Hardware & Software Inspector (${GREEN}PipeWire, ALSA, DAWs, MIDI Controllers & Surfaces${NC})"
-        echo -e "  ${BOLD}${CYAN}2)${NC} Toggle Audio Mute / Unmute & Master Volume Control (${GREEN}Instant PipeWire/ALSA Mute${NC})"
-        echo -e "  ${BOLD}${CYAN}0)${NC} Return to Main Menu"
-        echo ""
-        read -r -p "Enter choice [0-2]: " shv_choice
+        local opts=(
+            "1|Studio Hardware & Software Inspector|(PipeWire, ALSA, DAWs, MIDI Controllers & Surfaces)"
+            "2|Toggle Audio Mute / Unmute & Master Volume Control|(Instant PipeWire/ALSA Mute)"
+            "0|Return to Main Menu|(or Esc / q)"
+        )
+        run_interactive_submenu "STUDIO HARDWARE, INTERFACES & VOLUME CONTROL" "" opts 0
+        local shv_choice="$REPLY"
         case "$shv_choice" in
             1)
                 inspect_audio_studio_menu
@@ -11170,7 +11441,7 @@ manage_studio_hardware_and_volume() {
             2)
                 toggle_audio_mute
                 ;;
-            0|[qQ]|[eE][xX][iI][tT])
+            0|[qQ]|[eE][xX][iI][tT]|ESC)
                 return 0
                 ;;
             *)
@@ -11184,18 +11455,13 @@ manage_studio_hardware_and_volume() {
 # ─── [ RUN ANY DESKTOP SHORTCUTS - LINUX (MANUAL MODE) ] ─────────────────────
 manage_desktop_shortcuts() {
     while true; do
-        clear
-        echo -e "${BOLD}${MAGENTA}========================================================================${NC}"
-        echo -e "${BOLD}${MAGENTA}   🖥️  RUN ANY DESKTOP SHORTCUTS — LINUX (KDE Plasma / kioclient)      ${NC}"
-        echo -e "${BOLD}${MAGENTA}========================================================================${NC}"
-        echo ""
-        echo -e "  ${DIM}Launch and automate Desktop Shortcuts on KDE Plasma (Linux).${NC}"
-        echo ""
-        echo -e "  ${BOLD}${CYAN}1)${NC} Run Any Desktop Shortcut Manually ${DIM}(Games, Audio, Files, Tools, AI Servers)${NC}"
-        echo -e "  ${BOLD}${CYAN}2)${NC} Generate Keyboard Shortcut for a Desktop Shortcut ${DIM}(e.g. Ctrl+Alt+Enter)${NC}"
-        echo -e "  ${BOLD}${CYAN}0)${NC} Return to Main Menu"
-        echo ""
-        read -r -p "Enter choice [0-2]: " dsk_top_choice
+        local opts=(
+            "1|Run Any Desktop Shortcut Manually|(Games, Audio, Files, Tools, AI Servers)"
+            "2|Generate Keyboard Shortcut for a Desktop Shortcut|(e.g. Ctrl+Alt+Enter)"
+            "0|Return to Main Menu|(or Esc / q)"
+        )
+        run_interactive_submenu "RUN ANY DESKTOP SHORTCUTS — LINUX (KDE Plasma)" "  Launch and automate Desktop Shortcuts on KDE Plasma (Linux).\n" opts 0
+        local dsk_top_choice="$REPLY"
         case "$dsk_top_choice" in
             1)
                 _run_desktop_shortcut_manual
@@ -11203,7 +11469,7 @@ manage_desktop_shortcuts() {
             2)
                 _bind_desktop_shortcut_keyboard
                 ;;
-            0|[qQ]|[eE][xX][iI][tT])
+            0|[qQ]|[eE][xX][iI][tT]|ESC)
                 return 0
                 ;;
             *)
@@ -11681,22 +11947,18 @@ PYEOF
 
 manage_visual_media_suite() {
     while true; do
-        clear
-        echo -e "${BOLD}${MAGENTA}====================================================${NC}"
-        echo -e "${BOLD}${MAGENTA}   VISUAL MEDIA, COVER ART & COMPANION VIDEO SUITE  ${NC}"
-        echo -e "${BOLD}${MAGENTA}====================================================${NC}"
-        echo ""
-        echo -e "${BOLD}Select an operation:${NC}"
-        echo -e "  ${BOLD}${CYAN}1)${NC} Visual, Video & Art Launchers Suite (${GREEN}NFT Videos, Video Player, GIMP, Electric Sheep, GeeXLab${NC})"
-        echo -e "  ${BOLD}${CYAN}2)${NC} Cut or Split Video File (.mp4 / .mkv) (${GREEN}Cut_Video.sh / Split_Video_File.sh${NC})"
-        echo -e "  ${BOLD}${CYAN}3)${NC} Convert Cover Art & Resize / Byte Target (${GREEN}1MB Podcast, WebP/JPG/PNG, Sizes${NC})"
-        echo -e "  ${BOLD}${CYAN}4)${NC} View Cover Art by Mix Number (${GREEN}External Viewer${NC})"
-        echo -e "  ${BOLD}${CYAN}5)${NC} Procedural Gradient .PPM Cover Art Generator (${GREEN}Netpbm P6 Binary, Palettes${NC})"
-        echo -e "  ${BOLD}${CYAN}6)${NC} Synchronized Mix-Video Companion Player Daemon (${GREEN}Auto-play Video on Mix Start, Close on Stop${NC})"
-        echo -e "  ${BOLD}${CYAN}7)${NC} Download YouTube Videos & Shorts in 1080p (${GREEN}Single URL, 1/3/6 Mo, All Videos/Shorts - MP_YouTube_Channel_Downloader.sh${NC})"
-        echo -e "  ${BOLD}${CYAN}0)${NC} Return to Main Menu"
-        echo ""
-        read -r -p "Enter choice [0-7]: " vm_choice
+        local opts=(
+            "1|Visual, Video & Art Launchers Suite|(NFT Videos, Video Player, GIMP, Electric Sheep, GeeXLab)"
+            "2|Cut or Split Video File (.mp4 / .mkv)|(Cut_Video.sh / Split_Video_File.sh)"
+            "3|Convert Cover Art & Resize / Byte Target|(1MB Podcast, WebP/JPG/PNG, Sizes)"
+            "4|View Cover Art by Mix Number|(External Viewer)"
+            "5|Procedural Gradient .PPM Cover Art Generator|(Netpbm P6 Binary, Palettes)"
+            "6|Synchronized Mix-Video Companion Player Daemon|(Auto-play Video on Mix Start, Close on Stop)"
+            "7|Download YouTube Videos & Shorts in 1080p|(Single URL, 1/3/6 Mo, All Videos/Shorts)"
+            "0|Return to Main Menu|(or Esc / q)"
+        )
+        run_interactive_submenu "VISUAL MEDIA, COVER ART & COMPANION VIDEO SUITE" "" opts 0
+        local vm_choice="$REPLY"
         case "$vm_choice" in
             1)
                 manage_visual_media_launchers
@@ -11721,7 +11983,7 @@ manage_visual_media_suite() {
                 run_sub_script "MP_YouTube_Channel_Downloader.sh"
                 press_enter
                 ;;
-            0|[qQ]|[eE][xX][iI][tT])
+            0|[qQ]|[eE][xX][iI][tT]|ESC)
                 return 0
                 ;;
             *)
@@ -11734,18 +11996,14 @@ manage_visual_media_suite() {
 
 manage_promo_and_syndication() {
     while true; do
-        clear
-        echo -e "${BOLD}${MAGENTA}====================================================${NC}"
-        echo -e "${BOLD}${MAGENTA}    PROMOTIONAL OUTREACH, SYNDICATION & SHOPPING    ${NC}"
-        echo -e "${BOLD}${MAGENTA}====================================================${NC}"
-        echo ""
-        echo -e "${BOLD}Select an operation:${NC}"
-        echo -e "  ${BOLD}${CYAN}1)${NC} Promotional & Publisher Outreach Emails (${GREEN}Promoters, Publishers, Radio, Labels${NC})"
-        echo -e "  ${BOLD}${CYAN}2)${NC} Mix Publishing Schedule & Multi-Platform Syndication (${GREEN}Apple Podcasts, Spotify, YouTube, SoundCloud, RSS, iCal${NC})"
-        echo -e "  ${BOLD}${CYAN}3)${NC} Go Shopping for New Music (${GREEN}Beatport, Apple Music & Bandcamp Tabs${NC})"
-        echo -e "  ${BOLD}${CYAN}0)${NC} Return to Main Menu"
-        echo ""
-        read -r -p "Enter choice [0-3]: " ps_choice
+        local opts=(
+            "1|Promotional & Publisher Outreach Emails|(Promoters, Publishers, Radio, Labels)"
+            "2|Mix Publishing Schedule & Multi-Platform Syndication|(Apple Podcasts, Spotify, YouTube, SoundCloud, RSS, iCal)"
+            "3|Go Shopping for New Music|(Beatport, Apple Music & Bandcamp Tabs)"
+            "0|Return to Main Menu|(or Esc / q)"
+        )
+        run_interactive_submenu "PROMOTIONAL OUTREACH, SYNDICATION & SHOPPING" "" opts 0
+        local ps_choice="$REPLY"
         case "$ps_choice" in
             1)
                 manage_promo_outreach
@@ -11756,7 +12014,7 @@ manage_promo_and_syndication() {
             3)
                 shop_for_new_music_menu
                 ;;
-            0|[qQ]|[eE][xX][iI][tT])
+            0|[qQ]|[eE][xX][iI][tT]|ESC)
                 return 0
                 ;;
             *)
@@ -11781,19 +12039,15 @@ manage_congen() {
 
 manage_network_and_internet() {
     while true; do
-        clear
-        echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
-        echo -e "${BOLD}${MAGENTA}       NETWORK SERVICES, CONGEN & INTERNET ACCESS CONTROL             ${NC}"
-        echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
-        echo ""
-        echo -e "${BOLD}Select an operation:${NC}"
-        echo -e "  ${BOLD}${CYAN}1)${NC} Manage Network Services (${GREEN}SSH, Samba, FTP - Start, Stop, Restart All${NC})"
-        echo -e "  ${BOLD}${CYAN}2)${NC} Congen - KDE Connect Commands Generator & Remote Control (${GREEN}Mobile Phone Commands${NC})"
-        echo -e "  ${BOLD}${CYAN}3)${NC} Block Internet Access (${GREEN}LAN Only - block-internet${NC})"
-        echo -e "  ${BOLD}${CYAN}4)${NC} Restore / Unblock Internet Access (${GREEN}unblock-internet${NC})"
-        echo -e "  ${BOLD}${CYAN}0)${NC} Return to Main Menu"
-        echo ""
-        read -r -p "Enter choice [0-4]: " net_choice
+        local opts=(
+            "1|Manage Network Services|(SSH, Samba, FTP - Start, Stop, Restart All)"
+            "2|Congen - KDE Connect Commands Generator & Remote Control|(Mobile Phone Commands)"
+            "3|Block Internet Access|(LAN Only - block-internet)"
+            "4|Restore / Unblock Internet Access|(unblock-internet)"
+            "0|Return to Main Menu|(or Esc / q)"
+        )
+        run_interactive_submenu "NETWORK SERVICES, CONGEN & INTERNET ACCESS CONTROL" "" opts 0
+        local net_choice="$REPLY"
         case "$net_choice" in
             1)
                 manage_network_services
@@ -11807,7 +12061,7 @@ manage_network_and_internet() {
             4)
                 unblock_internet
                 ;;
-            0|[qQ]|[eE][xX][iI][tT])
+            0|[qQ]|[eE][xX][iI][tT]|ESC)
                 return 0
                 ;;
             *)
@@ -11820,26 +12074,25 @@ manage_network_and_internet() {
 
 manage_desktop_and_display() {
     while true; do
-        clear
-        echo -e "${BOLD}${MAGENTA}====================================================${NC}"
-        echo -e "${BOLD}${MAGENTA}    DESKTOP DISPLAY SETTINGS & APP CONTROL          ${NC}"
-        echo -e "${BOLD}${MAGENTA}====================================================${NC}"
-        echo ""
-        echo -e "${BOLD}Select an operation:${NC}"
+        local d1="Switch Desktop to Plasma Wayland"
+        local d1_info="(HDR Gaming on Hisense & Steam BPM)"
+        local d2="Switch Desktop to Plasma X11"
+        local d2_info="(Standard Workstation)"
         if [ "$OS_TYPE" = "macos" ]; then
-            echo -e "  ${BOLD}${CYAN}1)${NC} Open macOS Display Settings (${GREEN}Displays, Arrangement & HDR${NC})"
-            echo -e "  ${BOLD}${CYAN}2)${NC} Open macOS Audio MIDI Setup (${GREEN}Sample Rates & Output Devices${NC})"
+            d1="Open macOS Display Settings"; d1_info="(Displays, Arrangement & HDR)"
+            d2="Open macOS Audio MIDI Setup"; d2_info="(Sample Rates & Output Devices)"
         elif [ "$OS_TYPE" = "windows" ] || [ "$OS_TYPE" = "wsl" ]; then
-            echo -e "  ${BOLD}${CYAN}1)${NC} Open Windows Display Settings (${GREEN}ms-settings:display - HDR & Scale${NC})"
-            echo -e "  ${BOLD}${CYAN}2)${NC} Open Windows Sound Settings (${GREEN}control.exe mmsys.cpl${NC})"
-        else
-            echo -e "  ${BOLD}${CYAN}1)${NC} Switch Desktop to Plasma Wayland (${GREEN}HDR Gaming on Hisense & Steam BPM${NC})"
-            echo -e "  ${BOLD}${CYAN}2)${NC} Switch Desktop to Plasma X11 (${GREEN}Standard Workstation${NC})"
+            d1="Open Windows Display Settings"; d1_info="(ms-settings:display - HDR & Scale)"
+            d2="Open Windows Sound Settings"; d2_info="(control.exe mmsys.cpl)"
         fi
-        echo -e "  ${BOLD}${CYAN}3)${NC} Close All Desktop Applications (${GREEN}Keep Manager Open${NC})"
-        echo -e "  ${BOLD}${CYAN}0)${NC} Return to Main Menu"
-        echo ""
-        read -r -p "Enter choice [0-3]: " dsk_choice
+        local opts=(
+            "1|${d1}|${d1_info}"
+            "2|${d2}|${d2_info}"
+            "3|Close All Desktop Applications|(Keep Manager Open)"
+            "0|Return to Main Menu|(or Esc / q)"
+        )
+        run_interactive_submenu "DESKTOP DISPLAY SETTINGS & APP CONTROL" "" opts 0
+        local dsk_choice="$REPLY"
         case "$dsk_choice" in
             1)
                 if [ "$OS_TYPE" = "macos" ]; then
@@ -11862,7 +12115,7 @@ manage_desktop_and_display() {
             3)
                 close_all_desktop_apps
                 ;;
-            0|[qQ]|[eE][xX][iI][tT])
+            0|[qQ]|[eE][xX][iI][tT]|ESC)
                 return 0
                 ;;
             *)
@@ -11875,20 +12128,16 @@ manage_desktop_and_display() {
 
 manage_ai_and_servers() {
     while true; do
-        clear
-        echo -e "${BOLD}${MAGENTA}====================================================${NC}"
-        echo -e "${BOLD}${MAGENTA}      AI ASSISTANT & LOCAL LLM SERVERS SUITE        ${NC}"
-        echo -e "${BOLD}${MAGENTA}====================================================${NC}"
-        echo ""
-        echo -e "${BOLD}Select an operation:${NC}"
-        echo -e "  ${BOLD}${CYAN}1)${NC} Launch AI Assistant / Models (${GREEN}Claude Opus, Claude Sonnet, GPT-OSS, Gemini, Ollama, DeepSeek${NC})"
-        echo -e "  ${BOLD}${CYAN}2)${NC} Manage Ollama Server (${GREEN}ollama serve in distrobox, Chat, Models, Logs :11434${NC})"
-        echo -e "  ${BOLD}${CYAN}3)${NC} Manage DeepSeek Harness Server (${GREEN}dsh-mobile - Start, Stop, Mobile Web UI :3080${NC})"
-        echo -e "  ${BOLD}${CYAN}4)${NC} Manage WAN2GP Server (${GREEN}Start, Stop, Restart in Profile 2 or 4.5${NC})"
-        echo -e "  ${BOLD}${CYAN}5)${NC} Manage Beszel Server & Monitoring Agent (${GREEN}Start Hub & Agent, Status, Dashboard :8090${NC})"
-        echo -e "  ${BOLD}${CYAN}0)${NC} Return to Main Menu"
-        echo ""
-        read -r -p "Enter choice [0-5]: " ai_choice
+        local opts=(
+            "1|Launch AI Assistant / Models|(Claude Opus, Claude Sonnet, GPT-OSS, Gemini, Ollama, DeepSeek)"
+            "2|Manage Ollama Server|(ollama serve in distrobox, Chat, Models, Logs :11434)"
+            "3|Manage DeepSeek Harness Server|(dsh-mobile - Start, Stop, Mobile Web UI :3080)"
+            "4|Manage WAN2GP Server|(Start, Stop, Restart in Profile 2 or 4.5)"
+            "5|Manage Beszel Server & Monitoring Agent|(Start Hub & Agent, Status, Dashboard :8090)"
+            "0|Return to Main Menu|(or Esc / q)"
+        )
+        run_interactive_submenu "AI ASSISTANT & LOCAL LLM SERVERS SUITE" "" opts 0
+        local ai_choice="$REPLY"
         case "$ai_choice" in
             1)
                 manage_ai_models
@@ -11905,7 +12154,7 @@ manage_ai_and_servers() {
             5)
                 manage_beszel
                 ;;
-            0|[qQ]|[eE][xX][iI][tT])
+            0|[qQ]|[eE][xX][iI][tT]|ESC)
                 return 0
                 ;;
             *)
@@ -11918,17 +12167,13 @@ manage_ai_and_servers() {
 
 manage_motd_and_tools() {
     while true; do
-        clear
-        echo -e "${BOLD}${MAGENTA}====================================================${NC}"
-        echo -e "${BOLD}${MAGENTA}        MOTD BANNER MANAGER & SYSTEM UTILITIES      ${NC}"
-        echo -e "${BOLD}${MAGENTA}====================================================${NC}"
-        echo ""
-        echo -e "${BOLD}Select an operation:${NC}"
-        echo -e "  ${BOLD}${CYAN}1)${NC} Dynamic System MOTD Banner Manager (${GREEN}Last 3 Mixes, Date/Time, Size, Format & Specs${NC})"
-        echo -e "  ${BOLD}${CYAN}2)${NC} Burn ISO Image to USB Drive (${GREEN}dd / diskutil with safety checks${NC})"
-        echo -e "  ${BOLD}${CYAN}0)${NC} Return to Main Menu"
-        echo ""
-        read -r -p "Enter choice [0-2]: " mt_choice
+        local opts=(
+            "1|Dynamic System MOTD Banner Manager|(Last 3 Mixes, Date/Time, Size, Format & Specs)"
+            "2|Burn ISO Image to USB Drive|(dd / diskutil with safety checks)"
+            "0|Return to Main Menu|(or Esc / q)"
+        )
+        run_interactive_submenu "MOTD BANNER MANAGER & SYSTEM UTILITIES" "" opts 0
+        local mt_choice="$REPLY"
         case "$mt_choice" in
             1)
                 manage_system_motd_menu
@@ -11936,7 +12181,7 @@ manage_motd_and_tools() {
             2)
                 burn_iso_to_usb
                 ;;
-            0|[qQ]|[eE][xX][iI][tT])
+            0|[qQ]|[eE][xX][iI][tT]|ESC)
                 return 0
                 ;;
             *)
@@ -11949,27 +12194,23 @@ manage_motd_and_tools() {
 
 manage_settings_and_system() {
     while true; do
-        clear
-        echo -e "${BOLD}${MAGENTA}====================================================${NC}"
-        echo -e "${BOLD}${MAGENTA}       MANAGER SETTINGS, THEMES & SYSTEM SHELL      ${NC}"
-        echo -e "${BOLD}${MAGENTA}====================================================${NC}"
-        echo ""
-        echo -e "${BOLD}Select an operation:${NC}"
-        echo -e "  ${BOLD}${CYAN}1)${NC} Manager Themes & Color Palette Switcher (${GREEN}8 Themes + Classic${NC})"
-        echo -e "  ${BOLD}${CYAN}2)${NC} Manage Installation & Configuration (${GREEN}Migrate Path, Backup, Export & Import Config${NC})"
-        echo -e "  ${BOLD}${CYAN}3)${NC} Run Bash CLI Commands (${GREEN}Interactive Shell & Direct Runner${NC})"
+        local reboot_desc="systemctl reboot with confirmation"
         if [ "$OS_TYPE" = "macos" ]; then
-            echo -e "  ${BOLD}${CYAN}4)${NC} Reboot System (${RED}macOS restart with confirmation${NC})"
+            reboot_desc="macOS restart with confirmation"
         elif [ "$OS_TYPE" = "windows" ] || [ "$OS_TYPE" = "wsl" ]; then
-            echo -e "  ${BOLD}${CYAN}4)${NC} Reboot System (${RED}Windows restart with confirmation${NC})"
+            reboot_desc="Windows restart with confirmation"
         elif [ "$OS_TYPE" = "freebsd" ]; then
-            echo -e "  ${BOLD}${CYAN}4)${NC} Reboot System (${RED}FreeBSD restart with confirmation${NC})"
-        else
-            echo -e "  ${BOLD}${CYAN}4)${NC} Reboot System (${RED}systemctl reboot with confirmation${NC})"
+            reboot_desc="FreeBSD restart with confirmation"
         fi
-        echo -e "  ${BOLD}${CYAN}0)${NC} Return to Main Menu"
-        echo ""
-        read -r -p "Enter choice [0-4]: " set_choice
+        local opts=(
+            "1|Manager Themes & Color Palette Switcher|(11 Themes: Dreamworlds, Cyberpunk, Dracula...)"
+            "2|Manage Installation & Configuration|(Migrate Path, Backup, Export & Import Config)"
+            "3|Run Bash CLI Commands|(Interactive Shell & Direct Runner)"
+            "4|Reboot System|(${reboot_desc})"
+            "0|Return to Main Menu|(or Esc / q)"
+        )
+        run_interactive_submenu "MANAGER SETTINGS, THEMES & SYSTEM SHELL" "" opts 0
+        local set_choice="$REPLY"
         case "$set_choice" in
             1)
                 manage_themes
@@ -11983,7 +12224,7 @@ manage_settings_and_system() {
             4)
                 reboot_system
                 ;;
-            0|[qQ]|[eE][xX][iI][tT])
+            0|[qQ]|[eE][xX][iI][tT]|ESC)
                 return 0
                 ;;
             *)
@@ -11993,6 +12234,7 @@ manage_settings_and_system() {
         esac
     done
 }
+
 
 # ==============================================================================
 # MAIN APPLICATION LOOP
@@ -12017,11 +12259,24 @@ while true; do
                 "$SCRIPT_DIR/scripts/schedule_mix_playback.sh" --ensure-daemon >/dev/null 2>&1 &
             fi
         fi
+        if [ "$CURRENT_THEME" = "dreamworlds" ]; then
+            show_dreamworlds_ascii_banner true
+            sleep 0.2
+        fi
     fi
-    clear
-    echo -e "${BOLD}${MAGENTA}===================================================================================${NC}"
-    echo -e "${BOLD}${MAGENTA}                     Mix Archive Manager (MP_Mix_Manager_v0.3)                     ${NC}"
-    echo -e "${BOLD}${MAGENTA}===================================================================================${NC}"
+
+    main_header=""
+    if [ "$CURRENT_THEME" = "dreamworlds" ]; then
+        local_anim_script="$SCRIPT_DIR/scripts/render_ascii_animation.py"
+        [ ! -f "$local_anim_script" ] && local_anim_script="$SCRIPT_DIR/render_ascii_animation.py"
+        if [ -f "$local_anim_script" ]; then
+            main_header+="$(python3 "$local_anim_script" 2>/dev/null)\n"
+        fi
+    else
+        main_header+="${BOLD}${MAGENTA}===================================================================================${NC}\n"
+        main_header+="${BOLD}${MAGENTA}                     Mix Archive Manager (MP_Mix_Manager_v0.3)                     ${NC}\n"
+        main_header+="${BOLD}${MAGENTA}===================================================================================${NC}\n"
+    fi
     os_badge=$(get_os_badge)
     os_updates=$(get_os_update_status)
     shell_info="Bash ${BASH_VERSION%%(*}"
@@ -12031,91 +12286,87 @@ while true; do
     else
         net_status="${YELLOW}Offline (LAN Only)${NC}"
     fi
-    echo -e "  ${os_badge}"
-    echo -e "  ${BOLD}${CYAN}🔄 OS Updates:${NC} ${os_updates}  ${BOLD}${BLUE}│${NC}  ${BOLD}${CYAN}🌐 Network:${NC} ${net_status}  ${BOLD}${BLUE}│${NC}  ${BOLD}${CYAN}🐚 Shell:${NC} ${shell_info}  ${BOLD}${BLUE}│${NC}  ${BOLD}${CYAN}📅 Date:${NC} ${current_datetime}"
+    main_header+="  ${os_badge}\n"
+    main_header+="  ${BOLD}${CYAN}🔄 OS Updates:${NC} ${os_updates}  ${BOLD}${BLUE}│${NC}  ${BOLD}${CYAN}🌐 Network:${NC} ${net_status}  ${BOLD}${BLUE}│${NC}  ${BOLD}${CYAN}🐚 Shell:${NC} ${shell_info}  ${BOLD}${BLUE}│${NC}  ${BOLD}${CYAN}📅 Date:${NC} ${current_datetime}\n"
     cloud_status=$(get_cloud_backup_badge 2>/dev/null)
-    [ -n "$cloud_status" ] && echo -e "  ${cloud_status}"
+    [ -n "$cloud_status" ] && main_header+="  ${cloud_status}\n"
     if [ -n "${STARTUP_AUTOPLAY_NOTICE:-}" ]; then
-        echo -e "  ${BOLD}${GREEN}${STARTUP_AUTOPLAY_NOTICE}${NC}"
+        main_header+="  ${BOLD}${GREEN}${STARTUP_AUTOPLAY_NOTICE}${NC}\n"
     fi
     if [ -n "${STARTUP_SPEK_NOTICE:-}" ]; then
-        echo -e "  ${BOLD}${GREEN}${STARTUP_SPEK_NOTICE}${NC}"
+        main_header+="  ${BOLD}${GREEN}${STARTUP_SPEK_NOTICE}${NC}\n"
     fi
     sys_perf=$(get_system_perf_stats)
-    echo -e "${sys_perf}"
+    main_header+="${sys_perf}\n"
     audio_interface_disp=$(get_active_audio_interface_display)
-    [ -n "$audio_interface_disp" ] && echo -e "${audio_interface_disp}"
+    [ -n "$audio_interface_disp" ] && main_header+="${audio_interface_disp}\n"
     if [ "${WEATHER_ENABLED:-true}" = "true" ] && [ -n "${WEATHER_LOCATION:-}" ]; then
         current_weather=$(get_current_weather)
-        [ -n "$current_weather" ] && echo -e "${current_weather}"
+        [ -n "$current_weather" ] && main_header+="${current_weather}\n"
     fi
     if [ "${PLANETS_ENABLED:-true}" = "true" ]; then
         current_planets=$(get_planets_above_horizon)
-        [ -n "$current_planets" ] && echo -e "${current_planets}"
+        [ -n "$current_planets" ] && main_header+="${current_planets}\n"
     fi
     alarm_clock_status=$(get_alarm_clock_status_display)
-    [ -n "$alarm_clock_status" ] && echo -e "${alarm_clock_status}"
-    echo -e "${BOLD}${MAGENTA}-----------------------------------------------------------------------------------${NC}"
+    [ -n "$alarm_clock_status" ] && main_header+="${alarm_clock_status}\n"
+    main_header+="${BOLD}${MAGENTA}-----------------------------------------------------------------------------------${NC}\n"
     if ! is_mix_archive_configured; then
-        echo -e "\n  ${BOLD}${RED}⚠️  Please be advised you have not configured your Mix Archive Folder, Please use Option 13 or 10 to Configure this now.${NC}"
-        echo -e "  ${DIM}${YELLOW}(Currently using application root folder: ${SCRIPT_DIR}/MIX_ARCHIVE)${NC}"
+        main_header+="\n  ${BOLD}${RED}⚠️  Please be advised you have not configured your Mix Archive Folder, Please use Option 13 or 10 to Configure this now.${NC}\n"
+        main_header+="  ${DIM}${YELLOW}(Currently using application root folder: ${SCRIPT_DIR}/MIX_ARCHIVE)${NC}\n"
     fi
-    echo ""
-    
-    show_stats
-    
-    echo ""
-    echo -e "${BOLD}Select an operation:${NC}"
-    
-    echo -e "\n  ${BOLD}${BLUE}─── [ SECTION 1: MIX ARCHIVE WORKFLOW & INGESTION ] ─────────${NC}"
-    echo -e "  ${BOLD}${CYAN} 0)${NC} Run Any Desktop Shortcuts — Linux (${GREEN}Games, Audio, Files, Tools, AI Servers — KDE Plasma${NC})"
-    echo -e "  ${BOLD}${CYAN} 1)${NC} Run Mix Conversion (${GREEN}FLAC, MP3, WAV, or YouTube MP4${NC})"
-    echo -e "  ${BOLD}${CYAN} 2)${NC} Audio Conversion, EBU R128 Mastering & CUE Sheets (${GREEN}WAV, MP3, AAC, LUFS, CUE, Splitter${NC})"
-    echo -e "  ${BOLD}${CYAN} 3)${NC} Retrieve Unconverted WAVs from Archive (${GREEN}MOVE_NOT_CONVERTED_WAVS.sh${NC})"
-    echo -e "  ${BOLD}${CYAN} 4)${NC} Search & Import Mixes from Local Drives & SMB (${GREEN}search_and_import_mixes.sh / import_new_mixes.sh${NC})"
-    echo -e "  ${BOLD}${CYAN} 5)${NC} Rename a Mix and Associated Assets (${GREEN}FLAC, Tracklist, Spek${NC})"
-    echo -e "  ${BOLD}${CYAN} 6)${NC} Find & Remove Duplicate Audio Files / Mixes (${GREEN}Exact Content & Episode Match${NC})"
-    echo -e "  ${BOLD}${CYAN} 7)${NC} Export / Copy Mixes to Specified Path (${GREEN}Audio, Covers, Tracklists, Spek${NC})"
-    echo -e "  ${BOLD}${CYAN} 8)${NC} Audio Integrity, Bit-Rot Scrub & FLAC Verification (${GREEN}SHA-256, Bit-Rot Daemon, Fake FLAC${NC})"
-    echo -e "  ${BOLD}${CYAN} 9)${NC} Cloud & Remote Backup Suite (${GREEN}Google Drive, iCloud, Dropbox, Custom Folder${NC})"
-    echo -e "  ${BOLD}${CYAN}10)${NC} Storage Management & Multiple Mix Archives Setup (${GREEN}Drive Space, Rescan, Configure Archives${NC})"
-    
-    echo -e "\n  ${BOLD}${BLUE}─── [ SECTION 2: STUDIO AUDIO, PLAYBACK, METADATA & VIDEO ] ──${NC}"
-    echo -e "  ${BOLD}${CYAN}11)${NC} Tracklist Management, Scanning & Metadata Suite (${GREEN}Browse, Search, Picard, HTML Index${NC})"
-    echo -e "  ${BOLD}${CYAN}12)${NC} Audio Players & Retro Playback Suite (${GREEN}cliamp, Strawberry, VLC, Audacity, Haruna, Winamp...${NC})"
-    echo -e "  ${BOLD}${CYAN}13)${NC} Configure Mix Archive Storage Locations (${GREEN}Option 13: Primary & Multiple Archives${NC})"
-    echo -e "  ${BOLD}${CYAN}14)${NC} Custom Mix Playlists & Traktor History Suite (${GREEN}.m3u, .m3u8, .xspf, Traktor 3 Playlists${NC})"
-    echo -e "  ${BOLD}${CYAN}15)${NC} Digital Audio Workstations (DAWs) & Mix Dispatch (${GREEN}Reaper, Logic, FL Studio, Ardour, Traktor${NC})"
-    echo -e "  ${BOLD}${CYAN}16)${NC} Studio Hardware, Audio Interfaces & Master Volume Control (${GREEN}PipeWire, ALSA, MIDI, Mute${NC})"
-    echo -e "  ${BOLD}${CYAN}17)${NC} Spectrogram Generation & Audio Frequency Analysis (${GREEN}Single & Multiple Spek, SoX, Praat${NC})"
-    echo -e "  ${BOLD}${CYAN}18)${NC} Morning Alarm Clock & DJ Mix Playback Suite (${GREEN}Steam Games, Wake-Up Mixes, Scheduler${NC})"
-    echo -e "  ${BOLD}${CYAN}19)${NC} YouTube Video Suite (${GREEN}Generate 4K/1080p Videos, Download Videos & Shorts${NC})"
-    echo -e "  ${BOLD}${CYAN}20)${NC} Visual Media, Cover Art & Companion Video Suite (${GREEN}Cut/Split Video, Converters, PPM, Launchers${NC})"
-    echo -e "  ${BOLD}${CYAN}21)${NC} Record Video of DJ Mix using GPU Screen Recorder (Linux) (${GREEN}New Desktop Window${NC})"
-    echo -e "  ${BOLD}${CYAN}22)${NC} Listen to Your Top 5 Tracks Right Now (Pre-Selected - Special Option) $(get_top_5_status_badge)"
-    
-    echo -e "\n  ${BOLD}${BLUE}─── [ SECTION 3: SYSTEM, NETWORK, AI & SETTINGS ] ────────────${NC}"
-    echo -e "  ${BOLD}${CYAN}23)${NC} Live Session, Stream & Transfer Monitors Suite (${GREEN}Tracklist, Traktor, Transfers, Uploads, Tasks${NC})"
-    echo -e "  ${BOLD}${CYAN}24)${NC} System & Hardware Process Monitors Suite (${GREEN}btop, nvtop, top${NC})"
-    echo -e "  ${BOLD}${CYAN}25)${NC} View Advanced Archive Statistics (${GREEN}SOF_Archive_Stats.sh${NC})"
-    echo -e "  ${BOLD}${CYAN}26)${NC} Promotional Outreach, Syndication & Music Shopping (${GREEN}Emails, RSS/Podcasts, Beatport/Bandcamp${NC})"
-    echo -e "  ${BOLD}${CYAN}27)${NC} Network Services, Congen & Internet Control (${GREEN}SSH, Samba, FTP, Congen KDE Connect, Block Internet${NC})"
-    echo -e "  ${BOLD}${CYAN}28)${NC} Desktop Display Settings, Audio Routing & App Control (${GREEN}Wayland/X11/macOS/Windows, Close Apps${NC})"
-    echo -e "  ${BOLD}${CYAN}29)${NC} Universal System Maintenance & Cleanup (${GREEN}Drive space, OS Updates, Package Clean, Logs${NC})"
-    echo -e "  ${BOLD}${CYAN}30)${NC} Monitor System Processes and Bash Commands with System Info (${GREEN}MP_Monitor_Bash.sh, new Terminal tab${NC})"
-    echo -e "  ${BOLD}${CYAN}31)${NC} AI Assistant & Local LLM Servers Suite (${GREEN}Claude, GPT, Ollama, DeepSeek, WAN2GP, Beszel${NC})"
-    echo -e "  ${BOLD}${CYAN}32)${NC} Dynamic MOTD Banner Manager & Drive Burner (${GREEN}Last 3 Mixes, Netpbm, ISO USB Burner${NC})"
-    echo -e "  ${BOLD}${CYAN}33)${NC} Manager Settings, Themes, Shell CLI & Reboot (${GREEN}Themes, Migration, Bash CLI, Reboot${NC})"
-    
-    echo -e "\n  ${BOLD}${BLUE}──────────────────────────────────────────────────────────────${NC}"
-    get_manager_uptime
-    echo -e "  ${BOLD}${CYAN}34)${NC} Exit Manager ${DIM}(or q / exit)${NC}"
-    echo ""
+    main_header+="\n"
+    main_header+="$(show_stats)\n\n"
+    main_header+="  $(get_manager_uptime)\n"
+
+    main_opts=(
+        "SECTION|SECTION 1: MIX ARCHIVE WORKFLOW & INGESTION|"
+        "0|Run Any Desktop Shortcuts — Linux|(Games, Audio, Files, Tools, AI Servers — KDE Plasma)"
+        "1|Run Mix Conversion|(FLAC, MP3, WAV, or YouTube MP4)"
+        "2|Audio Conversion, EBU R128 Mastering & CUE Sheets|(WAV, MP3, AAC, LUFS, CUE, Splitter)"
+        "3|Retrieve Unconverted WAVs from Archive|(MOVE_NOT_CONVERTED_WAVS.sh)"
+        "4|Search & Import Mixes from Local Drives & SMB|(search_and_import_mixes.sh / import_new_mixes.sh)"
+        "5|Rename a Mix and Associated Assets|(FLAC, Tracklist, Spek)"
+        "6|Find & Remove Duplicate Audio Files / Mixes|(Exact Content & Episode Match)"
+        "7|Export / Copy Mixes to Specified Path|(Audio, Covers, Tracklists, Spek)"
+        "8|Audio Integrity, Bit-Rot Scrub & FLAC Verification|(SHA-256, Bit-Rot Daemon, Fake FLAC)"
+        "9|Cloud & Remote Backup Suite|(Google Drive, iCloud, Dropbox, Custom Folder)"
+        "10|Storage Management & Multiple Mix Archives Setup|(Drive Space, Rescan, Configure Archives)"
+        "SECTION|SECTION 2: STUDIO AUDIO, PLAYBACK, METADATA & VIDEO|"
+        "11|Tracklist Management, Scanning & Metadata Suite|(Browse, Search, Picard, HTML Index)"
+        "12|Audio Players & Retro Playback Suite|(cliamp, Strawberry, VLC, Audacity, Haruna, Winamp...)"
+        "13|Configure Mix Archive Storage Locations|(Option 13: Primary & Multiple Archives)"
+        "14|Custom Mix Playlists & Traktor History Suite|(.m3u, .m3u8, .xspf, Traktor 3 Playlists)"
+        "15|Digital Audio Workstations (DAWs) & Mix Dispatch|(Reaper, Logic, FL Studio, Ardour, Traktor)"
+        "16|Studio Hardware, Audio Interfaces & Master Volume Control|(PipeWire, ALSA, MIDI, Mute)"
+        "17|Spectrogram Generation & Audio Frequency Analysis|(Single & Multiple Spek, SoX, Praat)"
+        "18|Morning Alarm Clock & DJ Mix Playback Suite|(Steam Games, Wake-Up Mixes, Scheduler)"
+        "19|YouTube Video Suite|(Generate 4K/1080p Videos, Download Videos & Shorts)"
+        "20|Visual Media, Cover Art & Companion Video Suite|(Cut/Split Video, Converters, PPM, Launchers)"
+        "21|Record Video of DJ Mix using GPU Screen Recorder (Linux)|(New Desktop Window)"
+        "22|Listen to Your Top 5 Tracks Right Now (Pre-Selected - Special Option)|$(get_top_5_status_badge)"
+        "SECTION|SECTION 3: SYSTEM, NETWORK, AI & SETTINGS|"
+        "23|Live Session, Stream & Transfer Monitors Suite|(Tracklist, Traktor, Transfers, Uploads, Tasks)"
+        "24|System & Hardware Process Monitors Suite|(btop, nvtop, top)"
+        "25|View Advanced Archive Statistics|(SOF_Archive_Stats.sh)"
+        "26|Promotional Outreach, Syndication & Music Shopping|(Emails, RSS/Podcasts, Beatport/Bandcamp)"
+        "27|Network Services, Congen & Internet Control|(SSH, Samba, FTP, Congen KDE Connect, Block Internet)"
+        "28|Desktop Display Settings, Audio Routing & App Control|(Wayland/X11/macOS/Windows, Close Apps)"
+        "29|Universal System Maintenance & Cleanup|(Drive space, OS Updates, Package Clean, Logs)"
+        "30|Monitor System Processes and Bash Commands with System Info|(MP_Monitor_Bash.sh, new Terminal tab)"
+        "31|AI Assistant & Local LLM Servers Suite|(Claude, GPT, Ollama, DeepSeek, WAN2GP, Beszel)"
+        "32|Dynamic MOTD Banner Manager & Drive Burner|(Last 3 Mixes, Netpbm, ISO USB Burner)"
+        "33|Manager Settings, Themes, Shell CLI & Reboot|(Themes, Migration, Bash CLI, Reboot)"
+        "SEP|SEP|"
+        "34|Exit Manager|(or q / exit)"
+    )
+
     if [ -n "$CLI_INITIAL_ACTION" ]; then
         choice="$CLI_INITIAL_ACTION"
         CLI_INITIAL_ACTION=""
     else
-        read -r -p "Enter choice [0-34, or q to exit]: " choice
+        run_interactive_submenu "" "$main_header" main_opts 1
+        choice="$REPLY"
     fi
     
     case $choice in
@@ -12161,6 +12412,7 @@ while true; do
             manage_cloud_backup_suite
             ;;
         10)
+            play_sound_effect "storage"
             manage_storage_and_archive_config
             ;;
         11)
@@ -12170,6 +12422,7 @@ while true; do
             manage_audio_players
             ;;
         13|config-archive|archive-dir|archive-folder)
+            play_sound_effect "storage"
             configure_mix_archive_folder
             ;;
         specs|metadata|inspect)
@@ -12239,7 +12492,7 @@ while true; do
         33)
             manage_settings_and_system
             ;;
-        34|77|[qQ]|[eE][xX][iI][tT])
+        34|77|[qQ]|[eE][xX][iI][tT]|ESC)
             exit_mix_manager
             ;;
         # ----------------------------------------------------------------------
