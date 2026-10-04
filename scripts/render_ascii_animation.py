@@ -92,9 +92,25 @@ def play_animation(frames=14, delay=0.04):
         sys.stdout.write("\033[?25h")
         sys.stdout.flush()
 
+def render_compact(offset=0):
+    num_colors = len(PALETTE)
+    title = "  ✦ MPlanetarian Dreamworlds Edition ✦ High-Resolution Audio Production Suite ✦"
+    sub_row = []
+    for i, char in enumerate(title):
+        if char == " ":
+            sub_row.append(" ")
+        else:
+            col_idx = (i // 3 + offset) % num_colors
+            r, g, b = PALETTE[col_idx]
+            sub_row.append(f"\033[1;38;2;{r};{g};{b}m{char}\033[0m")
+    return "".join(sub_row)
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--animate":
         play_animation()
+    elif len(sys.argv) > 1 and sys.argv[1] == "--compact":
+        sys.stdout.write(render_compact(0) + "\n")
+        sys.stdout.flush()
     else:
         sys.stdout.write(render_frame(0) + "\n")
         sys.stdout.flush()

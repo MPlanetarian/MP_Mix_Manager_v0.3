@@ -240,31 +240,96 @@ run_interactive_submenu() {
         return 0
     fi
     
-    local typed_buffer=""
+    # Clear screen once on entry and hide cursor
+    clear
+    printf '\033[?25l'
     
+    local typed_buffer=""
+    local view_top=0
+
     while true; do
-        clear
+        local term_lines term_cols
+        term_lines=$(tput lines 2>/dev/null || echo 40)
+        term_cols=$(tput cols 2>/dev/null || echo 100)
+        [ -z "$term_lines" ] || [ "$term_lines" -lt 15 ] && term_lines=40
+        [ -z "$term_cols" ] || [ "$term_cols" -lt 40 ] && term_cols=100
+
+        # Calculate fixed overhead lines
+        local overhead=4 # prompt, bottom divider, selection status, blank
         if [ -n "$menu_title" ]; then
-            echo -e "${BOLD}${MAGENTA}╭──────────────────────────────────────────────────────────────────────────╮${NC}"
-            printf "${BOLD}${MAGENTA}│ %-72s │${NC}\n" "  ${menu_title}"
-            echo -e "${BOLD}${MAGENTA}╰──────────────────────────────────────────────────────────────────────────╯${NC}"
-            [ -n "$menu_header" ] && echo -e "$menu_header"
-            echo -e "  ${DIM}${BLUE}Use [↑/↓] Arrow Keys to navigate, [Enter] to select, [Esc] to return immediately${NC}\n"
-        else
-            [ -n "$menu_header" ] && echo -e "$menu_header"
-            echo -e "  ${DIM}${BLUE}Use [↑/↓] Arrow Keys to navigate, [Enter] to select, [Esc] or 'q' to exit${NC}\n"
+            overhead=$((overhead + 4)) # box title is 3 lines + margin
         fi
-        
-        local idx=0
-        for opt_entry in "${_opts_ref[@]}"; do
-            IFS='|' read -r o_key o_label o_extra <<< "$opt_entry"
+        if [ -n "$menu_header" ]; then
+            local header_count
+            header_count=$(printf "%b\n" "$menu_header" | wc -l)
+            overhead=$((overhead + header_count))
+        fi
+
+        # Compute maximum visible options
+        local max_visible=$(( term_lines - overhead ))
+        if [ "$max_visible" -lt 8 ]; then
+            max_visible=8
+        fi
+
+        if [ "$max_visible" -ge "$total_opts" ]; then
+            max_visible=$total_opts
+            view_top=0
+        else
+            # Adjust view_top so cur_idx is always inside [view_top, view_top + max_visible - 1]
+            if [ "$cur_idx" -lt "$view_top" ]; then
+                view_top="$cur_idx"
+            elif [ "$cur_idx" -ge $(( view_top + max_visible )) ]; then
+                view_top=$(( cur_idx - max_visible + 1 ))
+            fi
+            # Bound checks
+            if [ "$view_top" -gt $(( total_opts - max_visible )) ]; then
+                view_top=$(( total_opts - max_visible ))
+            fi
+            if [ "$view_top" -lt 0 ]; then
+                view_top=0
+            fi
+        fi
+
+        local view_end=$(( view_top + max_visible - 1 ))
+        [ "$view_end" -ge "$total_opts" ] && view_end=$(( total_opts - 1 ))
+
+        # Move cursor to home position without resetting scrollback (prevents scrollbar flick)
+        printf '\033[H'
+
+        if [ -n "$menu_title" ]; then
+            echo -e "${BOLD}${MAGENTA}╭──────────────────────────────────────────────────────────────────────────╮\033[K${NC}"
+            printf "${BOLD}${MAGENTA}│ %-72s │\033[K${NC}\n" "  ${menu_title}"
+            echo -e "${BOLD}${MAGENTA}╰──────────────────────────────────────────────────────────────────────────╯\033[K${NC}"
+            if [ -n "$menu_header" ]; then
+                while IFS= read -r h_line; do
+                    echo -e "${h_line}\033[K"
+                done <<< "$menu_header"
+            fi
+            echo -e "  ${DIM}${BLUE}Use [↑/↓] Arrow Keys to navigate, [Enter] to select, [Esc] to return immediately\033[K${NC}"
+        else
+            if [ -n "$menu_header" ]; then
+                while IFS= read -r h_line; do
+                    echo -e "${h_line}\033[K"
+                done <<< "$menu_header"
+            fi
+            echo -e "  ${DIM}${BLUE}Use [↑/↓] Arrow Keys to navigate, [Enter] to select, [Esc] or 'q' to exit\033[K${NC}"
+        fi
+
+        # Scroll indicator top
+        if [ "$view_top" -gt 0 ]; then
+            echo -e "  ${BOLD}${YELLOW}▲  (${view_top} more option$([ "$view_top" -gt 1 ] && echo "s") above - press ↑ to scroll)\033[K${NC}"
+        else
+            echo -e "\033[K"
+        fi
+
+        # Render visible items
+        for (( idx=view_top; idx<=view_end; idx++ )); do
+            IFS='|' read -r o_key o_label o_extra <<< "${_opts_ref[$idx]}"
             if [ "$o_key" = "SECTION" ]; then
-                echo -e "\n  ${BOLD}${BLUE}─── [ ${o_label} ] ─────────${NC}"
-                ((idx++))
+                echo -e "  ${BOLD}${BLUE}─── [ ${o_label} ] ─────────\033[K${NC}"
                 continue
             elif [ "$o_key" = "SEP" ]; then
-                echo -e "  ${BOLD}${BLUE}──────────────────────────────────────────────────────────────────────────${NC}"
-                ((idx++))
+                echo -e "  ${BOLD}${BLUE}──────────────────────────────────────────────────────────────────────────\033[K${NC}"
                 continue
             fi
             local prefix="    "
@@ -275,27 +340,36 @@ run_interactive_submenu() {
             
             if [ "$idx" -eq "$cur_idx" ]; then
                 prefix="${BOLD}${MAGENTA} ▶ ❯${NC}"
-                echo -e "${prefix} ${BOLD}${YELLOW}[$(printf "%2s" "$o_key")]${NC} ${BOLD}${GREEN}${label_display}${NC} ${extra_display}"
+                echo -e "${prefix} ${BOLD}${YELLOW}[$(printf "%2s" "$o_key")]${NC} ${BOLD}${GREEN}${label_display}${NC} ${extra_display}\033[K"
             else
-                echo -e "${prefix} ${key_display} ${label_display} ${extra_display}"
+                echo -e "${prefix} ${key_display} ${label_display} ${extra_display}\033[K"
             fi
-            ((idx++))
         done
-        
-        echo ""
-        echo -e "  ${BOLD}${BLUE}──────────────────────────────────────────────────────────────────────────${NC}"
+
+        # Scroll indicator bottom
+        local remaining_below=$(( total_opts - 1 - view_end ))
+        if [ "$remaining_below" -gt 0 ]; then
+            echo -e "  ${BOLD}${YELLOW}▼  (${remaining_below} more option$([ "$remaining_below" -gt 1 ] && echo "s") below - press ↓ to scroll)\033[K${NC}"
+        else
+            echo -e "\033[K"
+        fi
+
+        echo -e "  ${BOLD}${BLUE}──────────────────────────────────────────────────────────────────────────\033[K${NC}"
         IFS='|' read -r cur_key cur_lbl cur_ext <<< "${_opts_ref[$cur_idx]}"
         if [ -n "$typed_buffer" ]; then
-            echo -e "  ${BOLD}${CYAN}Selection:${NC} ${BOLD}${YELLOW}${typed_buffer}${NC} ▏ ${DIM}(Press Enter to confirm, Esc to return/exit)${NC}"
+            echo -e "  ${BOLD}${CYAN}Selection:${NC} ${BOLD}${YELLOW}${typed_buffer}${NC} ▏ ${DIM}(Press Enter to confirm, Esc to return/exit)\033[K${NC}"
         else
-            echo -e "  ${BOLD}${CYAN}Selection:${NC} ${DIM}[Option ${cur_key}: ${cur_lbl}]${NC} ▏ ${DIM}[↑/↓ to Navigate, Enter to Select, Esc to Return/Exit]${NC}"
+            echo -e "  ${BOLD}${CYAN}Selection:${NC} ${DIM}[Option ${cur_key}: ${cur_lbl}]${NC} ▏ ${DIM}[↑/↓ to Navigate, Enter to Select, Esc to Return/Exit]\033[K${NC}"
         fi
+        
+        # Clear any lines below our output in case window size changed
+        printf '\033[J'
         
         local key_action
         key_action=$(read_nav_key)
         
         case "$key_action" in
-            UP|PAGE_UP)
+            UP)
                 local hops=0
                 while [ "$hops" -lt "$total_opts" ]; do
                     cur_idx=$(( (cur_idx - 1 + total_opts) % total_opts ))
@@ -305,13 +379,37 @@ run_interactive_submenu() {
                 done
                 typed_buffer=""
                 ;;
-            DOWN|PAGE_DOWN)
+            PAGE_UP)
+                local hops=0
+                local target_step=$(( max_visible > 5 ? max_visible - 2 : 5 ))
+                while [ "$hops" -lt "$target_step" ]; do
+                    cur_idx=$(( (cur_idx - 1 + total_opts) % total_opts ))
+                    IFS='|' read -r k_chk _ _ <<< "${_opts_ref[$cur_idx]}"
+                    if [ "$k_chk" != "SECTION" ] && [ "$k_chk" != "SEP" ]; then
+                        ((hops++))
+                    fi
+                done
+                typed_buffer=""
+                ;;
+            DOWN)
                 local hops=0
                 while [ "$hops" -lt "$total_opts" ]; do
                     cur_idx=$(( (cur_idx + 1) % total_opts ))
                     IFS='|' read -r k_chk _ _ <<< "${_opts_ref[$cur_idx]}"
                     [ "$k_chk" != "SECTION" ] && [ "$k_chk" != "SEP" ] && break
                     ((hops++))
+                done
+                typed_buffer=""
+                ;;
+            PAGE_DOWN)
+                local hops=0
+                local target_step=$(( max_visible > 5 ? max_visible - 2 : 5 ))
+                while [ "$hops" -lt "$target_step" ]; do
+                    cur_idx=$(( (cur_idx + 1) % total_opts ))
+                    IFS='|' read -r k_chk _ _ <<< "${_opts_ref[$cur_idx]}"
+                    if [ "$k_chk" != "SECTION" ] && [ "$k_chk" != "SEP" ]; then
+                        ((hops++))
+                    fi
                 done
                 typed_buffer=""
                 ;;
@@ -334,6 +432,8 @@ run_interactive_submenu() {
                 typed_buffer=""
                 ;;
             ENTER)
+                printf '\033[?25h'
+                clear
                 if [ -n "$typed_buffer" ]; then
                     REPLY="$typed_buffer"
                 else
@@ -343,6 +443,8 @@ run_interactive_submenu() {
                 return 0
                 ;;
             ESC)
+                printf '\033[?25h'
+                clear
                 REPLY="ESC"
                 return 0
                 ;;
@@ -362,6 +464,8 @@ run_interactive_submenu() {
                     ((m_idx++))
                 done
                 if [ "$typed_buffer" = "q" ] || [ "$typed_buffer" = "Q" ] || [ "$typed_buffer" = "b" ] || [ "$typed_buffer" = "B" ]; then
+                    printf '\033[?25h'
+                    clear
                     REPLY="$typed_buffer"
                     return 0
                 fi
@@ -397,6 +501,7 @@ load_theme
 
 # Ctrl+C at the main menu exits. Monitors that catch INT restore this afterwards.
 exit_mix_manager() {
+    printf '\033[?25h' 2>/dev/null || true
     echo ""
     echo -e "${BOLD}${GREEN}You are exiting the Mix Archive Manager.${NC}"
     echo ""
@@ -12265,12 +12370,21 @@ while true; do
         fi
     fi
 
+    term_lines=$(tput lines 2>/dev/null || echo 40)
+    [ -z "$term_lines" ] || [ "$term_lines" -lt 15 ] && term_lines=40
+
     main_header=""
     if [ "$CURRENT_THEME" = "dreamworlds" ]; then
         local_anim_script="$SCRIPT_DIR/scripts/render_ascii_animation.py"
         [ ! -f "$local_anim_script" ] && local_anim_script="$SCRIPT_DIR/render_ascii_animation.py"
-        if [ -f "$local_anim_script" ]; then
-            main_header+="$(python3 "$local_anim_script" 2>/dev/null)\n"
+        if [ "$term_lines" -ge 55 ]; then
+            if [ -f "$local_anim_script" ]; then
+                main_header+="$(python3 "$local_anim_script" 2>/dev/null)\n"
+            fi
+        else
+            if [ -f "$local_anim_script" ]; then
+                main_header+="$(python3 "$local_anim_script" --compact 2>/dev/null)\n"
+            fi
         fi
     else
         main_header+="${BOLD}${MAGENTA}===================================================================================${NC}\n"
@@ -12286,38 +12400,43 @@ while true; do
     else
         net_status="${YELLOW}Offline (LAN Only)${NC}"
     fi
-    main_header+="  ${os_badge}\n"
-    main_header+="  ${BOLD}${CYAN}🔄 OS Updates:${NC} ${os_updates}  ${BOLD}${BLUE}│${NC}  ${BOLD}${CYAN}🌐 Network:${NC} ${net_status}  ${BOLD}${BLUE}│${NC}  ${BOLD}${CYAN}🐚 Shell:${NC} ${shell_info}  ${BOLD}${BLUE}│${NC}  ${BOLD}${CYAN}📅 Date:${NC} ${current_datetime}\n"
+    main_header+="  ${os_badge}  ${BOLD}${BLUE}│${NC}  ${BOLD}${CYAN}🔄 OS Updates:${NC} ${os_updates}  ${BOLD}${BLUE}│${NC}  ${BOLD}${CYAN}🌐 Network:${NC} ${net_status}  ${BOLD}${BLUE}│${NC}  ${BOLD}${CYAN}🐚 Shell:${NC} ${shell_info}\n"
     cloud_status=$(get_cloud_backup_badge 2>/dev/null)
     [ -n "$cloud_status" ] && main_header+="  ${cloud_status}\n"
-    if [ -n "${STARTUP_AUTOPLAY_NOTICE:-}" ]; then
-        main_header+="  ${BOLD}${GREEN}${STARTUP_AUTOPLAY_NOTICE}${NC}\n"
-    fi
-    if [ -n "${STARTUP_SPEK_NOTICE:-}" ]; then
-        main_header+="  ${BOLD}${GREEN}${STARTUP_SPEK_NOTICE}${NC}\n"
-    fi
     sys_perf=$(get_system_perf_stats)
-    main_header+="${sys_perf}\n"
     audio_interface_disp=$(get_active_audio_interface_display)
+    [ -n "$sys_perf" ] && main_header+="${sys_perf}\n"
     [ -n "$audio_interface_disp" ] && main_header+="${audio_interface_disp}\n"
-    if [ "${WEATHER_ENABLED:-true}" = "true" ] && [ -n "${WEATHER_LOCATION:-}" ]; then
-        current_weather=$(get_current_weather)
-        [ -n "$current_weather" ] && main_header+="${current_weather}\n"
+
+    if [ "$term_lines" -ge 55 ]; then
+        if [ -n "${STARTUP_AUTOPLAY_NOTICE:-}" ]; then
+            main_header+="  ${BOLD}${GREEN}${STARTUP_AUTOPLAY_NOTICE}${NC}\n"
+        fi
+        if [ -n "${STARTUP_SPEK_NOTICE:-}" ]; then
+            main_header+="  ${BOLD}${GREEN}${STARTUP_SPEK_NOTICE}${NC}\n"
+        fi
+        if [ "${WEATHER_ENABLED:-true}" = "true" ] && [ -n "${WEATHER_LOCATION:-}" ]; then
+            current_weather=$(get_current_weather)
+            [ -n "$current_weather" ] && main_header+="${current_weather}\n"
+        fi
+        if [ "${PLANETS_ENABLED:-true}" = "true" ]; then
+            current_planets=$(get_planets_above_horizon)
+            [ -n "$current_planets" ] && main_header+="${current_planets}\n"
+        fi
+        alarm_clock_status=$(get_alarm_clock_status_display)
+        [ -n "$alarm_clock_status" ] && main_header+="${alarm_clock_status}\n"
+        main_header+="${BOLD}${MAGENTA}-----------------------------------------------------------------------------------${NC}\n"
+        if ! is_mix_archive_configured; then
+            main_header+="\n  ${BOLD}${RED}⚠️  Please be advised you have not configured your Mix Archive Folder, Please use Option 13 or 10 to Configure this now.${NC}\n"
+            main_header+="  ${DIM}${YELLOW}(Currently using application root folder: ${SCRIPT_DIR}/MIX_ARCHIVE)${NC}\n"
+        fi
+        main_header+="\n"
+        main_header+="$(show_stats)\n\n"
+        main_header+="  $(get_manager_uptime)\n"
+    else
+        main_header+="${BOLD}${MAGENTA}-----------------------------------------------------------------------------------${NC}\n"
+        main_header+="  $(get_manager_uptime)\n"
     fi
-    if [ "${PLANETS_ENABLED:-true}" = "true" ]; then
-        current_planets=$(get_planets_above_horizon)
-        [ -n "$current_planets" ] && main_header+="${current_planets}\n"
-    fi
-    alarm_clock_status=$(get_alarm_clock_status_display)
-    [ -n "$alarm_clock_status" ] && main_header+="${alarm_clock_status}\n"
-    main_header+="${BOLD}${MAGENTA}-----------------------------------------------------------------------------------${NC}\n"
-    if ! is_mix_archive_configured; then
-        main_header+="\n  ${BOLD}${RED}⚠️  Please be advised you have not configured your Mix Archive Folder, Please use Option 13 or 10 to Configure this now.${NC}\n"
-        main_header+="  ${DIM}${YELLOW}(Currently using application root folder: ${SCRIPT_DIR}/MIX_ARCHIVE)${NC}\n"
-    fi
-    main_header+="\n"
-    main_header+="$(show_stats)\n\n"
-    main_header+="  $(get_manager_uptime)\n"
 
     main_opts=(
         "SECTION|SECTION 1: MIX ARCHIVE WORKFLOW & INGESTION|"
