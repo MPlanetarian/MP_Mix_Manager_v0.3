@@ -697,7 +697,20 @@ get_connected_displays_count() {
     echo 1
 }
 
+ensure_manager_fullscreen() {
+    printf '\033]0;%s\007' "Mix Archive Manager" 2>/dev/null || true
+    # 1. Terminal escape sequences for maximize / fullscreen (supported by VTE and modern terms)
+    printf '\033[10;2t' 2>/dev/null || true
+
+    # 2. X11 / Wayland wmctrl command to ensure fullscreen
+    if command -v wmctrl >/dev/null 2>&1; then
+        wmctrl -r "Mix Archive Manager" -b add,fullscreen 2>/dev/null || true
+        wmctrl -r :ACTIVE: -b add,fullscreen 2>/dev/null || true
+    fi
+}
+
 align_mix_windows_on_screen() {
+    ensure_manager_fullscreen
     local align_sh="$SCRIPT_DIR/scripts/align_mix_windows.py"
     [ ! -f "$align_sh" ] && align_sh="$HOME/MP_Mix_Manager_v0.3/scripts/align_mix_windows.py"
     [ ! -f "$align_sh" ] && align_sh="/var/home/mplanetarian/MP_Mix_Manager_v0.3/scripts/align_mix_windows.py"
@@ -1796,7 +1809,7 @@ ensure_playlists_generated_dirs
 # Default Audio Player and Startup Autoplay Preferences
 DEFAULT_AUDIO_PLAYER="${DEFAULT_AUDIO_PLAYER:-audacious}"
 AUTO_PLAY_ON_STARTUP="${AUTO_PLAY_ON_STARTUP:-true}"
-AUTO_SHOW_COVER_ON_STARTUP="${AUTO_SHOW_COVER_ON_STARTUP:-true}"
+AUTO_SHOW_COVER_ON_STARTUP="${AUTO_SHOW_COVER_ON_STARTUP:-false}"
 AUTO_SHOW_TRACKLIST_ON_STARTUP="${AUTO_SHOW_TRACKLIST_ON_STARTUP:-true}"
 TRACKLIST_VIEWER="${TRACKLIST_VIEWER:-console}"
 AUTO_PLAY_MIX_SELECTION="${AUTO_PLAY_MIX_SELECTION:-latest}"
@@ -7211,7 +7224,7 @@ execute_startup_autoplay() {
     fi
 
     local found_cover=""
-    if [ "${AUTO_SHOW_COVER_ON_STARTUP:-true}" = "true" ]; then
+    if [ "${AUTO_SHOW_COVER_ON_STARTUP:-false}" = "true" ]; then
         found_cover=$(find_mix_cover "$selected_mix" 2>/dev/null)
         if [ -n "$found_cover" ] && [ -f "$found_cover" ]; then
             open_cover_art_window "$found_cover"
@@ -7281,7 +7294,7 @@ configure_audio_player_and_startup() {
         echo -e "  • Auto-Play Mix on Startup:      ${ap_badge}"
 
         local cov_badge="${RED}DISABLED${NC}"
-        [ "${AUTO_SHOW_COVER_ON_STARTUP:-true}" = "true" ] && cov_badge="${GREEN}ENABLED${NC}"
+        [ "${AUTO_SHOW_COVER_ON_STARTUP:-false}" = "true" ] && cov_badge="${GREEN}ENABLED${NC}"
         echo -e "  • Auto-Show Cover Art on Boot:   ${cov_badge}"
 
         local tl_badge="${RED}DISABLED${NC}"
@@ -7417,7 +7430,7 @@ configure_audio_player_and_startup() {
                 sleep 1
                 ;;
             14)
-                if [ "${AUTO_SHOW_COVER_ON_STARTUP:-true}" = "true" ]; then
+                if [ "${AUTO_SHOW_COVER_ON_STARTUP:-false}" = "true" ]; then
                     AUTO_SHOW_COVER_ON_STARTUP="false"
                 else
                     AUTO_SHOW_COVER_ON_STARTUP="true"
@@ -12348,9 +12361,8 @@ manage_settings_and_system() {
 while true; do
     if [ "$STARTUP_AUTOPLAY_EXECUTED" -eq 0 ]; then
         STARTUP_AUTOPLAY_EXECUTED=1
-        printf '\033]0;%s\007' "Mix Archive Manager" 2>/dev/null || true
+        ensure_manager_fullscreen
         align_mix_windows_on_screen
-        open_startup_mix_spek
         if [ "${AUTO_PLAY_ON_STARTUP:-true}" = "true" ]; then
             execute_startup_autoplay
         else

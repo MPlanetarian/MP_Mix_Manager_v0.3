@@ -3,14 +3,13 @@
 scripts/align_mix_windows.py - Cross-Platform Window Alignment for Mix Manager
 Positions windows according to active monitor configuration:
 - Multi-Display (> 1 displays active):
-  * Mix Archive Manager window is displayed on the PRIMARY display (Main Screen),
-    always centered, and never full screen or maximized.
+  * Mix Archive Manager window is displayed in FULL SCREEN on the PRIMARY display (Main Screen).
   * Strawberry Audio Player and Cover Art Viewer are placed ONLY on the SECONDARY display
     side-by-side with zero overlap: Cover Art (square on left) and Strawberry (player on right).
   * Any tracklist console window is minimized on multi-display so the primary display
     remains exclusively dedicated to the Mix Archive Manager.
 - Single-Display (<= 1 display active):
-  * Keeps windows on the single active display, centering Cover Art & Tracklist HUD floating above Manager.
+  * Mix Archive Manager window is displayed in FULL SCREEN.
 """
 
 import sys
@@ -269,42 +268,10 @@ def align_kwin(timeout_seconds=8.0, mgr_pid=0, parent_pid=0, expect_strawberry=F
         var pArea = workspace.clientArea(0, primScreen, workspace.currentDesktop);
         var sArea = workspace.clientArea(0, secScreen, workspace.currentDesktop);
 
-        // A. Display ONLY the Manager on the PRIMARY display (Main Screen)
-        // Must ALWAYS be centered and NEVER full screen or maximized
+        // A. Display ONLY the Manager on the PRIMARY display (Main Screen) in Fullscreen
         if (mgrWin) {{
-            mgrWin.fullScreen = false;
-            if (typeof mgrWin.setMaximize === 'function') {{
-                mgrWin.setMaximize(false, false);
-            }}
-            if (typeof mgrWin.quickTileMode !== 'undefined') {{
-                mgrWin.quickTileMode = 0;
-            }}
             workspace.sendClientToScreen(mgrWin, primScreen);
-
-            var curW = mgrWin.frameGeometry.width;
-            var curH = mgrWin.frameGeometry.height;
-            var maxAllowedW = Math.floor(pArea.width - 60);
-            var maxAllowedH = Math.floor(pArea.height - 60);
-            var targetW = curW;
-            var targetH = curH;
-
-            // If current size was maximized or fills screen, give standard centered dimensions
-            if (targetW >= maxAllowedW || targetW < 750) {{
-                targetW = Math.min(1380, Math.floor(pArea.width * 0.72));
-            }}
-            if (targetH >= maxAllowedH || targetH < 480) {{
-                targetH = Math.min(880, Math.floor(pArea.height * 0.8));
-            }}
-
-            var posX = Math.floor(pArea.x + (pArea.width - targetW) / 2);
-            var posY = Math.floor(pArea.y + (pArea.height - targetH) / 2);
-
-            mgrWin.frameGeometry = {{
-                x: posX,
-                y: posY,
-                width: targetW,
-                height: targetH
-            }};
+            mgrWin.fullScreen = true;
             workspace.raiseWindow(mgrWin);
             workspace.activeWindow = mgrWin;
         }}
@@ -405,34 +372,12 @@ def align_kwin(timeout_seconds=8.0, mgr_pid=0, parent_pid=0, expect_strawberry=F
     var sW = Math.floor(sArea.width);
     var sH = Math.floor(sArea.height);
 
-    // Center Manager on single display (not full screen)
+    // Manager on single display in Fullscreen
     if (mgrWin) {{
-        mgrWin.fullScreen = false;
-        if (typeof mgrWin.setMaximize === 'function') mgrWin.setMaximize(false, false);
-        if (typeof mgrWin.quickTileMode !== 'undefined') mgrWin.quickTileMode = 0;
         workspace.sendClientToScreen(mgrWin, screen);
-
-        var curW = mgrWin.frameGeometry.width;
-        var curH = mgrWin.frameGeometry.height;
-        var maxAllowedW = Math.floor(sW - 40);
-        var maxAllowedH = Math.floor(sH - 40);
-        var targetW = curW;
-        var targetH = curH;
-
-        if (targetW >= maxAllowedW || targetW < 750) {{
-            targetW = Math.min(1360, Math.floor(sW * 0.75));
-        }}
-        if (targetH >= maxAllowedH || targetH < 480) {{
-            targetH = Math.min(860, Math.floor(sH * 0.8));
-        }}
-
-        mgrWin.frameGeometry = {{
-            x: sX + Math.floor((sW - targetW) / 2),
-            y: sY + Math.floor((sH - targetH) / 2),
-            width: targetW,
-            height: targetH
-        }};
+        mgrWin.fullScreen = true;
         workspace.raiseWindow(mgrWin);
+        workspace.activeWindow = mgrWin;
     }}
 
     if (!coverWin && !tlWin) {{
@@ -594,14 +539,9 @@ def align_x11(mgr_pid=0):
                 prim = screens[0]
                 sec = screens[1]
 
-            # Manager -> Primary display: ALWAYS centered and NEVER full screen
+            # Manager -> Primary display in Fullscreen
             if mgr_win:
-                subprocess.run(['wmctrl', '-i', '-r', mgr_win, '-b', 'remove,maximized_vert,maximized_horz,fullscreen'], check=False)
-                target_w = min(1380, int(prim['w'] * 0.72))
-                target_h = min(880, int(prim['h'] * 0.8))
-                pos_x = prim['x'] + (prim['w'] - target_w) // 2
-                pos_y = prim['y'] + (prim['h'] - target_h) // 2
-                subprocess.run(['wmctrl', '-i', '-r', mgr_win, '-e', f"0,{pos_x},{pos_y},{target_w},{target_h}"], check=False)
+                subprocess.run(['wmctrl', '-i', '-r', mgr_win, '-b', 'add,fullscreen'], check=False)
                 subprocess.run(['wmctrl', '-i', '-a', mgr_win], check=False)
 
             # Minimize tracklist window on multi-display
@@ -643,15 +583,10 @@ def align_x11(mgr_pid=0):
 
             return True
 
-        # Single-display fallback
+        # Single-display fallback: Manager in Fullscreen
         if mgr_win:
-            s = screens[0]
-            subprocess.run(['wmctrl', '-i', '-r', mgr_win, '-b', 'remove,maximized_vert,maximized_horz,fullscreen'], check=False)
-            target_w = min(1360, int(s['w'] * 0.75))
-            target_h = min(860, int(s['h'] * 0.8))
-            pos_x = s['x'] + (s['w'] - target_w) // 2
-            pos_y = s['y'] + (s['h'] - target_h) // 2
-            subprocess.run(['wmctrl', '-i', '-r', mgr_win, '-e', f"0,{pos_x},{pos_y},{target_w},{target_h}"], check=False)
+            subprocess.run(['wmctrl', '-i', '-r', mgr_win, '-b', 'add,fullscreen'], check=False)
+            subprocess.run(['wmctrl', '-i', '-a', mgr_win], check=False)
 
         if cover_win or tl_win:
             s = screens[0]

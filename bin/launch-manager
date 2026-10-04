@@ -33,4 +33,4 @@ if [ ! -x "$LAUNCHER" ]; then
     LAUNCHER="$CODEBASE_DIR/Mix_Archive_Manager.sh"
 fi
 
-exec /usr/bin/konsole --separate --workdir "$CODEBASE_DIR" -p tabtitle="Mix Archive Manager" -e "$LAUNCHER" "$@"
+exec /usr/bin/konsole --fullscreen --separate --workdir "$CODEBASE_DIR" -p tabtitle="Mix Archive Manager" -e "$LAUNCHER" "$@"
