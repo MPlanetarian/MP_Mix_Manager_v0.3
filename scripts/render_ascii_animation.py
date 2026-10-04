@@ -30,20 +30,20 @@ PALETTE = [
 ]
 
 BANNER_LINES = [
-    "    __  ______     __  ____         ___              __    _           ",
-    "   /  |/  / __ \\   /  |/  (_)_  __  /   |  __________/ /_  (_)   _____ ",
-    "  / /|_/ / /_/ /  / /|_/ / / |/_/ / /| | / ___/ ___/ __ \\/ / | / / _ \\",
-    " / /  / / ____/  / /  / / />  <  / ___ |/ /  / /__/ / / / /| |/ /  __/",
-    "/_/  /_/_/      /_/  /_/_/_/|_| /_/  |_/_/   \\___/_/ /_/_/ |___/\\___/ ",
-    "                __  ___                                               ",
-    "               /  |/  /___ _____  ____ _____ ____  _____              ",
-    "              / /|_/ / __ `/ __ \\/ __ `/ __ `/ _ \\/ ___/              ",
-    "             / /  / / /_/ / / / / /_/ / /_/ /  __/ /                  ",
-    "            /_/  /_/\\__,_/_/ /_/\\__,_/\\__, /\\___/_/                   ",
-    "                                     /____/                           ",
+    "   __  ___ ___     __  ___ _  _  __    ___   ___  ____ __  __ _  _   __  ____",
+    "  /  |/  // _ \\   /  |/  /(_)| |/_/   /   | / _ \\/ __// / / /(_)| | / / / __/",
+    " / /|_/ // ___/  / /|_/ // / _>  <    / /| |/ , _/ /__/ /_/ // / | |/ / / _/  ",
+    "/_/  /_//_/     /_/  /_//_/ /_/|_|   /_/ |_/_/|_|\\___/\\____//_/  |___/ /___/  ",
+    "                   __  ___   ___   _  __   ___   _____ ____   ___ ",
+    "                  /  |/  /  /   | / |/ /  /   | / ___// __/  / _ \\",
+    "                 / /|_/ /  / /| |/    /  / /| |/ (_ // _/   / , _/",
+    "                /_/  /_/  /_/ |_/_/|_/  /_/ |_|\\___//___/  /_/|_| "
 ]
 
-SUBTITLE = "  ✦ MPlanetarian Dreamworlds Edition ✦ High-Resolution Audio Production Suite ✦"
+SUBTITLES = [
+    "               ✦  D R E A M W O R L D S   P R O D U C T I O N S  ✦",
+    "  ✦ MPlanetarian Dreamworlds Edition ✦ High-Resolution Audio Production Suite ✦"
+]
 
 def render_frame(offset=0):
     output = []
@@ -59,16 +59,17 @@ def render_frame(offset=0):
                 row.append(f"\033[38;2;{r};{g};{b}m{char}\033[0m")
         output.append("".join(row))
     
-    # Subtitle with rainbow gradient
-    sub_row = []
-    for i, char in enumerate(SUBTITLE):
-        if char == " ":
-            sub_row.append(" ")
-        else:
-            col_idx = (i // 4 + offset * 2) % num_colors
-            r, g, b = PALETTE[col_idx]
-            sub_row.append(f"\033[1;38;2;{r};{g};{b}m{char}\033[0m")
-    output.append("".join(sub_row))
+    # Subtitles with rainbow gradient
+    for s_idx, subtitle in enumerate(SUBTITLES):
+        sub_row = []
+        for i, char in enumerate(subtitle):
+            if char == " ":
+                sub_row.append(" ")
+            else:
+                col_idx = (i // 4 + offset * 2 + s_idx * 3) % num_colors
+                r, g, b = PALETTE[col_idx]
+                sub_row.append(f"\033[1;38;2;{r};{g};{b}m{char}\033[0m")
+        output.append("".join(sub_row))
     
     return "\n".join(output)
 
@@ -77,12 +78,12 @@ def play_animation(frames=14, delay=0.04):
     sys.stdout.write("\033[?25l")
     sys.stdout.flush()
     try:
+        num_lines = len(BANNER_LINES) + len(SUBTITLES)
         for f in range(frames):
             frame_str = render_frame(f)
             if f == 0:
                 sys.stdout.write(frame_str + "\n")
             else:
-                num_lines = len(BANNER_LINES) + 1
                 sys.stdout.write(f"\033[{num_lines}A\r")
                 sys.stdout.write(frame_str + "\n")
             sys.stdout.flush()
@@ -94,7 +95,7 @@ def play_animation(frames=14, delay=0.04):
 
 def render_compact(offset=0):
     num_colors = len(PALETTE)
-    title = "  ✦ MPlanetarian Dreamworlds Edition ✦ High-Resolution Audio Production Suite ✦"
+    title = "  ✦ Dreamworlds Productions ✦ MPlanetarian Audio Production Suite ✦"
     sub_row = []
     for i, char in enumerate(title):
         if char == " ":
