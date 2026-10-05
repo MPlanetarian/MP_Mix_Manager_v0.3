@@ -1226,12 +1226,12 @@ for p in sorted(lines, key=key_func):
         fi
     fi
 
-    local eff_artist="${CUSTOM_ARTIST:-MPlanetarian}"
-    local eff_title="${CUSTOM_TITLE:-$readable_title}"
-    local eff_album="${CUSTOM_ALBUM:-Stream of Frequency}"
-    local eff_year="${CUSTOM_YEAR:-$(date +%Y)}"
-    local eff_genre="${CUSTOM_GENRE:-Electronic / Trance}"
-    local eff_comment="${CUSTOM_COMMENT:-Stream of Frequency Mix Archive}"
+    eff_artist="${CUSTOM_ARTIST:-MPlanetarian}"
+    eff_title="${CUSTOM_TITLE:-$readable_title}"
+    eff_album="${CUSTOM_ALBUM:-Stream of Frequency}"
+    eff_year="${CUSTOM_YEAR:-$(date +%Y)}"
+    eff_genre="${CUSTOM_GENRE:-Electronic / Trance}"
+    eff_comment="${CUSTOM_COMMENT:-Stream of Frequency Mix Archive}"
 
     conversion_status=1
     case "$OUTPUT_FORMAT" in
