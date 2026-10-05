@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
 
+# Auto-upgrade to modern Bash on macOS if running under ancient system Bash 3.2
+if [ "$(uname -s)" = "Darwin" ] && [ "${BASH_VERSINFO[0]:-0}" -lt 4 ]; then
+    if [ -x "/opt/homebrew/bin/bash" ]; then
+        exec /opt/homebrew/bin/bash "$0" "$@"
+    elif [ -x "/usr/local/bin/bash" ]; then
+        exec /usr/local/bin/bash "$0" "$@"
+    fi
+fi
+
 # Colors for terminal styling & Theme Engine
 set_theme_colors() {
     local theme_name="${1:-dreamworlds}"
