@@ -1061,6 +1061,134 @@ review_converted_tracklist() {
     done
 }
 
+find_cover_for_audio() {
+    local audio="$1"
+    local adir
+    adir="$(dirname "$audio")"
+    local abase
+    abase="$(basename "$audio")"
+    local astem="${abase%.*}"
+
+    if [ -n "${CUSTOM_COVER_IMAGE:-}" ] && [ -f "$CUSTOM_COVER_IMAGE" ]; then
+        echo "$CUSTOM_COVER_IMAGE"
+        return 0
+    fi
+    for cand in \
+        "$adir/${astem}.png" "$adir/${astem}.jpg" "$adir/${astem}.jpeg" \
+        "${astem}.png" "${astem}.jpg" "${astem}.jpeg" \
+        "COVERS/${astem}.png" "COVERS/${astem}.jpg" "COVERS/${astem}.jpeg" \
+        "Cover.png" "${COVER_ART:-Cover.png}"; do
+        if [ -n "$cand" ] && [ -f "$cand" ]; then
+            echo "$cand"
+            return 0
+        fi
+    done
+    echo "Cover.png"
+}
+
+post_conversion_tasks() {
+    [ ${#newly_exported_flacs[@]} -eq 0 ] && return 0
+    [ ! -r /dev/tty ] && return 0
+
+    # 1. Prompt to generate YouTube Video
+    if [ "$OUTPUT_FORMAT" != "mp4" ]; then
+        echo ""
+        echo "=================================================="
+        echo "             YOUTUBE VIDEO GENERATION             "
+        echo "=================================================="
+        echo "Would you like to generate a YouTube Video?"
+        echo "  [y/N] (Default: Enter = No, skip video generation)"
+        echo "=================================================="
+        local gen_vid=""
+        read -r -p "Generate YouTube Video? [y/N]: " gen_vid </dev/tty || gen_vid=""
+        case "$gen_vid" in
+            [yY]*)
+                local vid_res="1080p"
+                echo ""
+                echo "Select YouTube Video Resolution:"
+                echo "  1) 1080p Full HD (default, press Enter)"
+                echo "  2) 4K Ultra HD"
+                echo "  3) 720p HD"
+                local res_choice=""
+                read -r -p "Resolution [1/2/3, Enter = 1080p]: " res_choice </dev/tty || res_choice=""
+                case "$res_choice" in
+                    2|[4kK]*) vid_res="4k" ;;
+                    3|720*)   vid_res="720p" ;;
+                    *)        vid_res="1080p" ;;
+                esac
+
+                local vid_script=""
+                for vcand in \
+                    "$SCRIPT_DIR/generate_youtube_video.sh" \
+                    "$PARENT_DIR/generate_youtube_video.sh" \
+                    "${MIX_ARCHIVE_DIR:-}/generate_youtube_video.sh" \
+                    "/var/home/mplanetarian/MP_Mix_Manager_v0.3/generate_youtube_video.sh" \
+                    "/var/home/mplanetarian/MP_Mix_Manager_v0.3/scripts/generate_youtube_video.sh" \
+                    "$SCRIPT_DIR/Make_SOF_Episode_From_PNG_FLAC_Output_MP4_1080p_Video.sh"; do
+                    if [ -f "$vcand" ]; then
+                        vid_script="$vcand"
+                        break
+                    fi
+                done
+
+                for exp_audio in "${newly_exported_flacs[@]}"; do
+                    if [ -f "$exp_audio" ]; then
+                        local cov_for_vid
+                        cov_for_vid="$(find_cover_for_audio "$exp_audio")"
+                        echo " -> Generating YouTube video for $(basename "$exp_audio")..."
+                        if [ -n "$vid_script" ]; then
+                            if [[ "$vid_script" == *"generate_youtube_video.sh" ]]; then
+                                bash "$vid_script" -r "$vid_res" -i "$exp_audio" -c "$cov_for_vid" -o "${MP4_OUTPUT_DIR:-MP4_CONVERTED_OUTPUTS}" </dev/tty
+                            else
+                                bash "$vid_script" "$exp_audio" "$cov_for_vid" </dev/tty
+                            fi
+                        else
+                            echo "WARNING: YouTube video generation script not found."
+                        fi
+                    fi
+                done
+                ;;
+            *)
+                echo " -> Skipping YouTube video generation."
+                ;;
+        esac
+    fi
+
+    # 2. Prompt to open converted audio file in Audacity
+    echo ""
+    echo "=================================================="
+    echo "          AUDACITY AUDIO POST-PROCESSING          "
+    echo "=================================================="
+    echo "Would you like to open the converted audio file in Audacity (for post processing)?"
+    echo "  [y/N] (Default: Enter = No, continue)"
+    echo "=================================================="
+    local open_aud=""
+    read -r -p "Open in Audacity? [y/N]: " open_aud </dev/tty || open_aud=""
+    case "$open_aud" in
+        [yY]*)
+            for exp_audio in "${newly_exported_flacs[@]}"; do
+                if [ -f "$exp_audio" ]; then
+                    echo " -> Launching Audacity with '$(basename "$exp_audio")'..."
+                    if command -v audacity >/dev/null 2>&1; then
+                        nohup audacity "$exp_audio" >/dev/null 2>&1 &
+                    elif flatpak list 2>/dev/null | grep -q "org.audacityteam.Audacity"; then
+                        nohup flatpak run org.audacityteam.Audacity "$exp_audio" >/dev/null 2>&1 &
+                    elif [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then
+                        open -a "Audacity" "$exp_audio" 2>/dev/null &
+                    elif command -v cmd.exe >/dev/null 2>&1; then
+                        cmd.exe /c start "" audacity "$exp_audio" 2>/dev/null &
+                    else
+                        echo "WARNING: Audacity was not found on this system."
+                    fi
+                fi
+            done
+            ;;
+        *)
+            echo " -> Skipping Audacity post-processing."
+            ;;
+    esac
+}
+
 # 4. Process, Merge, Convert, Tag Groups, Write Tracklist, and Generate Spectrogram
 counter=1
 for g_hash in "${group_keys[@]}"; do
@@ -1359,11 +1487,11 @@ for p in sorted(lines, key=key_func):
     echo "=================================================="
     echo "✓ Audio Conversion Finished: $(basename "$output_path")"
     echo "=================================================="
-    local ask_split=""
+    ask_split=""
     read -r -p "Would you like to split '$output_filename' into separate parts/sets? [y/N]: " ask_split </dev/tty || ask_split=""
     case "$ask_split" in
         [yY]|[yY][eE][sS])
-            local splitter_bin=""
+            splitter_bin=""
             for sc in "$SCRIPT_DIR/Split_FLAC_File.sh" "$SCRIPT_DIR/scripts/Split_FLAC_File.sh" "./Split_FLAC_File.sh"; do
                 if [ -f "$sc" ]; then splitter_bin="$sc"; break; fi
             done
@@ -1412,3 +1540,6 @@ fi
 echo "=================================================="
 echo "CONVERSION COMPLETE"
 echo "=================================================="
+
+post_conversion_tasks
+
