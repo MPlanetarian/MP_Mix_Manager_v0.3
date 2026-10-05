@@ -50,6 +50,17 @@ set_theme_colors() {
             CYAN='\033[38;2;0;193;228m'      # Sweet Electric Cyan (#00c1e4)
             CURRENT_THEME="dreamworlds"
             ;;
+        dreamworlds_ultra|ultra|dreamworlds_ultra_mp_mix_manager|"Dreamworlds Ultra MP Mix Manager")
+            # Dreamworlds Ultra MP Mix Manager
+            # Adapted from BTOP HotPurpleTrafficLight theme
+            RED='\033[38;2;255;0;0m'          # Traffic Light Danger Red (#ff0000)
+            GREEN='\033[38;2;0;255;0m'        # Traffic Light Go Green (#00ff00)
+            YELLOW='\033[38;2;255;153;51m'    # Traffic Light Amber Warning (#ff9933)
+            BLUE='\033[38;2;102;102;255m'     # Electric Lavender Indigo (#6666ff)
+            MAGENTA='\033[38;2;166;77;255m'   # Hot Purple Accent (#a64dff)
+            CYAN='\033[38;2;153;153;255m'     # Soft Lilac / Process Blue (#9999ff)
+            CURRENT_THEME="dreamworlds_ultra"
+            ;;
         cyberpunk)
             RED='\033[38;5;196m'     # Cyberpunk Neon Red
             GREEN='\033[38;5;48m'    # Cyberpunk Acid Green
@@ -607,6 +618,16 @@ show_banner() {
         echo -e "${CYAN}║${RESET}"
         echo -e "${CYAN}║${RESET}   ${BOLD}\033[38;2;247;37;133m✦ \033[38;2;237;37;78mD \033[38;2;255;170;0mR \033[38;2;0;229;255mE \033[38;2;0;193;228mA \033[38;2;155;89;182mM \033[38;2;247;37;133mW \033[38;2;237;37;78mO \033[38;2;255;170;0mR \033[38;2;0;229;255mL \033[38;2;0;193;228mD \033[38;2;155;89;182mS   \033[38;2;247;37;133mP \033[38;2;237;37;78mR \033[38;2;255;170;0mO \033[38;2;0;229;255mD \033[38;2;0;193;228mU \033[38;2;155;89;182mC \033[38;2;247;37;133mT \033[38;2;237;37;78mI \033[38;2;255;170;0mO \033[38;2;0;229;255mN \033[38;2;0;193;228mS \033[38;2;155;89;182m✦${RESET}"
         echo -e "${CYAN}║${RESET}   ${BOLD}${WHITE}KDE Connect Commands Generator${RESET}  ${DIM}MPlanetarian Dreamworlds Edition${RESET}"
+    elif [ "${CURRENT_THEME}" = "dreamworlds_ultra" ]; then
+        printf "${CYAN}║${RESET}   ${BOLD}\033[38;2;166;77;255m  ██████╗ \033[38;2;102;102;255m██████╗ \033[38;2;0;255;0m███╗   ██╗ \033[38;2;204;255;102m██████╗ \033[38;2;255;153;51m███████╗\033[38;2;255;0;0m███╗   ██╗${RESET}\n"
+        printf "${CYAN}║${RESET}   ${BOLD}\033[38;2;166;77;255m ██╔════╝\033[38;2;102;102;255m██╔═══██╗\033[38;2;0;255;0m████╗  ██║\033[38;2;204;255;102m██╔════╝ \033[38;2;255;153;51m██╔════╝\033[38;2;255;0;0m████╗  ██║${RESET}\n"
+        printf "${CYAN}║${RESET}   ${BOLD}\033[38;2;166;77;255m ██║     \033[38;2;102;102;255m██║   ██║\033[38;2;0;255;0m██╔██╗ ██║\033[38;2;204;255;102m██║  ███╗\033[38;2;255;153;51m█████╗  \033[38;2;255;0;0m██╔██╗ ██║${RESET}\n"
+        printf "${CYAN}║${RESET}   ${BOLD}\033[38;2;166;77;255m ██║     \033[38;2;102;102;255m██║   ██║\033[38;2;0;255;0m██║╚██╗██║\033[38;2;204;255;102m██║   ██║\033[38;2;255;153;51m██╔══╝  \033[38;2;255;0;0m██║╚██╗██║${RESET}\n"
+        printf "${CYAN}║${RESET}   ${BOLD}\033[38;2;166;77;255m ╚██████╗\033[38;2;102;102;255m╚██████╔╝\033[38;2;0;255;0m██║ ╚████║\033[38;2;204;255;102m╚██████╔╝\033[38;2;255;153;51m███████╗\033[38;2;255;0;0m██║ ╚████║${RESET}\n"
+        printf "${CYAN}║${RESET}   ${BOLD}\033[38;2;166;77;255m  ╚═════╝ \033[38;2;102;102;255m╚═════╝ \033[38;2;0;255;0m╚═╝  ╚═══╝ \033[38;2;204;255;102m╚═════╝ \033[38;2;255;153;51m╚══════╝\033[38;2;255;0;0m╚═╝  ╚═══╝${RESET}\n"
+        echo -e "${CYAN}║${RESET}"
+        echo -e "${CYAN}║${RESET}   ${BOLD}\033[38;2;166;77;255m✦ \033[38;2;102;102;255mD \033[38;2;0;255;0mR \033[38;2;204;255;102mE \033[38;2;255;153;51mA \033[38;2;255;0;0mM \033[38;2;153;153;255mW \033[38;2;166;77;255mO \033[38;2;102;102;255mR \033[38;2;0;255;0mL \033[38;2;204;255;102mD \033[38;2;255;153;51mS   \033[38;2;255;0;0mU \033[38;2;153;153;255mL \033[38;2;166;77;255mT \033[38;2;102;102;255mR \033[38;2;0;255;0mA   \033[38;2;204;255;102mP \033[38;2;255;153;51mR \033[38;2;255;0;0mO \033[38;2;153;153;255mD \033[38;2;166;77;255mU \033[38;2;102;102;255mC \033[38;2;0;255;0mT \033[38;2;204;255;102mI \033[38;2;255;153;51mO \033[38;2;255;0;0mN \033[38;2;153;153;255mS \033[38;2;166;77;255m✦${RESET}"
+        echo -e "${CYAN}║${RESET}   ${BOLD}${WHITE}KDE Connect Commands Generator${RESET}  ${DIM}MPlanetarian Dreamworlds Ultra Edition${RESET}"
     else
         printf "${CYAN}║${RESET}   ${BOLD}${MAGENTA}%s${RESET}\n" \
             "  ██████╗ ██████╗ ███╗   ██╗ ██████╗ ███████╗███╗   ██╗"
@@ -4903,39 +4924,41 @@ congen_themes_menu() {
         echo -e "  ${DIM}Select a theme palette to customize the visual aesthetic of Congen.${RESET}"
         echo ""
 
-        local theme_dreamworlds_badge="" theme_cyberpunk_badge="" theme_dracula_badge=""
+        local theme_dreamworlds_badge="" theme_ultra_badge="" theme_cyberpunk_badge="" theme_dracula_badge=""
         local theme_nord_badge="" theme_matrix_badge="" theme_solarized_badge=""
         local theme_tokyo_badge="" theme_monokai_badge="" theme_gruvbox_badge=""
         local theme_emerald_badge="" theme_classic_badge=""
 
-        [ "$CURRENT_THEME" = "dreamworlds" ] && theme_dreamworlds_badge=" ${GREEN}★ ACTIVE (DEFAULT)${RESET}"
-        [ "$CURRENT_THEME" = "cyberpunk" ]   && theme_cyberpunk_badge=" ${GREEN}★ ACTIVE${RESET}"
-        [ "$CURRENT_THEME" = "dracula" ]     && theme_dracula_badge=" ${GREEN}★ ACTIVE${RESET}"
-        [ "$CURRENT_THEME" = "nord" ]        && theme_nord_badge=" ${GREEN}★ ACTIVE${RESET}"
-        [ "$CURRENT_THEME" = "matrix" ]      && theme_matrix_badge=" ${GREEN}★ ACTIVE${RESET}"
-        [ "$CURRENT_THEME" = "solarized" ]   && theme_solarized_badge=" ${GREEN}★ ACTIVE${RESET}"
-        [ "$CURRENT_THEME" = "tokyo" ]       && theme_tokyo_badge=" ${GREEN}★ ACTIVE${RESET}"
-        [ "$CURRENT_THEME" = "monokai" ]     && theme_monokai_badge=" ${GREEN}★ ACTIVE${RESET}"
-        [ "$CURRENT_THEME" = "gruvbox" ]     && theme_gruvbox_badge=" ${GREEN}★ ACTIVE${RESET}"
-        [ "$CURRENT_THEME" = "emerald" ]     && theme_emerald_badge=" ${GREEN}★ ACTIVE${RESET}"
-        [ "$CURRENT_THEME" = "classic" ]     && theme_classic_badge=" ${GREEN}★ ACTIVE${RESET}"
+        [ "$CURRENT_THEME" = "dreamworlds" ]       && theme_dreamworlds_badge=" ${GREEN}★ ACTIVE (DEFAULT)${RESET}"
+        [ "$CURRENT_THEME" = "dreamworlds_ultra" ] && theme_ultra_badge=" ${GREEN}★ ACTIVE${RESET}"
+        [ "$CURRENT_THEME" = "cyberpunk" ]         && theme_cyberpunk_badge=" ${GREEN}★ ACTIVE${RESET}"
+        [ "$CURRENT_THEME" = "dracula" ]           && theme_dracula_badge=" ${GREEN}★ ACTIVE${RESET}"
+        [ "$CURRENT_THEME" = "nord" ]              && theme_nord_badge=" ${GREEN}★ ACTIVE${RESET}"
+        [ "$CURRENT_THEME" = "matrix" ]            && theme_matrix_badge=" ${GREEN}★ ACTIVE${RESET}"
+        [ "$CURRENT_THEME" = "solarized" ]         && theme_solarized_badge=" ${GREEN}★ ACTIVE${RESET}"
+        [ "$CURRENT_THEME" = "tokyo" ]             && theme_tokyo_badge=" ${GREEN}★ ACTIVE${RESET}"
+        [ "$CURRENT_THEME" = "monokai" ]           && theme_monokai_badge=" ${GREEN}★ ACTIVE${RESET}"
+        [ "$CURRENT_THEME" = "gruvbox" ]           && theme_gruvbox_badge=" ${GREEN}★ ACTIVE${RESET}"
+        [ "$CURRENT_THEME" = "emerald" ]           && theme_emerald_badge=" ${GREEN}★ ACTIVE${RESET}"
+        [ "$CURRENT_THEME" = "classic" ]           && theme_classic_badge=" ${GREEN}★ ACTIVE${RESET}"
 
         echo -e "    ${YELLOW}[1]${RESET}  MPlanetarian Dreamworlds [Default]  ${DIM}[Sweet Hot Pink, Electric Cyan, Lavender & Violet]${RESET}${theme_dreamworlds_badge}"
-        echo -e "    ${YELLOW}[2]${RESET}  Cyberpunk                           ${DIM}[Neon Hot Pink, Electric Cyan & High-Volt Yellow]${RESET}${theme_cyberpunk_badge}"
-        echo -e "    ${YELLOW}[3]${RESET}  Dracula                             ${DIM}[Vampiric Purple, Neon Green & Coral Pink]${RESET}${theme_dracula_badge}"
-        echo -e "    ${YELLOW}[4]${RESET}  Nord                                ${DIM}[Arctic Slate, Frost Polar Ice & Sage Aurora]${RESET}${theme_nord_badge}"
-        echo -e "    ${YELLOW}[5]${RESET}  The Matrix                          ${DIM}[Pure Phosphor Green, Terminal Crimson & Mint]${RESET}${theme_matrix_badge}"
-        echo -e "    ${YELLOW}[6]${RESET}  Solarized                           ${DIM}[Warm Amber, Solar Yellow, Cyan & Terracotta]${RESET}${theme_solarized_badge}"
-        echo -e "    ${YELLOW}[7]${RESET}  Tokyo Night                         ${DIM}[Deep Violet, Lavender, Soft Blue & Coral]${RESET}${theme_tokyo_badge}"
-        echo -e "    ${YELLOW}[8]${RESET}  Monokai                             ${DIM}[Electric Pink, Tangerine, Lime & Vivid Blue]${RESET}${theme_monokai_badge}"
-        echo -e "    ${YELLOW}[9]${RESET}  Gruvbox                             ${DIM}[Retro Warm Earth, Dusty Rose, Rust & Gold]${RESET}${theme_gruvbox_badge}"
-        echo -e "    ${YELLOW}[10]${RESET} Emerald Isle                        ${DIM}[Deep Ocean, Spring Emerald & Mint Cyan]${RESET}${theme_emerald_badge}"
-        echo -e "    ${YELLOW}[11]${RESET} Classic ANSI                        ${DIM}[Standard 16-Color Terminal Fallback]${RESET}${theme_classic_badge}"
+        echo -e "    ${YELLOW}[2]${RESET}  Dreamworlds Ultra MP Mix Manager    ${DIM}[Hot Purple, Electric Indigo & Traffic Light RGB]${RESET}${theme_ultra_badge}"
+        echo -e "    ${YELLOW}[3]${RESET}  Cyberpunk                           ${DIM}[Neon Hot Pink, Electric Cyan & High-Volt Yellow]${RESET}${theme_cyberpunk_badge}"
+        echo -e "    ${YELLOW}[4]${RESET}  Dracula                             ${DIM}[Vampiric Purple, Neon Green & Coral Pink]${RESET}${theme_dracula_badge}"
+        echo -e "    ${YELLOW}[5]${RESET}  Nord                                ${DIM}[Arctic Slate, Frost Polar Ice & Sage Aurora]${RESET}${theme_nord_badge}"
+        echo -e "    ${YELLOW}[6]${RESET}  The Matrix                          ${DIM}[Pure Phosphor Green, Terminal Crimson & Mint]${RESET}${theme_matrix_badge}"
+        echo -e "    ${YELLOW}[7]${RESET}  Solarized                           ${DIM}[Warm Amber, Solar Yellow, Cyan & Terracotta]${RESET}${theme_solarized_badge}"
+        echo -e "    ${YELLOW}[8]${RESET}  Tokyo Night                         ${DIM}[Deep Violet, Lavender, Soft Blue & Coral]${RESET}${theme_tokyo_badge}"
+        echo -e "    ${YELLOW}[9]${RESET}  Monokai                             ${DIM}[Electric Pink, Tangerine, Lime & Vivid Blue]${RESET}${theme_monokai_badge}"
+        echo -e "    ${YELLOW}[10]${RESET} Gruvbox                             ${DIM}[Retro Warm Earth, Dusty Rose, Rust & Gold]${RESET}${theme_gruvbox_badge}"
+        echo -e "    ${YELLOW}[11]${RESET} Emerald Isle                        ${DIM}[Deep Ocean, Spring Emerald & Mint Cyan]${RESET}${theme_emerald_badge}"
+        echo -e "    ${YELLOW}[12]${RESET} Classic ANSI                        ${DIM}[Standard 16-Color Terminal Fallback]${RESET}${theme_classic_badge}"
         echo ""
         echo -e "    ${YELLOW}[b]${RESET}  Back to Main Menu"
         echo ""
 
-        read -rp "  $(echo -e "${BOLD}Select theme [1–11 or b]: ${RESET}")" topt || topt="b"
+        read -rp "  $(echo -e "${BOLD}Select theme [1–12 or b]: ${RESET}")" topt || topt="b"
 
         case "${topt,,}" in
             1|dreamworlds|default)
@@ -4943,52 +4966,57 @@ congen_themes_menu() {
                 echo -e "\n  ${GREEN}✓ Theme switched to MPlanetarian Dreamworlds [Default]!${RESET}"
                 sleep 0.8
                 ;;
-            2|cyberpunk)
+            2|ultra|dreamworlds_ultra|hotpurple|trafficlight)
+                save_theme "dreamworlds_ultra"
+                echo -e "\n  ${GREEN}✓ Theme switched to Dreamworlds Ultra MP Mix Manager!${RESET}"
+                sleep 0.8
+                ;;
+            3|cyberpunk)
                 save_theme "cyberpunk"
                 echo -e "\n  ${GREEN}✓ Theme switched to Cyberpunk!${RESET}"
                 sleep 0.8
                 ;;
-            3|dracula)
+            4|dracula)
                 save_theme "dracula"
                 echo -e "\n  ${GREEN}✓ Theme switched to Dracula!${RESET}"
                 sleep 0.8
                 ;;
-            4|nord)
+            5|nord)
                 save_theme "nord"
                 echo -e "\n  ${GREEN}✓ Theme switched to Nord!${RESET}"
                 sleep 0.8
                 ;;
-            5|matrix)
+            6|matrix)
                 save_theme "matrix"
                 echo -e "\n  ${GREEN}✓ Theme switched to The Matrix!${RESET}"
                 sleep 0.8
                 ;;
-            6|solarized)
+            7|solarized)
                 save_theme "solarized"
                 echo -e "\n  ${GREEN}✓ Theme switched to Solarized!${RESET}"
                 sleep 0.8
                 ;;
-            7|tokyo)
+            8|tokyo)
                 save_theme "tokyo"
                 echo -e "\n  ${GREEN}✓ Theme switched to Tokyo Night!${RESET}"
                 sleep 0.8
                 ;;
-            8|monokai)
+            9|monokai)
                 save_theme "monokai"
                 echo -e "\n  ${GREEN}✓ Theme switched to Monokai!${RESET}"
                 sleep 0.8
                 ;;
-            9|gruvbox)
+            10|gruvbox)
                 save_theme "gruvbox"
                 echo -e "\n  ${GREEN}✓ Theme switched to Gruvbox!${RESET}"
                 sleep 0.8
                 ;;
-            10|emerald)
+            11|emerald)
                 save_theme "emerald"
                 echo -e "\n  ${GREEN}✓ Theme switched to Emerald Isle!${RESET}"
                 sleep 0.8
                 ;;
-            11|classic)
+            12|classic)
                 save_theme "classic"
                 echo -e "\n  ${GREEN}✓ Theme switched to Classic ANSI!${RESET}"
                 sleep 0.8
@@ -4997,7 +5025,7 @@ congen_themes_menu() {
                 return
                 ;;
             *)
-                echo -e "\n  ${RED}Invalid option.${RESET} Please select 1–11 or b."
+                echo -e "\n  ${RED}Invalid option.${RESET} Please select 1–12 or b."
                 sleep 1
                 ;;
         esac
@@ -5023,7 +5051,7 @@ main_menu() {
         echo -e "    ${YELLOW}[8]${RESET}  Congen Alerts                         ${DIM}(sound notifications)${RESET}"
         echo -e "    ${YELLOW}[9]${RESET}  Generate Command from Keyboard Shortcut"
         echo -e "    ${YELLOW}[10]${RESET} 🖥️  Desktop Shortcut Management         ${DIM}(Run, Bind Keys & Schedule — KDE Plasma)${RESET}"
-        echo -e "    ${YELLOW}[11]${RESET} 🎨 Themes & Color Palette Switcher        ${DIM}(11 Themes: Dreamworlds, Cyberpunk...)${RESET}"
+        echo -e "    ${YELLOW}[11]${RESET} 🎨 Themes & Color Palette Switcher        ${DIM}(12 Themes: Dreamworlds, Dreamworlds Ultra...)${RESET}"
         echo -e "    ${YELLOW}[q]${RESET}  Quit"
         echo ""
 

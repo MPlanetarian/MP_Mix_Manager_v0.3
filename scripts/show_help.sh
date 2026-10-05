@@ -165,7 +165,7 @@ ${BOLD}AVAILABLE MENU OPTIONS (INTERACTIVE & DIRECT SHORTCUTS):${NC}
   ${BOLD}${CYAN}32${NC}   ${BOLD}Dynamic MOTD Banner Manager & Drive Burner${NC}
        Generate custom login MOTDs with recent mixes, or burn ISO images to USB.
   ${BOLD}${CYAN}33${NC}   ${BOLD}Manager Settings, Themes, Shell CLI & Reboot${NC}
-       Switch color themes (Dracula, Nord, Cyberpunk, etc.), migrate paths, reboot.
+       Switch color themes (Dreamworlds, Dreamworlds Ultra, Cyberpunk, etc.), migrate paths, reboot.
   ${BOLD}${CYAN}34${NC}   ${BOLD}Exit Manager${NC} (or 0 / q)
        Exit the application cleanly.
 

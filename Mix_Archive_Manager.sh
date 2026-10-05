@@ -28,6 +28,17 @@ set_theme_colors() {
             CYAN='\033[38;2;0;193;228m'      # Sweet Electric Cyan (#00c1e4)
             CURRENT_THEME="dreamworlds"
             ;;
+        dreamworlds_ultra|ultra|dreamworlds_ultra_mp_mix_manager|"Dreamworlds Ultra MP Mix Manager")
+            # Dreamworlds Ultra MP Mix Manager
+            # Adapted from BTOP HotPurpleTrafficLight theme
+            RED='\033[38;2;255;0;0m'          # Traffic Light Danger Red (#ff0000)
+            GREEN='\033[38;2;0;255;0m'        # Traffic Light Go Green (#00ff00)
+            YELLOW='\033[38;2;255;153;51m'    # Traffic Light Amber Warning (#ff9933)
+            BLUE='\033[38;2;102;102;255m'     # Electric Lavender Indigo (#6666ff)
+            MAGENTA='\033[38;2;166;77;255m'   # Hot Purple Accent (#a64dff)
+            CYAN='\033[38;2;153;153;255m'     # Soft Lilac / Process Blue (#9999ff)
+            CURRENT_THEME="dreamworlds_ultra"
+            ;;
         dracula)
             RED='\033[38;5;212m'     # Dracula Coral Pink / Red
             GREEN='\033[38;5;84m'    # Dracula Neon Green
@@ -160,14 +171,16 @@ play_sound_effect() {
 
 show_dreamworlds_ascii_banner() {
     local animate="${1:-false}"
-    if [ "$CURRENT_THEME" = "dreamworlds" ]; then
+    if [ "$CURRENT_THEME" = "dreamworlds" ] || [ "$CURRENT_THEME" = "dreamworlds_ultra" ]; then
         local anim_script="$SCRIPT_DIR/scripts/render_ascii_animation.py"
         [ ! -f "$anim_script" ] && anim_script="$SCRIPT_DIR/render_ascii_animation.py"
+        local ultra_flag=""
+        [ "$CURRENT_THEME" = "dreamworlds_ultra" ] && ultra_flag="--ultra"
         if [ -f "$anim_script" ]; then
             if [ "$animate" = "true" ]; then
-                python3 "$anim_script" --animate 2>/dev/null || python3 "$anim_script" 2>/dev/null
+                python3 "$anim_script" $ultra_flag --animate 2>/dev/null || python3 "$anim_script" $ultra_flag 2>/dev/null
             else
-                python3 "$anim_script" 2>/dev/null
+                python3 "$anim_script" $ultra_flag 2>/dev/null
             fi
         fi
     fi
@@ -176,21 +189,86 @@ show_dreamworlds_ascii_banner() {
 # Key reader for interactive navigation
 read_nav_key() {
     local k=""
-    local rest=""
     IFS= read -rsn1 k || return 1
     if [[ "$k" == $'\x1b' || "$k" == $'\e' ]]; then
-        IFS= read -rsn4 -t 0.05 rest || true
-        case "$rest" in
-            "[A"|"OA") echo "UP" ;;
-            "[B"|"OB") echo "DOWN" ;;
-            "[C"|"OC") echo "RIGHT" ;;
-            "[D"|"OD") echo "LEFT" ;;
-            "[5~")     echo "PAGE_UP" ;;
-            "[6~")     echo "PAGE_DOWN" ;;
-            "[H"|"[1~") echo "HOME" ;;
-            "[F"|"[4~") echo "END" ;;
-            *)         echo "ESC" ;;
-        esac
+        local c2=""
+        if IFS= read -rsn1 -t 0.05 c2; then
+            if [[ "$c2" == "[" ]]; then
+                local c3=""
+                if IFS= read -rsn1 -t 0.05 c3; then
+                    case "$c3" in
+                        "A") echo "UP"; return 0 ;;
+                        "B") echo "DOWN"; return 0 ;;
+                        "C") echo "RIGHT"; return 0 ;;
+                        "D") echo "LEFT"; return 0 ;;
+                        "H") echo "HOME"; return 0 ;;
+                        "F") echo "END"; return 0 ;;
+                        "[")
+                            local c4=""
+                            if IFS= read -rsn1 -t 0.05 c4; then
+                                case "$c4" in
+                                    "A") echo "UP"; return 0 ;;
+                                    "B") echo "DOWN"; return 0 ;;
+                                    "C") echo "RIGHT"; return 0 ;;
+                                    "D") echo "LEFT"; return 0 ;;
+                                    *) echo "UNKNOWN"; return 0 ;;
+                                esac
+                            fi
+                            ;;
+                        [0-9])
+                            local c4=""
+                            if IFS= read -rsn1 -t 0.05 c4; then
+                                case "${c3}${c4}" in
+                                    "5~") echo "PAGE_UP"; return 0 ;;
+                                    "6~") echo "PAGE_DOWN"; return 0 ;;
+                                    "1~"|"7~") echo "HOME"; return 0 ;;
+                                    "4~"|"8~") echo "END"; return 0 ;;
+                                    "2~") echo "INSERT"; return 0 ;;
+                                    "3~") echo "DELETE"; return 0 ;;
+                                    *)
+                                        local cur="${c4}"
+                                        while [[ ! "$cur" =~ [A-Za-z~] ]]; do
+                                            IFS= read -rsn1 -t 0.05 cur || break
+                                        done
+                                        case "$cur" in
+                                            "A") echo "UP"; return 0 ;;
+                                            "B") echo "DOWN"; return 0 ;;
+                                            "C") echo "RIGHT"; return 0 ;;
+                                            "D") echo "LEFT"; return 0 ;;
+                                            "H") echo "HOME"; return 0 ;;
+                                            "F") echo "END"; return 0 ;;
+                                            *) echo "UNKNOWN"; return 0 ;;
+                                        esac
+                                        ;;
+                                esac
+                            fi
+                            ;;
+                        *)
+                            echo "UNKNOWN"
+                            return 0
+                            ;;
+                    esac
+                fi
+            elif [[ "$c2" == "O" ]]; then
+                local c3=""
+                if IFS= read -rsn1 -t 0.05 c3; then
+                    case "$c3" in
+                        "A") echo "UP"; return 0 ;;
+                        "B") echo "DOWN"; return 0 ;;
+                        "C") echo "RIGHT"; return 0 ;;
+                        "D") echo "LEFT"; return 0 ;;
+                        "H") echo "HOME"; return 0 ;;
+                        "F") echo "END"; return 0 ;;
+                        *) echo "UNKNOWN"; return 0 ;;
+                    esac
+                fi
+            else
+                echo "UNKNOWN"
+                return 0
+            fi
+        fi
+        echo "ESC"
+        return 0
     elif [[ -z "$k" || "$k" == $'\n' || "$k" == $'\r' ]]; then
         echo "ENTER"
     elif [[ "$k" == $'\x7f' || "$k" == $'\x08' ]]; then
@@ -321,7 +399,7 @@ run_interactive_submenu() {
                     echo -e "${h_line}\033[K"
                 done <<< "$menu_header"
             fi
-            echo -e "  ${DIM}${BLUE}Use [↑/↓] Arrow Keys to navigate, [Enter] to select, [Esc] or 'q' to exit\033[K${NC}"
+            echo -e "  ${DIM}${BLUE}Use [↑/↓] Arrow Keys to navigate, [Enter] to select, 'q' to exit\033[K${NC}"
         fi
 
         # Scroll indicator top
@@ -366,9 +444,17 @@ run_interactive_submenu() {
         echo -e "  ${BOLD}${BLUE}──────────────────────────────────────────────────────────────────────────\033[K${NC}"
         IFS='|' read -r cur_key cur_lbl cur_ext <<< "${_opts_ref[$cur_idx]}"
         if [ -n "$typed_buffer" ]; then
-            echo -e "  ${BOLD}${CYAN}Selection:${NC} ${BOLD}${YELLOW}${typed_buffer}${NC} ▏ ${DIM}(Press Enter to confirm, Esc to return/exit)\033[K${NC}"
+            if [ -n "$menu_title" ]; then
+                echo -e "  ${BOLD}${CYAN}Selection:${NC} ${BOLD}${YELLOW}${typed_buffer}${NC} ▏ ${DIM}(Press Enter to confirm, Esc to return)\033[K${NC}"
+            else
+                echo -e "  ${BOLD}${CYAN}Selection:${NC} ${BOLD}${YELLOW}${typed_buffer}${NC} ▏ ${DIM}(Press Enter to confirm, 'q' to exit)\033[K${NC}"
+            fi
         else
-            echo -e "  ${BOLD}${CYAN}Selection:${NC} ${DIM}[Option ${cur_key}: ${cur_lbl}]${NC} ▏ ${DIM}[↑/↓ to Navigate, Enter to Select, Esc to Return/Exit]\033[K${NC}"
+            if [ -n "$menu_title" ]; then
+                echo -e "  ${BOLD}${CYAN}Selection:${NC} ${DIM}[Option ${cur_key}: ${cur_lbl}]${NC} ▏ ${DIM}[↑/↓ to Navigate, Enter to Select, Esc to Return]\033[K${NC}"
+            else
+                echo -e "  ${BOLD}${CYAN}Selection:${NC} ${DIM}[Option ${cur_key}: ${cur_lbl}]${NC} ▏ ${DIM}[↑/↓ to Navigate, Enter to Select, 'q' to Exit]\033[K${NC}"
+            fi
         fi
         
         # Clear any lines below our output in case window size changed
@@ -501,8 +587,17 @@ save_theme() {
     mkdir -p "$HOME/.config/mix-manager" 2>/dev/null
     echo "$new_theme" > "$HOME/.config/mix-manager/theme" 2>/dev/null
     set_theme_colors "$new_theme"
-    if [ "$new_theme" = "dreamworlds" ] || [ "$new_theme" = "mplanetarian_dreamworlds" ] || [ "$new_theme" = "default" ]; then
+    if [ "$new_theme" = "dreamworlds" ] || [ "$new_theme" = "mplanetarian_dreamworlds" ] || [ "$new_theme" = "default" ] || [ "$new_theme" = "dreamworlds_ultra" ]; then
         play_sound_effect "dreamworlds"
+    fi
+    if [ "$new_theme" = "dreamworlds_ultra" ]; then
+        if [ -d "$HOME/.config/btop" ]; then
+            mkdir -p "$HOME/.config/btop/themes" 2>/dev/null
+            [ -f "$SCRIPT_DIR/themes/Dreamworlds_Ultra_MP_Mix_Manager.theme" ] && cp -p "$SCRIPT_DIR/themes/Dreamworlds_Ultra_MP_Mix_Manager.theme" "$HOME/.config/btop/themes/" 2>/dev/null
+            if [ -f "$HOME/.config/btop/btop.conf" ]; then
+                sed -i 's|^color_theme = .*|color_theme = "Dreamworlds_Ultra_MP_Mix_Manager"|' "$HOME/.config/btop/btop.conf" 2>/dev/null
+            fi
+        fi
     fi
 }
 
@@ -7865,6 +7960,13 @@ manage_system_process_monitors() {
                 sleep 0.5
                 trap ':' INT
                 if command -v btop >/dev/null 2>&1; then
+                    if [ "$CURRENT_THEME" = "dreamworlds_ultra" ]; then
+                        mkdir -p "$HOME/.config/btop/themes" 2>/dev/null
+                        [ -f "$SCRIPT_DIR/themes/Dreamworlds_Ultra_MP_Mix_Manager.theme" ] && cp -p "$SCRIPT_DIR/themes/Dreamworlds_Ultra_MP_Mix_Manager.theme" "$HOME/.config/btop/themes/" 2>/dev/null
+                        if [ -f "$HOME/.config/btop/btop.conf" ] && ! grep -q 'color_theme = "Dreamworlds_Ultra_MP_Mix_Manager"' "$HOME/.config/btop/btop.conf" 2>/dev/null; then
+                            sed -i 's|^color_theme = .*|color_theme = "Dreamworlds_Ultra_MP_Mix_Manager"|' "$HOME/.config/btop/btop.conf" 2>/dev/null
+                        fi
+                    fi
                     btop
                 else
                     echo -e "${RED}Error: btop command not found in PATH!${NC}"
@@ -7949,16 +8051,17 @@ manage_themes() {
     while true; do
         local opts=(
             "1|MPlanetarian Dreamworlds [Default]|[Sweet Hot Pink, Electric Cyan, Lavender & Violet] $([ "$CURRENT_THEME" = "dreamworlds" ] && echo -e "${GREEN}★ ACTIVE (DEFAULT)${NC}")"
-            "2|Cyberpunk|[Neon Hot Pink, Electric Cyan & High-Volt Yellow] $([ "$CURRENT_THEME" = "cyberpunk" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
-            "3|Dracula|[Vampiric Purple, Neon Green & Coral Pink] $([ "$CURRENT_THEME" = "dracula" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
-            "4|Nord|[Arctic Slate, Frost Polar Ice & Sage Aurora] $([ "$CURRENT_THEME" = "nord" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
-            "5|The Matrix|[Pure Phosphor Green, Terminal Crimson & Mint] $([ "$CURRENT_THEME" = "matrix" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
-            "6|Solarized|[Warm Amber, Solar Yellow, Cyan & Terracotta] $([ "$CURRENT_THEME" = "solarized" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
-            "7|Tokyo Night|[Deep Violet, Lavender, Soft Blue & Coral] $([ "$CURRENT_THEME" = "tokyo" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
-            "8|Monokai|[Electric Pink, Tangerine, Lime & Vivid Blue] $([ "$CURRENT_THEME" = "monokai" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
-            "9|Gruvbox|[Retro Warm Earth, Dusty Rose, Rust & Gold] $([ "$CURRENT_THEME" = "gruvbox" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
-            "10|Emerald Isle|[Deep Ocean, Spring Emerald & Mint Cyan] $([ "$CURRENT_THEME" = "emerald" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
-            "11|Classic ANSI|[Standard 16-Color Terminal Fallback] $([ "$CURRENT_THEME" = "classic" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
+            "2|Dreamworlds Ultra MP Mix Manager|[BTOP HotPurpleTrafficLight: Hot Purple, Indigo & Traffic Light RGB] $([ "$CURRENT_THEME" = "dreamworlds_ultra" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
+            "3|Cyberpunk|[Neon Hot Pink, Electric Cyan & High-Volt Yellow] $([ "$CURRENT_THEME" = "cyberpunk" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
+            "4|Dracula|[Vampiric Purple, Neon Green & Coral Pink] $([ "$CURRENT_THEME" = "dracula" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
+            "5|Nord|[Arctic Slate, Frost Polar Ice & Sage Aurora] $([ "$CURRENT_THEME" = "nord" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
+            "6|The Matrix|[Pure Phosphor Green, Terminal Crimson & Mint] $([ "$CURRENT_THEME" = "matrix" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
+            "7|Solarized|[Warm Amber, Solar Yellow, Cyan & Terracotta] $([ "$CURRENT_THEME" = "solarized" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
+            "8|Tokyo Night|[Deep Violet, Lavender, Soft Blue & Coral] $([ "$CURRENT_THEME" = "tokyo" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
+            "9|Monokai|[Electric Pink, Tangerine, Lime & Vivid Blue] $([ "$CURRENT_THEME" = "monokai" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
+            "10|Gruvbox|[Retro Warm Earth, Dusty Rose, Rust & Gold] $([ "$CURRENT_THEME" = "gruvbox" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
+            "11|Emerald Isle|[Deep Ocean, Spring Emerald & Mint Cyan] $([ "$CURRENT_THEME" = "emerald" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
+            "12|Classic ANSI|[Standard 16-Color Terminal Fallback] $([ "$CURRENT_THEME" = "classic" ] && echo -e "${GREEN}★ ACTIVE${NC}")"
             "0|Return to Main Menu|(or Esc / q)"
         )
         run_interactive_submenu "Themes & Color Palette Switcher" "  Current Active Theme: ${BOLD}${YELLOW}${CURRENT_THEME}${NC}\n" opts 0
@@ -7970,52 +8073,58 @@ manage_themes() {
                 show_dreamworlds_ascii_banner true
                 sleep 0.8
                 ;;
-            2|cyberpunk)
+            2|ultra|dreamworlds_ultra|hotpurple|trafficlight|"dreamworlds ultra"|"Dreamworlds Ultra MP Mix Manager")
+                save_theme "dreamworlds_ultra"
+                echo -e "\n${BOLD}${GREEN}✓ Theme switched to Dreamworlds Ultra MP Mix Manager!${NC}"
+                show_dreamworlds_ascii_banner true
+                sleep 0.8
+                ;;
+            3|cyberpunk)
                 save_theme "cyberpunk"
                 echo -e "\n${GREEN}✓ Theme switched to Cyberpunk!${NC}"
                 sleep 0.8
                 ;;
-            3|dracula)
+            4|dracula)
                 save_theme "dracula"
                 echo -e "\n${GREEN}✓ Theme switched to Dracula!${NC}"
                 sleep 0.8
                 ;;
-            4|nord)
+            5|nord)
                 save_theme "nord"
                 echo -e "\n${GREEN}✓ Theme switched to Nord!${NC}"
                 sleep 0.8
                 ;;
-            5|matrix)
+            6|matrix)
                 save_theme "matrix"
                 echo -e "\n${GREEN}✓ Theme switched to The Matrix!${NC}"
                 sleep 0.8
                 ;;
-            6|solarized)
+            7|solarized)
                 save_theme "solarized"
                 echo -e "\n${GREEN}✓ Theme switched to Solarized!${NC}"
                 sleep 0.8
                 ;;
-            7|tokyo)
+            8|tokyo)
                 save_theme "tokyo"
                 echo -e "\n${GREEN}✓ Theme switched to Tokyo Night!${NC}"
                 sleep 0.8
                 ;;
-            8|monokai)
+            9|monokai)
                 save_theme "monokai"
                 echo -e "\n${GREEN}✓ Theme switched to Monokai!${NC}"
                 sleep 0.8
                 ;;
-            9|gruvbox)
+            10|gruvbox)
                 save_theme "gruvbox"
                 echo -e "\n${GREEN}✓ Theme switched to Gruvbox!${NC}"
                 sleep 0.8
                 ;;
-            10|emerald)
+            11|emerald)
                 save_theme "emerald"
                 echo -e "\n${GREEN}✓ Theme switched to Emerald Isle!${NC}"
                 sleep 0.8
                 ;;
-            11|classic)
+            12|classic)
                 save_theme "classic"
                 echo -e "\n${GREEN}✓ Theme switched to Classic ANSI!${NC}"
                 sleep 0.8
@@ -12330,7 +12439,7 @@ manage_settings_and_system() {
             reboot_desc="FreeBSD restart with confirmation"
         fi
         local opts=(
-            "1|Manager Themes & Color Palette Switcher|(11 Themes: Dreamworlds, Cyberpunk, Dracula...)"
+            "1|Manager Themes & Color Palette Switcher|(12 Themes: Dreamworlds, Dreamworlds Ultra, Cyberpunk...)"
             "2|Manage Installation & Configuration|(Migrate Path, Backup, Export & Import Config)"
             "3|Run Bash CLI Commands|(Interactive Shell & Direct Runner)"
             "4|Reboot System|(${reboot_desc})"
@@ -12385,7 +12494,7 @@ while true; do
                 "$SCRIPT_DIR/scripts/schedule_mix_playback.sh" --ensure-daemon >/dev/null 2>&1 &
             fi
         fi
-        if [ "$CURRENT_THEME" = "dreamworlds" ]; then
+        if [ "$CURRENT_THEME" = "dreamworlds" ] || [ "$CURRENT_THEME" = "dreamworlds_ultra" ]; then
             show_dreamworlds_ascii_banner true
             sleep 0.2
         fi
@@ -12395,16 +12504,18 @@ while true; do
     [ -z "$term_lines" ] || [ "$term_lines" -lt 15 ] && term_lines=40
 
     main_header=""
-    if [ "$CURRENT_THEME" = "dreamworlds" ]; then
+    if [ "$CURRENT_THEME" = "dreamworlds" ] || [ "$CURRENT_THEME" = "dreamworlds_ultra" ]; then
+        local ultra_flag=""
+        [ "$CURRENT_THEME" = "dreamworlds_ultra" ] && ultra_flag="--ultra"
         local_anim_script="$SCRIPT_DIR/scripts/render_ascii_animation.py"
         [ ! -f "$local_anim_script" ] && local_anim_script="$SCRIPT_DIR/render_ascii_animation.py"
         if [ "$term_lines" -ge 55 ]; then
             if [ -f "$local_anim_script" ]; then
-                main_header+="$(python3 "$local_anim_script" 2>/dev/null)\n"
+                main_header+="$(python3 "$local_anim_script" $ultra_flag 2>/dev/null)\n"
             fi
         else
             if [ -f "$local_anim_script" ]; then
-                main_header+="$(python3 "$local_anim_script" --compact 2>/dev/null)\n"
+                main_header+="$(python3 "$local_anim_script" $ultra_flag --compact 2>/dev/null)\n"
             fi
         fi
     else
@@ -12632,7 +12743,10 @@ while true; do
         33)
             manage_settings_and_system
             ;;
-        34|77|[qQ]|[eE][xX][iI][tT]|ESC)
+        ESC)
+            # On the main menu, Esc does not exit to terminal (prevents accidental exit on rapid key navigation)
+            ;;
+        34|77|[qQ]|[eE][xX][iI][tT])
             exit_mix_manager
             ;;
         # ----------------------------------------------------------------------
@@ -12668,9 +12782,19 @@ while true; do
         btop|btop-launch)
             echo -e "\n${BOLD}${YELLOW}Launching btop Resource Monitor (Press 'q' to exit)...${NC}\n"
             sleep 0.5
-            trap ':' INT
-            if command -v btop >/dev/null 2>&1; then btop; else echo -e "${RED}Error: btop command not found!${NC}"; press_enter; fi
-            trap 'exit_mix_manager' INT
+            if command -v btop >/dev/null 2>&1; then
+                if [ "$CURRENT_THEME" = "dreamworlds_ultra" ]; then
+                    mkdir -p "$HOME/.config/btop/themes" 2>/dev/null
+                    [ -f "$SCRIPT_DIR/themes/Dreamworlds_Ultra_MP_Mix_Manager.theme" ] && cp -p "$SCRIPT_DIR/themes/Dreamworlds_Ultra_MP_Mix_Manager.theme" "$HOME/.config/btop/themes/" 2>/dev/null
+                    if [ -f "$HOME/.config/btop/btop.conf" ] && ! grep -q 'color_theme = "Dreamworlds_Ultra_MP_Mix_Manager"' "$HOME/.config/btop/btop.conf" 2>/dev/null; then
+                        sed -i 's|^color_theme = .*|color_theme = "Dreamworlds_Ultra_MP_Mix_Manager"|' "$HOME/.config/btop/btop.conf" 2>/dev/null
+                    fi
+                fi
+                btop
+            else
+                echo -e "${RED}Error: btop command not found!${NC}"
+                press_enter
+            fi
             ;;
         nvtop|nvtop-launch)
             echo -e "\n${BOLD}${YELLOW}Launching nvtop GPU Monitor (Press 'q' to exit)...${NC}\n"
