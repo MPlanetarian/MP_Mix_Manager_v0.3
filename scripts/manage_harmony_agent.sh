@@ -69,6 +69,10 @@ is_ollama_running() {
 }
 
 get_active_model() {
+    if [ -n "${HARMONY_MODEL:-}" ]; then
+        echo "${HARMONY_MODEL//[\'\";]/}"
+        return 0
+    fi
     # Check running python process directly (excluding bash/konsole wrapper)
     local cmdline
     cmdline=$(pgrep -a -f "python.*MP_Harmony_Agent\.py" 2>/dev/null | grep -oE '(gpt-oss[a-zA-Z0-9:._-]*|qwen[a-zA-Z0-9:._-]*)' | head -1)

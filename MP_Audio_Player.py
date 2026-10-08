@@ -1352,7 +1352,7 @@ class TerminalPlayerUI:
         # 1. Header Banner
         lines.append(f"  {BOLD}{MAGENTA}╭──────────────────────────────────────────────────────────────────────────╮{NC}")
         lines.append(f"  {BOLD}{MAGENTA}│           ✦ MP AUDIO PLAYER — HIGH-RESOLUTION ARCHIVE SUITE ✦            │{NC}")
-        lines.append(f"  {BOLD}{MAGENTA}│           Dreamworlds Productions  •  Studio Audiophile Playback         │{NC}")
+        lines.append(f"  {BOLD}{MAGENTA}│           Dreamworlds Productions  •  Studio Audio Playback         │{NC}")
         lines.append(f"  {BOLD}{MAGENTA}╰──────────────────────────────────────────────────────────────────────────╯{NC}")
 
         # 2. Track & Format Details Card

@@ -2856,7 +2856,6 @@ if [ "$1" = "--track" ] || [ "$1" = "--current-track" ] || [ "$1" = "--audacious
         echo "$CLIAMP_RESOLVED_PATH"
         exit 0
     else
-        local detected_p
         detected_p=$(detect_currently_playing_mix 2>/dev/null)
         if [ -n "$detected_p" ] && [ -f "$detected_p" ]; then
             echo "$detected_p"
@@ -12979,9 +12978,9 @@ while true; do
     if [ "$CURRENT_THEME" = "dreamworlds" ] || [ "$CURRENT_THEME" = "dreamworlds_ultra" ]; then
         ultra_flag=""
         [ "$CURRENT_THEME" = "dreamworlds_ultra" ] && ultra_flag="--ultra"
-        local b_mode="full"
+        b_mode="full"
         [ "$term_lines" -lt 55 ] && b_mode="compact"
-        local b_key="${CURRENT_THEME}_${b_mode}"
+        b_key="${CURRENT_THEME}_${b_mode}"
         if [ "${_CACHED_BANNER_KEY:-}" != "$b_key" ] || [ -z "${_CACHED_BANNER_OUTPUT:-}" ]; then
             local_anim_script="$SCRIPT_DIR/scripts/render_ascii_animation.py"
             [ ! -f "$local_anim_script" ] && local_anim_script="$SCRIPT_DIR/render_ascii_animation.py"
