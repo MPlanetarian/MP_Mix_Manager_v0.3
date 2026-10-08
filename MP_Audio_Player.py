@@ -849,44 +849,93 @@ class EqualizerVisualizer:
             else:
                 return "\033[38;2;224;255;255m"  # Light Cyan
 
-    def render_stereo_eq(self, levels_l: np.ndarray, levels_r: np.ndarray, peaks: np.ndarray, height: int = 7) -> List[str]:
+    def render_stereo_eq(self, levels_l: np.ndarray, levels_r: np.ndarray, peaks: np.ndarray, width: int = 80, height: int = 7) -> List[str]:
         lines = []
-        bands_l = levels_l[:12] if len(levels_l) >= 12 else np.pad(levels_l, (0, max(0, 12 - len(levels_l))))
-        bands_r = levels_r[:12] if len(levels_r) >= 12 else np.pad(levels_r, (0, max(0, 12 - len(levels_r))))
-        combined = list(bands_l) + list(bands_r)
+        if width >= 96:
+            # Full High-Resolution 12-Band Stereo Equalizer (91 columns)
+            bands_l = levels_l[:12] if len(levels_l) >= 12 else np.pad(levels_l, (0, max(0, 12 - len(levels_l))))
+            bands_r = levels_r[:12] if len(levels_r) >= 12 else np.pad(levels_r, (0, max(0, 12 - len(levels_r))))
+            band_widths = [3, 3, 4, 4, 4, 3, 3, 3, 3, 4, 4, 4]
 
-        lines.append(f"  {BOLD}{MAGENTA}╭── LEFT CHANNEL (12-BAND) ──────────────┬── RIGHT CHANNEL (12-BAND) ─────────────╮{NC}")
+            lines.append(f"  {BOLD}{MAGENTA}╭── LEFT CHANNEL (12-BAND) ─────────────────┬── RIGHT CHANNEL (12-BAND) ────────────────╮{NC}")
 
-        for r in range(height - 1, -1, -1):
-            row_frac = float(r) / float(height)
-            color = self._get_bar_color(row_frac)
-            line_parts = ["  │ "]
+            for r in range(height - 1, -1, -1):
+                row_frac = float(r) / float(height)
+                color = self._get_bar_color(row_frac)
 
-            for c, val in enumerate(combined):
-                peak_val = peaks[c % len(peaks)] if len(peaks) > 0 else 0.0
-                peak_row = int(peak_val * height)
-                val_frac = val * height - r
+                def _build_side(bands, pk_offset=0):
+                    parts = []
+                    for c in range(12):
+                        val = bands[c]
+                        pk_idx = (c + pk_offset) % len(peaks) if len(peaks) > 0 else 0
+                        peak_val = peaks[pk_idx] if len(peaks) > 0 else 0.0
+                        peak_row = int(peak_val * height)
+                        val_frac = val * height - r
 
-                if val_frac >= 1.0:
-                    char = "█"
-                elif val_frac > 0.0:
-                    sub_idx = int(val_frac * 8)
-                    char = UNICODE_BLOCKS[max(1, min(8, sub_idx))]
-                elif peak_row == r:
-                    char = "▔"
-                else:
-                    char = " "
+                        if val_frac >= 1.0:
+                            char = "█"
+                        elif val_frac > 0.0:
+                            sub_idx = int(val_frac * 8)
+                            char = UNICODE_BLOCKS[max(1, min(8, sub_idx))]
+                        elif peak_row == r:
+                            char = "▔"
+                        else:
+                            char = " "
 
-                if c == 12:
-                    line_parts.append(f"{NC}│ {color}")
-                line_parts.append(char + " ")
+                        w = band_widths[c]
+                        if w == 3:
+                            parts.append(f" {char} ")
+                        else:
+                            parts.append(f" {char*2} ")
+                    return " " + "".join(parts)
 
-            line_parts.append(f"{NC}│")
-            lines.append(color + "".join(line_parts) + NC)
+                side_l = _build_side(bands_l, 0)
+                side_r = _build_side(bands_r, 12)
+                lines.append(f"  │{color}{side_l}{NC}│{color}{side_r}{NC}│")
 
-        lbls = f"  {DIM}{CYAN}│ 30 60 125 250 500 1k 2k 4k 8k 12k 16k 18k │ 30 60 125 250 500 1k 2k 4k 8k 12k 16k 18k │{NC}"
-        lines.append(lbls)
-        lines.append(f"  {BOLD}{MAGENTA}╰────────────────────────────────────────┴────────────────────────────────────────╯{NC}")
+            lbls = f"  {DIM}{CYAN}│ 30 60 125 250 500 1k 2k 4k 8k 12k 16k 18k │ 30 60 125 250 500 1k 2k 4k 8k 12k 16k 18k │{NC}"
+            lines.append(lbls)
+            lines.append(f"  {BOLD}{MAGENTA}╰───────────────────────────────────────────┴───────────────────────────────────────────╯{NC}")
+        else:
+            # Compact 8-Band Stereo Equalizer (77 columns)
+            bands_l = levels_l[:8] if len(levels_l) >= 8 else np.pad(levels_l, (0, max(0, 8 - len(levels_l))))
+            bands_r = levels_r[:8] if len(levels_r) >= 8 else np.pad(levels_r, (0, max(0, 8 - len(levels_r))))
+
+            lines.append(f"  {BOLD}{MAGENTA}╭── LEFT CHANNEL (8-BAND) ───────────┬── RIGHT CHANNEL (8-BAND) ──────────╮{NC}")
+
+            for r in range(height - 1, -1, -1):
+                row_frac = float(r) / float(height)
+                color = self._get_bar_color(row_frac)
+
+                def _build_comp_side(bands, pk_offset=0):
+                    parts = []
+                    for c in range(8):
+                        val = bands[c]
+                        pk_idx = (c + pk_offset) % len(peaks) if len(peaks) > 0 else 0
+                        peak_val = peaks[pk_idx] if len(peaks) > 0 else 0.0
+                        peak_row = int(peak_val * height)
+                        val_frac = val * height - r
+
+                        if val_frac >= 1.0:
+                            char = "█"
+                        elif val_frac > 0.0:
+                            sub_idx = int(val_frac * 8)
+                            char = UNICODE_BLOCKS[max(1, min(8, sub_idx))]
+                        elif peak_row == r:
+                            char = "▔"
+                        else:
+                            char = " "
+                        parts.append(f" {char*2} ")
+                    return "  " + "".join(parts) + "  "
+
+                side_l = _build_comp_side(bands_l, 0)
+                side_r = _build_comp_side(bands_r, 8)
+                lines.append(f"  │{color}{side_l}{NC}│{color}{side_r}{NC}│")
+
+            lbls = f"  {DIM}{CYAN}│  32  64  125 250 500  1k  4k  16k  │  32  64  125 250 500  1k  4k  16k  │{NC}"
+            lines.append(lbls)
+            lines.append(f"  {BOLD}{MAGENTA}╰────────────────────────────────────┴────────────────────────────────────╯{NC}")
+
         return lines
 
     def render_master_spectrum(self, levels: np.ndarray, peaks: np.ndarray, height: int = 7) -> List[str]:
@@ -920,17 +969,17 @@ class EqualizerVisualizer:
                     char = "▔"
                 else:
                     char = " "
-                row_chars.append(char + " ")
+                row_chars.append(f"{char*2} ")
 
-            lines.append(f"  │ {color}{''.join(row_chars)}{NC}│")
+            lines.append(f"  │ {color}{''.join(row_chars)}{NC} │")
 
-        lines.append(f"  {DIM}{CYAN}│  32  63  125  250  500   1k   2k   4k   8k  12k  16k  18k    PEAK HOLD ✦   │{NC}")
+        lines.append(f"  {DIM}{CYAN}│  32  63  125  250  500   1k   2k   4k   8k  12k  16k  18k    PEAK HOLD ✦ │{NC}")
         lines.append(f"  {BOLD}{MAGENTA}╰──────────────────────────────────────────────────────────────────────────╯{NC}")
         return lines
 
     def render_analog_vu(self, peak_db: float, levels_l: np.ndarray, levels_r: np.ndarray) -> List[str]:
         lines = []
-        lines.append(f"  {BOLD}{MAGENTA}╭── DUAL ANALOG STUDIO VU METERS (PEAK & RMS BALLISTICS) ─────────────────╮{NC}")
+        lines.append(f"  {BOLD}{MAGENTA}╭── DUAL ANALOG STUDIO VU METERS (PEAK & RMS BALLISTICS) ──────────────────╮{NC}")
 
         l_val = np.mean(levels_l) if len(levels_l) else 0.0
         r_val = np.mean(levels_r) if len(levels_r) else 0.0
@@ -949,42 +998,43 @@ class EqualizerVisualizer:
                 else:
                     buf.append(f"{DIM}░{NC}")
             clip = f"{BOLD}{RED}[CLIP]{NC}" if filled >= bar_len - 1 else f"{DIM}[SAFE]{NC}"
-            return f"  │  {BOLD}{CYAN}{name}{NC} [{''.join(buf)}] {clip} │"
+            return f"  │  {BOLD}{CYAN}{name}{NC} [{''.join(buf)}] {clip}   │"
 
         lines.append("  │  -40   -30   -20   -10   -7   -5   -3   -1    0  +1  +2  +3 dB           │")
         lines.append(make_meter(l_filled, "LEFT  CHANNEL"))
         lines.append(make_meter(r_filled, "RIGHT CHANNEL"))
-        lines.append(f"  │  Peak Audio Level: {BOLD}{YELLOW}{peak_db:+.1f} dBFS{NC}  │  Master Headroom: {BOLD}{GREEN}{max(0.0, -peak_db):.1f} dB{NC}                 │")
+        lines.append(f"  │  Peak Audio Level: {BOLD}{YELLOW}{peak_db:+6.1f} dBFS{NC}  │  Master Headroom: {BOLD}{GREEN}{max(0.0, -peak_db):5.1f} dB{NC}             │")
         lines.append(f"  {BOLD}{MAGENTA}╰──────────────────────────────────────────────────────────────────────────╯{NC}")
         return lines
 
-    def render_oscilloscope(self, levels: np.ndarray) -> List[str]:
+    def render_oscilloscope(self, levels: np.ndarray, height: int = 5) -> List[str]:
         lines = []
-        lines.append(f"  {BOLD}{MAGENTA}╭── DYNAMIC OSCILLOSCOPE AUDIO WAVEFORM ──────────────────────────────────╮{NC}")
-        wave_cols = 50
+        lines.append(f"  {BOLD}{MAGENTA}╭── DYNAMIC OSCILLOSCOPE AUDIO WAVEFORM ───────────────────────────────────╮{NC}")
+        wave_cols = 70
         pts = []
         for i in range(wave_cols):
             val = levels[i % len(levels)] if len(levels) else 0.0
             phase = math.sin(i * 0.4) * val
             pts.append(phase)
 
-        for r in range(2, -3, -1):
-            row_str = ["  │   "]
+        half_h = max(1, height // 2)
+        for r in range(half_h, -half_h - 1, -1):
+            row_str = ["  │  "]
             for p in pts:
-                val_row = int(p * 2.5)
+                val_row = int(p * (half_h + 0.5))
                 if val_row == r:
                     row_str.append(f"{COLOR_ELECTRIC_CYAN}∿{NC}")
                 elif r == 0:
                     row_str.append(f"{DIM}─{NC}")
                 else:
                     row_str.append(" ")
-            row_str.append("    │")
+            row_str.append("  │")
             lines.append("".join(row_str))
 
         lines.append(f"  {BOLD}{MAGENTA}╰──────────────────────────────────────────────────────────────────────────╯{NC}")
         return lines
 
-    def render(self, status: Dict[str, Any]) -> List[str]:
+    def render(self, status: Dict[str, Any], width: int = 80, height: int = 7) -> List[str]:
         levels = np.array(status.get("levels", [0.0]*16))
         peaks = np.array(status.get("peaks", [0.0]*16))
         levels_l = np.array(status.get("levels_left", levels))
@@ -992,15 +1042,15 @@ class EqualizerVisualizer:
         peak_db = status.get("peak_db", -60.0)
 
         if self.style == "stereo_eq":
-            return self.render_stereo_eq(levels_l, levels_r, peaks)
+            return self.render_stereo_eq(levels_l, levels_r, peaks, width=width, height=height)
         elif self.style == "master_spectrum":
-            return self.render_master_spectrum(levels, peaks)
+            return self.render_master_spectrum(levels, peaks, height=height)
         elif self.style == "analog_vu":
             return self.render_analog_vu(peak_db, levels_l, levels_r)
         elif self.style == "oscilloscope":
-            return self.render_oscilloscope(levels)
+            return self.render_oscilloscope(levels, height=min(5, height))
         else:
-            return self.render_stereo_eq(levels_l, levels_r, peaks)
+            return self.render_stereo_eq(levels_l, levels_r, peaks, width=width, height=height)
 
 
 # ==============================================================================
@@ -1122,11 +1172,14 @@ class TerminalPlayerUI:
         if fd is not None and termios and tty:
             try:
                 old_settings = termios.tcgetattr(fd)
-                tty.setraw(fd)
+                tty.setcbreak(fd)
+                new_settings = termios.tcgetattr(fd)
+                new_settings[1] |= termios.OPOST
+                termios.tcsetattr(fd, termios.TCSADRAIN, new_settings)
             except Exception:
                 pass
 
-        sys.stdout.write("\033[?25l\033[2J\033[H")
+        sys.stdout.write("\033[?1049h\033[?25l\033[2J\033[H")
         sys.stdout.flush()
 
         threading.Thread(target=self._input_loop, daemon=True).start()
@@ -1137,6 +1190,8 @@ class TerminalPlayerUI:
                     self.engine.check_track_end()
                 self._draw_frame()
                 time.sleep(0.04)  # ~25 FPS animation
+        except (KeyboardInterrupt, SystemExit):
+            pass
         finally:
             self.running = False
             if fd is not None and old_settings and termios:
@@ -1144,7 +1199,7 @@ class TerminalPlayerUI:
                     termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
                 except Exception:
                     pass
-            sys.stdout.write("\033[?25h\033[2J\033[H")
+            sys.stdout.write("\033[?25h\033[?1049l")
             sys.stdout.flush()
 
     def _input_loop(self):
@@ -1295,15 +1350,15 @@ class TerminalPlayerUI:
         lines = []
 
         # 1. Header Banner
-        lines.append(f"{BOLD}{MAGENTA}╭────────────────────────────────────────────────────────────────────────────╮{NC}")
-        lines.append(f"{BOLD}{MAGENTA}│             ✦ MP AUDIO PLAYER — HIGH-RESOLUTION ARCHIVE SUITE ✦             │{NC}")
-        lines.append(f"{BOLD}{MAGENTA}│             Dreamworlds Productions  •  Studio Audiophile Playback        │{NC}")
-        lines.append(f"{BOLD}{MAGENTA}╰────────────────────────────────────────────────────────────────────────────╯{NC}")
+        lines.append(f"  {BOLD}{MAGENTA}╭──────────────────────────────────────────────────────────────────────────╮{NC}")
+        lines.append(f"  {BOLD}{MAGENTA}│           ✦ MP AUDIO PLAYER — HIGH-RESOLUTION ARCHIVE SUITE ✦            │{NC}")
+        lines.append(f"  {BOLD}{MAGENTA}│           Dreamworlds Productions  •  Studio Audiophile Playback         │{NC}")
+        lines.append(f"  {BOLD}{MAGENTA}╰──────────────────────────────────────────────────────────────────────────╯{NC}")
 
         # 2. Track & Format Details Card
         track_name = status.get("title", "Unknown Mix")
-        if len(track_name) > 65:
-            track_name = track_name[:62] + "..."
+        if len(track_name) > 58:
+            track_name = track_name[:55] + "..."
         fmt = status.get("channels", 2)
         ch_str = "Stereo" if fmt == 2 else "Mono"
         sr = status.get("sample_rate", 44100)
@@ -1314,21 +1369,32 @@ class TerminalPlayerUI:
             st_badge = f"{BOLD}{RED}⏹ STOPPED{NC}"
 
         lines.append(f"  {st_badge}  {BOLD}{COLOR_NEON_PINK}♫  {track_name}{NC}")
-        lines.append(f"  {DIM}{CYAN}Format: {ext} Lossless  │  Sample Rate: {sr/1000:.1f} kHz  │  Channels: {ch_str}  │  Archive: Configured{NC}")
+        if term_width >= 96:
+            lines.append(f"  {DIM}{CYAN}Format: {ext} Lossless  │  Sample Rate: {sr/1000:.1f} kHz  │  Channels: {ch_str}  │  Archive: Configured{NC}")
+        else:
+            lines.append(f"  {DIM}{CYAN}Format: {ext}  │  Sample Rate: {sr/1000:.1f} kHz  │  Channels: {ch_str}  │  Archive: OK{NC}")
 
         # 3. Time Progress Bar
         pos_s = status.get("position_fmt", "00:00")
         dur_s = status.get("duration_fmt", "00:00")
         pct = float(status.get("progress_pct", 0.0))
 
-        bar_width = max(20, min(48, term_width - 32))
+        bar_width = max(20, min(42, term_width - 34))
         filled_w = int((pct / 100.0) * bar_width)
         bar_str = "━" * filled_w + "●" + "─" * max(0, bar_width - filled_w - 1)
         lines.append(f"  {COLOR_ELECTRIC_CYAN}{pos_s}{NC}  {COLOR_AMBER_ORANGE}{bar_str}{NC}  {COLOR_ELECTRIC_CYAN}{dur_s}{NC}  ({pct:.1f}%)")
         lines.append("")
 
+        # Dynamic visualizer height based on terminal height
+        if term_height >= 34:
+            vis_h = 7
+        elif term_height >= 28:
+            vis_h = 5
+        else:
+            vis_h = 3
+
         # 4. Custom Animated Equalizer
-        eq_lines = self.visualizer.render(status)
+        eq_lines = self.visualizer.render(status, width=term_width, height=vis_h)
         lines.extend(eq_lines)
         lines.append("")
 
@@ -1340,9 +1406,12 @@ class TerminalPlayerUI:
         if search_header:
             lines.append(search_header)
 
-        lines.append(f"  {BOLD}{MAGENTA}┌── MIX ARCHIVE PLAYLIST ({total_mixes} Mixes Available) ───────────────────────┐{NC}")
+        title_txt = f"── MIX ARCHIVE PLAYLIST ({total_mixes} Mixes Available) "
+        dashes_cnt = max(4, 74 - len(title_txt))
+        lines.append(f"  {BOLD}{MAGENTA}┌{title_txt}{'─'*dashes_cnt}┐{NC}")
 
-        visible_rows = max(4, min(14, term_height - len(lines) - 6))
+        overhead_lines = len(lines) + 4
+        visible_rows = max(2, min(24, term_height - overhead_lines))
 
         if self.selected_row < self.scroll_offset:
             self.scroll_offset = self.selected_row
@@ -1355,32 +1424,37 @@ class TerminalPlayerUI:
             is_sel = (idx == self.selected_row)
 
             m_name = mix["name"]
-            if len(m_name) > 52:
-                m_name = m_name[:49] + "..."
+            if len(m_name) > 51:
+                m_name = m_name[:48] + "..."
 
             prefix = "▶ " if is_active else "  "
             sz_str = f"{mix['size_mb']:.0f}MB"
 
             if is_sel:
-                line_str = f"  │ \033[7m{prefix}[{idx+1:4d}] {m_name:<52} {mix['ext']} {sz_str:>6s}\033[0m │"
+                line_str = f"  │ \033[7m{prefix}[{idx+1:4d}] {m_name:<51} {mix['ext']} {sz_str:>6s}\033[0m │"
             elif is_active:
-                line_str = f"  │ {BOLD}{GREEN}{prefix}[{idx+1:4d}] {m_name:<52} {mix['ext']} {sz_str:>6s}{NC} │"
+                line_str = f"  │ {BOLD}{GREEN}{prefix}[{idx+1:4d}] {m_name:<51} {mix['ext']} {sz_str:>6s}{NC} │"
             else:
-                line_str = f"  │ {prefix}[{idx+1:4d}] {m_name:<52} {mix['ext']} {sz_str:>6s} │"
+                line_str = f"  │ {prefix}[{idx+1:4d}] {m_name:<51} {mix['ext']} {sz_str:>6s} │"
             lines.append(line_str)
 
-        lines.append(f"  {BOLD}{MAGENTA}└── ↑/↓: Scroll  •  Enter: Play Selection  •  /: Search Mixes ───────────┘{NC}")
+        foot_txt = "── ↑/↓: Scroll  •  Enter: Play Selection  •  /: Search Mixes "
+        dashes_foot = max(4, 74 - len(foot_txt))
+        lines.append(f"  {BOLD}{MAGENTA}└{foot_txt}{'─'*dashes_foot}┘{NC}")
 
         # 6. Status and Hotkey Footer
         shuf_badge = f"{GREEN}ON{NC}" if status.get("shuffle") else f"{DIM}OFF{NC}"
         rep_badge = f"{GREEN}{status.get('repeat', 'all').upper()}{NC}"
         vol_str = f"{status.get('volume', 85)}%" if not status.get("muted") else f"{RED}MUTED{NC}"
 
-        lines.append(f"  🔊 Volume: {BOLD}{COLOR_ELECTRIC_CYAN}{vol_str}{NC}  │  🔀 Shuffle: {shuf_badge}  │  🔁 Repeat: {rep_badge}  │  🎨 EQ Style: {BOLD}{CYAN}{self.visualizer.style}{NC}")
-        lines.append(f"  {DIM}[Space] Play/Pause  [n/p] Next/Prev  [←/→] Seek  [+/-] Vol  [e] EQ Style  [b/q] Return to Menu  [x] Stop{NC}")
+        lines.append(f"  🔊 Volume: {BOLD}{COLOR_ELECTRIC_CYAN}{vol_str}{NC}  │  🔀 Shuffle: {shuf_badge}  │  🔁 Repeat: {rep_badge}  │  🎨 EQ: {BOLD}{CYAN}{self.visualizer.style}{NC}")
+        if term_width >= 96:
+            lines.append(f"  {DIM}[Space] Play/Pause  [n/p] Next/Prev  [←/→] Seek  [+/-] Vol  [e] EQ Style  [b/q] Exit  [x] Stop{NC}")
+        else:
+            lines.append(f"  {DIM}[Space] Play  [n/p] Skip  [←/→] Seek  [+/-] Vol  [e] EQ  [b/q] Exit  [x] Stop{NC}")
 
-        frame_str = "\n".join(lines)
-        sys.stdout.write(f"\033[H{frame_str}\033[J")
+        frame_str = "\r\n".join(f"{line}\033[K" for line in lines)
+        sys.stdout.write(f"\033[H{frame_str}\r\n\033[J")
         sys.stdout.flush()
 
 
