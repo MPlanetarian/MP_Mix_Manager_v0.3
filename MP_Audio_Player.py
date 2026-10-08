@@ -759,8 +759,26 @@ def is_player_daemon_running() -> bool:
                 PID_FILE.unlink()
             except OSError:
                 pass
+            try:
+                if SOCKET_PATH.exists():
+                    SOCKET_PATH.unlink()
+            except OSError:
+                pass
             return False
+    if SOCKET_PATH.exists():
+        try:
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            s.settimeout(0.2)
+            s.connect(str(SOCKET_PATH))
+            s.close()
+            return True
+        except Exception:
+            try:
+                SOCKET_PATH.unlink()
+            except OSError:
+                pass
     return False
+
 
 
 # ==============================================================================
@@ -1101,7 +1119,7 @@ class TerminalPlayerUI:
     def run(self):
         fd = sys.stdin.fileno() if sys.stdin.isatty() else None
         old_settings = None
-        if fd and termios and tty:
+        if fd is not None and termios and tty:
             try:
                 old_settings = termios.tcgetattr(fd)
                 tty.setraw(fd)
@@ -1121,7 +1139,7 @@ class TerminalPlayerUI:
                 time.sleep(0.04)  # ~25 FPS animation
         finally:
             self.running = False
-            if fd and old_settings and termios:
+            if fd is not None and old_settings and termios:
                 try:
                     termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
                 except Exception:
@@ -1130,9 +1148,10 @@ class TerminalPlayerUI:
             sys.stdout.flush()
 
     def _input_loop(self):
-        fd = sys.stdin.fileno() if sys.stdin.isatty() else None
-        if not fd:
+        if not sys.stdin.isatty():
             return
+        fd = sys.stdin.fileno()
+
 
         while self.running:
             try:
@@ -1515,15 +1534,39 @@ def main():
         print("○ MP Audio Player: Stopped")
         sys.exit(0)
 
-    # If daemon is ALREADY running and interactive mode requested:
-    # Attach to the running daemon without spinning up a duplicate audio stream!
-    if daemon_running and (args.interactive or (not args.daemon and sys.stdin.isatty() and not args.file)):
+    # Interactive TUI Mode (Attach to daemon or launch daemon in background)
+    if args.interactive or (not args.daemon and sys.stdin.isatty()):
         scanner = MixArchiveScanner(base_dir)
+        mixes = scanner.get_mixes()
+        if not mixes and not daemon_running:
+            print(f"{RED}No audio mixes found in any configured archive directory.{NC}", file=sys.stderr)
+            sys.exit(1)
+
+        target_file = os.path.abspath(args.file) if args.file else None
+
+        if not daemon_running:
+            initial_file = target_file
+            if not initial_file and mixes:
+                latest = scanner.get_latest_mix()
+                initial_file = latest["path"] if latest else mixes[0]["path"]
+
+            if initial_file:
+                subprocess.Popen(
+                    [sys.executable, str(Path(__file__).resolve()), "--daemon", initial_file],
+                    start_new_session=True
+                )
+                for _ in range(30):
+                    time.sleep(0.04)
+                    if is_player_daemon_running() and (SOCKET_PATH.exists() or STATE_FILE.exists()):
+                        break
+        elif target_file:
+            send_ipc_command("play", file=target_file)
+
         ui = TerminalPlayerUI(None, scanner, is_remote=True)
         ui.run()
         sys.exit(0)
 
-    # Local Engine Initialization
+    # Local Audio Engine Initialization (Daemon or Non-interactive CLI)
     scanner = MixArchiveScanner(base_dir)
     mixes = scanner.get_mixes()
 
@@ -1560,27 +1603,31 @@ def main():
     engine.load_track(initial_track_idx, start_playing=True)
 
     # Daemon mode (runs headlessly in background)
-    if args.daemon or not sys.stdin.isatty():
+    try:
+        while True:
+            engine.check_track_end()
+            time.sleep(0.5)
+    except (KeyboardInterrupt, SystemExit):
+        pass
+    finally:
+        engine.stop_playback()
         try:
-            while True:
-                engine.check_track_end()
-                time.sleep(0.5)
-        except (KeyboardInterrupt, SystemExit):
-            engine.stop_playback()
-            try:
-                with open(STATE_FILE, "w", encoding="utf-8") as f:
-                    json.dump({"running": False, "state": "stopped"}, f)
-            except OSError:
-                pass
-            try:
+            with open(STATE_FILE, "w", encoding="utf-8") as f:
+                json.dump({"running": False, "state": "stopped"}, f)
+        except OSError:
+            pass
+        try:
+            if PID_FILE.exists():
                 PID_FILE.unlink()
-            except OSError:
-                pass
-            sys.exit(0)
+        except OSError:
+            pass
+        try:
+            if SOCKET_PATH.exists():
+                SOCKET_PATH.unlink()
+        except OSError:
+            pass
+        sys.exit(0)
 
-    # Interactive TUI Mode
-    ui = TerminalPlayerUI(engine, scanner, is_remote=False)
-    ui.run()
 
 
 if __name__ == "__main__":
