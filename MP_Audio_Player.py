@@ -653,6 +653,11 @@ class PlayerIPCServer:
                 self.engine.stop_playback()
                 self.running = False
                 try:
+                    with open(STATE_FILE, "w", encoding="utf-8") as f:
+                        json.dump({"running": False, "state": "stopped"}, f)
+                except OSError:
+                    pass
+                try:
                     SOCKET_PATH.unlink()
                 except OSError:
                     pass
@@ -1450,6 +1455,15 @@ def main():
                 time.sleep(0.5)
         except (KeyboardInterrupt, SystemExit):
             engine.stop_playback()
+            try:
+                with open(STATE_FILE, "w", encoding="utf-8") as f:
+                    json.dump({"running": False, "state": "stopped"}, f)
+            except OSError:
+                pass
+            try:
+                PID_FILE.unlink()
+            except OSError:
+                pass
             sys.exit(0)
 
     # Interactive TUI Mode

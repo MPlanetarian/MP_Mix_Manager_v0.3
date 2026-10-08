@@ -45,8 +45,21 @@ fi
 
 echo -e "${BLUE}--------------------------------------------------${NC}"
 if [ $STATUS -eq 0 ]; then
+    out_file="$(pwd)/master_tracklists.html"
+    [ ! -f "$out_file" ] && [ -f "$SCRIPT_DIR/master_tracklists.html" ] && out_file="$SCRIPT_DIR/master_tracklists.html"
+    [ ! -f "$out_file" ] && [ -f "$PARENT_DIR/master_tracklists.html" ] && out_file="$PARENT_DIR/master_tracklists.html"
+    
     echo -e "${BOLD}${GREEN}Master Tracklist HTML generated successfully!${NC}"
-    echo -e "You can open ${CYAN}master_tracklists.html${NC} in any browser."
+    echo -e "Saved to: ${CYAN}${out_file}${NC}"
+    
+    # Sync to external archive and codebase directories if different
+    if [ -n "${MIX_ARCHIVE_DIR:-}" ] && [ -d "$MIX_ARCHIVE_DIR" ] && [ "$out_file" != "${MIX_ARCHIVE_DIR%/}/master_tracklists.html" ]; then
+        cp -p "$out_file" "${MIX_ARCHIVE_DIR%/}/master_tracklists.html" 2>/dev/null || true
+    fi
+    if [ -d "$PARENT_DIR" ] && [ "$out_file" != "$PARENT_DIR/master_tracklists.html" ]; then
+        cp -p "$out_file" "$PARENT_DIR/master_tracklists.html" 2>/dev/null || true
+    fi
+    echo -e "Open directly with: ${YELLOW}xdg-open '${out_file}'${NC}"
 else
     echo -e "${BOLD}${RED}Failed to generate Master Tracklist HTML.${NC}"
 fi

@@ -208,6 +208,8 @@ read_nav_key() {
 
     if [[ -z "$_k" || "$_k" == $'\n' || "$_k" == $'\r' ]]; then
         _emit_key "ENTER"
+    elif [[ "$_k" == " " ]]; then
+        _emit_key "SPACE"
     elif [[ "$_k" == $'\x7f' || "$_k" == $'\x08' ]]; then
         _emit_key "BACKSPACE"
     elif [[ "$_k" == $'\x1b' || "$_k" == $'\e' ]]; then
@@ -401,6 +403,16 @@ run_interactive_submenu() {
             echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
         fi
         [ -n "$menu_header" ] && echo -e "$menu_header"
+        if get_mp_audio_player_track_info 2>/dev/null; then
+            local st_sym="${BOLD}${GREEN}▶ PLAYING${NC}"
+            [ "$MP_PLAYER_STATE" = "paused" ] && st_sym="${BOLD}${YELLOW}⏸ PAUSED${NC}"
+            local disp_title="$MP_PLAYER_TITLE"
+            [ ${#disp_title} -gt 40 ] && disp_title="${disp_title:0:37}..."
+            echo -e "  ${BOLD}${MAGENTA}╭── ♫ MP AUDIO PLAYER ─────────────────────────────────────────────────────╮${NC}"
+            printf "  ${BOLD}${MAGENTA}│${NC} %b  ${BOLD}${YELLOW}%-40s${NC}  ${CYAN}%s/%s${NC} ${DIM}(%2s%%)${NC} ${BOLD}${MAGENTA}│\n" "$st_sym" "$disp_title" "$MP_PLAYER_POS_FMT" "$MP_PLAYER_DUR_FMT" "${MP_PLAYER_PROGRESS_PCT%.*}"
+            printf "  ${BOLD}${MAGENTA}│${NC}   ${DIM}EQ:${NC} %b  ${DIM}Controls: [Space] Toggle [</>] Track [+/-] Vol [p] UI       ${NC} ${BOLD}${MAGENTA}│\n" "${CYAN}${MP_PLAYER_MINI_EQ:-        }${NC}"
+            echo -e "  ${BOLD}${MAGENTA}╰──────────────────────────────────────────────────────────────────────────╯${NC}"
+        fi
         for opt_entry in "${_opts_ref[@]}"; do
             IFS='|' read -r o_key o_label o_extra <<< "$opt_entry"
             if [ "$o_key" = "SECTION" ]; then
@@ -460,10 +472,34 @@ run_interactive_submenu() {
         [ -z "$term_lines" ] || [ "$term_lines" -lt 15 ] && term_lines=40
         [ -z "$term_cols" ] || [ "$term_cols" -lt 40 ] && term_cols=100
 
+        # Check MP Audio Player status and build live banner if active
+        local player_banner=""
+        local banner_lines=0
+        if get_mp_audio_player_track_info 2>/dev/null; then
+            local st_sym="${BOLD}${GREEN}▶ PLAYING${NC}"
+            [ "$MP_PLAYER_STATE" = "paused" ] && st_sym="${BOLD}${YELLOW}⏸ PAUSED${NC}"
+            local disp_title="$MP_PLAYER_TITLE"
+            if [ ${#disp_title} -gt 40 ]; then
+                disp_title="${disp_title:0:37}..."
+            fi
+            player_banner+="  ${BOLD}${MAGENTA}╭── ♫ MP AUDIO PLAYER ─────────────────────────────────────────────────────╮\033[K${NC}\n"
+            local line1_txt
+            printf -v line1_txt "  ${BOLD}${MAGENTA}│${NC} %b  ${BOLD}${YELLOW}%-40s${NC}  ${CYAN}%s/%s${NC} ${DIM}(%2s%%)${NC} ${BOLD}${MAGENTA}│\033[K${NC}\n" "$st_sym" "$disp_title" "$MP_PLAYER_POS_FMT" "$MP_PLAYER_DUR_FMT" "${MP_PLAYER_PROGRESS_PCT%.*}"
+            player_banner+="$line1_txt"
+            local line2_ctrl="[Space] Toggle  [</>] Track  [+/-] Vol: ${MP_PLAYER_VOLUME}%  [p] Player UI"
+            local eq_disp="${CYAN}${MP_PLAYER_MINI_EQ:-        }${NC}"
+            local line2_txt
+            printf -v line2_txt "  ${BOLD}${MAGENTA}│${NC}   ${DIM}EQ:${NC} %b  ${DIM}Controls: %-46b${NC} ${BOLD}${MAGENTA}│\033[K${NC}\n" "$eq_disp" "$line2_ctrl"
+            player_banner+="$line2_txt"
+            player_banner+="  ${BOLD}${MAGENTA}╰──────────────────────────────────────────────────────────────────────────╯\033[K${NC}\n"
+            banner_lines=4
+        fi
+
         # Compute maximum visible options
-        local max_visible=$(( term_lines - overhead ))
-        if [ "$max_visible" -lt 8 ]; then
-            max_visible=8
+        local effective_overhead=$(( overhead + banner_lines ))
+        local max_visible=$(( term_lines - effective_overhead ))
+        if [ "$max_visible" -lt 6 ]; then
+            max_visible=6
         fi
 
         if [ "$max_visible" -ge "$total_opts" ]; then
@@ -490,6 +526,7 @@ run_interactive_submenu() {
 
         # Build entire frame in memory to eliminate intermediate screen redraws
         local frame_buf="$cached_header_block"
+        [ -n "$player_banner" ] && frame_buf+="$player_banner"
 
         # Scroll indicator top
         if [ "$view_top" -gt 0 ]; then
@@ -560,6 +597,31 @@ run_interactive_submenu() {
         read_nav_key key_action
         
         case "$key_action" in
+            SPACE)
+                local mp_py="$SCRIPT_DIR/MP_Audio_Player.py"
+                [ ! -f "$mp_py" ] && mp_py="$SCRIPT_DIR/scripts/MP_Audio_Player.py"
+                [ -f "$mp_py" ] && python3 "$mp_py" --toggle >/dev/null 2>&1
+                ;;
+            CHAR:\>|CHAR:\])
+                local mp_py="$SCRIPT_DIR/MP_Audio_Player.py"
+                [ ! -f "$mp_py" ] && mp_py="$SCRIPT_DIR/scripts/MP_Audio_Player.py"
+                [ -f "$mp_py" ] && python3 "$mp_py" --next >/dev/null 2>&1
+                ;;
+            CHAR:\<|CHAR:\[)
+                local mp_py="$SCRIPT_DIR/MP_Audio_Player.py"
+                [ ! -f "$mp_py" ] && mp_py="$SCRIPT_DIR/scripts/MP_Audio_Player.py"
+                [ -f "$mp_py" ] && python3 "$mp_py" --prev >/dev/null 2>&1
+                ;;
+            CHAR:+|CHAR:=)
+                local mp_py="$SCRIPT_DIR/MP_Audio_Player.py"
+                [ ! -f "$mp_py" ] && mp_py="$SCRIPT_DIR/scripts/MP_Audio_Player.py"
+                [ -f "$mp_py" ] && python3 "$mp_py" --vol +5 >/dev/null 2>&1
+                ;;
+            CHAR:-|CHAR:_)
+                local mp_py="$SCRIPT_DIR/MP_Audio_Player.py"
+                [ ! -f "$mp_py" ] && mp_py="$SCRIPT_DIR/scripts/MP_Audio_Player.py"
+                [ -f "$mp_py" ] && python3 "$mp_py" --vol -5 >/dev/null 2>&1
+                ;;
             UP)
                 local hops=0
                 while [ "$hops" -lt "$total_opts" ]; do
@@ -644,6 +706,23 @@ run_interactive_submenu() {
                 ;;
             CHAR:*)
                 local ch="${key_action#CHAR:}"
+                if [ -z "$typed_buffer" ] && ([ "$ch" = "p" ] || [ "$ch" = "P" ]); then
+                    local has_exact_p=0
+                    for opt_entry in "${_opts_ref[@]}"; do
+                        IFS='|' read -r o_key _ _ <<< "$opt_entry"
+                        if [ "$o_key" = "p" ] || [ "$o_key" = "P" ]; then
+                            has_exact_p=1
+                            break
+                        fi
+                    done
+                    if [ "$has_exact_p" -eq 0 ]; then
+                        printf '\033[?25h\033[?2026l'
+                        manage_mp_audio_player
+                        clear
+                        printf '\033[?25l'
+                        continue
+                    fi
+                fi
                 typed_buffer+="$ch"
                 local m_idx=0
                 for opt_entry in "${_opts_ref[@]}"; do
@@ -2008,7 +2087,7 @@ ensure_playlists_generated_dirs() {
 ensure_playlists_generated_dirs
 
 # Default Audio Player and Startup Autoplay Preferences
-DEFAULT_AUDIO_PLAYER="${DEFAULT_AUDIO_PLAYER:-audacious}"
+DEFAULT_AUDIO_PLAYER="${DEFAULT_AUDIO_PLAYER:-mp_audio_player}"
 AUTO_PLAY_ON_STARTUP="${AUTO_PLAY_ON_STARTUP:-true}"
 AUTO_SHOW_COVER_ON_STARTUP="${AUTO_SHOW_COVER_ON_STARTUP:-false}"
 AUTO_SHOW_TRACKLIST_ON_STARTUP="${AUTO_SHOW_TRACKLIST_ON_STARTUP:-true}"
@@ -2562,6 +2641,73 @@ print(json.dumps(data))
     fi
 
     return 0
+}
+
+get_mp_audio_player_track_info() {
+    MP_PLAYER_RUNNING=0
+    MP_PLAYER_STATE=""
+    MP_PLAYER_TITLE=""
+    MP_PLAYER_RAW_PATH=""
+    MP_PLAYER_RESOLVED_PATH=""
+    MP_PLAYER_FILE_EXISTS=0
+    MP_PLAYER_FILE_SIZE=""
+    MP_PLAYER_POS_FMT="00:00"
+    MP_PLAYER_DUR_FMT="00:00"
+    MP_PLAYER_PROGRESS_PCT=0
+    MP_PLAYER_MINI_EQ=""
+    MP_PLAYER_VOLUME=85
+
+    local state_file="$HOME/.config/mix-manager/mp_player_state.json"
+    [ ! -f "$state_file" ] && return 1
+
+    local pid_file="$HOME/.config/mix-manager/mp_player.pid"
+    if [ -f "$pid_file" ]; then
+        local p_pid
+        p_pid="$(cat "$pid_file" 2>/dev/null)"
+        if [ -n "$p_pid" ] && ! kill -0 "$p_pid" 2>/dev/null; then
+            return 1
+        fi
+    fi
+
+    if command -v jq >/dev/null 2>&1; then
+        local is_run p_pid
+        IFS=$'\t' read -r is_run MP_PLAYER_STATE MP_PLAYER_VOLUME MP_PLAYER_POS_FMT MP_PLAYER_DUR_FMT MP_PLAYER_PROGRESS_PCT MP_PLAYER_MINI_EQ MP_PLAYER_TITLE MP_PLAYER_RAW_PATH p_pid < <(
+            jq -r '[.running // false, .state // "stopped", .volume // 85, .position_fmt // "00:00", .duration_fmt // "00:00", .progress_pct // 0, .mini_eq // "", .title // "", .path // "", .pid // 0] | @tsv' "$state_file" 2>/dev/null
+        )
+        [ "$is_run" != "true" ] && return 1
+        [ "$MP_PLAYER_STATE" = "stopped" ] && return 1
+        if [ -n "$p_pid" ] && [ "$p_pid" -gt 0 ] 2>/dev/null; then
+            kill -0 "$p_pid" 2>/dev/null || return 1
+        fi
+        MP_PLAYER_RUNNING=1
+        MP_PLAYER_RESOLVED_PATH="$MP_PLAYER_RAW_PATH"
+    elif [ -f "$SCRIPT_DIR/MP_Audio_Player.py" ]; then
+        local p_st
+        p_st="$(python3 "$SCRIPT_DIR/MP_Audio_Player.py" --status 2>/dev/null)"
+        [ -z "$p_st" ] && return 1
+        [[ "$p_st" =~ "\"running\": true" ]] || return 1
+        MP_PLAYER_RUNNING=1
+        MP_PLAYER_STATE="playing"
+        [[ "$p_st" =~ "\"state\": \"paused\"" ]] && MP_PLAYER_STATE="paused"
+    fi
+
+    if [ -n "$MP_PLAYER_RESOLVED_PATH" ] && [ -f "$MP_PLAYER_RESOLVED_PATH" ]; then
+        MP_PLAYER_FILE_EXISTS=1
+        MP_PLAYER_FILE_SIZE="$(ls -lh "$MP_PLAYER_RESOLVED_PATH" 2>/dev/null | awk '{print $5}')"
+    fi
+
+    return 0
+}
+
+manage_mp_audio_player() {
+    local py_script="$SCRIPT_DIR/MP_Audio_Player.py"
+    [ ! -f "$py_script" ] && py_script="$SCRIPT_DIR/scripts/MP_Audio_Player.py"
+    if [ -f "$py_script" ]; then
+        python3 "$py_script" --interactive
+    else
+        echo -e "${RED}Error: MP_Audio_Player.py not found!${NC}"
+        press_enter
+    fi
 }
 
 get_cliamp_track_info() {
@@ -6900,6 +7046,13 @@ play_audio_file() {
     [ -z "$file" ] && return 1
 
     case "$player" in
+        mp_audio_player|mp_player|mp-player|mpplayer|mp)
+            local mp_py="$SCRIPT_DIR/MP_Audio_Player.py"
+            [ ! -f "$mp_py" ] && mp_py="$SCRIPT_DIR/scripts/MP_Audio_Player.py"
+            if [ -f "$mp_py" ]; then
+                python3 "$mp_py" --play "$file" >/dev/null 2>&1
+            fi
+            ;;
         audacious)
             if get_audacious_track_info 2>/dev/null && [ "$AUDACIOUS_STATE" = "playing" ]; then
                 if [ "$AUDACIOUS_RESOLVED_PATH" = "$file" ] || [ "$AUDACIOUS_RAW_PATH" = "$file" ]; then
@@ -7373,6 +7526,13 @@ execute_startup_autoplay() {
     local selected_mix=""
     selected_mix="$(select_startup_mix)" || true
     if [ -z "$selected_mix" ] || [ ! -s "$selected_mix" ]; then
+        local mp_py="$SCRIPT_DIR/MP_Audio_Player.py"
+        [ ! -f "$mp_py" ] && mp_py="$SCRIPT_DIR/scripts/MP_Audio_Player.py"
+        if [ -f "$mp_py" ]; then
+            selected_mix=$(python3 "$mp_py" --get-latest-mix 2>/dev/null || true)
+        fi
+    fi
+    if [ -z "$selected_mix" ] || [ ! -s "$selected_mix" ]; then
         return 0
     fi
 
@@ -7380,14 +7540,19 @@ execute_startup_autoplay() {
         STARTUP_AUTOPLAY_NOTICE="Latest mix is on cloud storage (offline, playback skipped)"
         return 0
     fi
-    STARTUP_AUTOPLAY_NOTICE="Latest converted mix: $(basename "$selected_mix")"
+    STARTUP_AUTOPLAY_NOTICE="Latest converted mix: $(basename "$selected_mix") (MP Audio Player)"
 
-    local player="${DEFAULT_AUDIO_PLAYER:-audacious}"
+    local player="${DEFAULT_AUDIO_PLAYER:-mp_audio_player}"
     local SKIP_PLAYING_ASSETS=1
     local current_path=""
     local current_state=""
 
-    if [ "$player" = "audacious" ] && get_audacious_track_info 2>/dev/null; then
+    if [ "$player" = "mp_audio_player" ] || [ "$player" = "mp_player" ] || [ "$player" = "mp-player" ]; then
+        if get_mp_audio_player_track_info 2>/dev/null; then
+            current_path="$MP_PLAYER_RAW_PATH"
+            current_state="$MP_PLAYER_STATE"
+        fi
+    elif [ "$player" = "audacious" ] && get_audacious_track_info 2>/dev/null; then
         current_path="$AUDACIOUS_RESOLVED_PATH"
         current_state="$AUDACIOUS_STATE"
     elif [ "$player" = "strawberry" ] && get_strawberry_track_info 2>/dev/null; then
@@ -7519,99 +7684,106 @@ configure_audio_player_and_startup() {
         echo -e "  • Config File Location:          ${DIM}${SCRIPT_DIR}/config.env${NC}\n"
 
         echo -e "${BOLD}Select Player or Setting to Change:${NC}"
-        echo -e "  ${BOLD}${CYAN} 1)${NC} Set Default Player to: ${BOLD}Audacious${NC} (Audio Player) [${audacious_st}]"
-        echo -e "  ${BOLD}${CYAN} 2)${NC} Set Default Player to: ${BOLD}cliamp${NC} (Retro Terminal Player) [${cliamp_st}]"
-        echo -e "  ${BOLD}${CYAN} 3)${NC} Set Default Player to: ${BOLD}Strawberry${NC} (Music Player) [${straw_st}]"
-        echo -e "  ${BOLD}${CYAN} 4)${NC} Set Default Player to: ${BOLD}VLC Media Player${NC} [${vlc_st}]"
-        echo -e "  ${BOLD}${CYAN} 5)${NC} Set Default Player to: ${BOLD}Haruna Media Player${NC} [${haruna_st}]"
-        echo -e "  ${BOLD}${CYAN} 6)${NC} Set Default Player to: ${BOLD}Kodi Entertainment Center${NC} [${kodi_st}]"
-        echo -e "  ${BOLD}${CYAN} 7)${NC} Set Default Player to: ${BOLD}foobar2000${NC} (macOS & Windows) [${foobar_st}]"
-        echo -e "  ${BOLD}${CYAN} 8)${NC} Set Default Player to: ${BOLD}Winamp${NC} (Windows) [${winamp_st}]"
-        echo -e "  ${BOLD}${CYAN} 9)${NC} Set Default Player to: ${BOLD}Apple Music${NC} (macOS) [${music_st}]"
-        echo -e "  ${BOLD}${CYAN}10)${NC} Set Default Player to: ${BOLD}Audacity Audio Editor${NC} [${audacity_st}]"
-        echo -e "  ${BOLD}${CYAN}11)${NC} Set Default Player to: ${BOLD}mpv Video/Audio Player${NC} [${mpv_st}]"
-        echo -e "  ${BOLD}${CYAN}12)${NC} Set Custom Audio Player Command / Binary"
+        echo -e "  ${BOLD}${CYAN} 1)${NC} Set Default Player to: ${BOLD}MP Audio Player${NC} (Built-in Audiophile Player, Animated EQ) [${GREEN}Installed${NC}]"
+        echo -e "  ${BOLD}${CYAN} 2)${NC} Set Default Player to: ${BOLD}Audacious${NC} (Audio Player) [${audacious_st}]"
+        echo -e "  ${BOLD}${CYAN} 3)${NC} Set Default Player to: ${BOLD}cliamp${NC} (Retro Terminal Player) [${cliamp_st}]"
+        echo -e "  ${BOLD}${CYAN} 4)${NC} Set Default Player to: ${BOLD}Strawberry${NC} (Music Player) [${straw_st}]"
+        echo -e "  ${BOLD}${CYAN} 5)${NC} Set Default Player to: ${BOLD}VLC Media Player${NC} [${vlc_st}]"
+        echo -e "  ${BOLD}${CYAN} 6)${NC} Set Default Player to: ${BOLD}Haruna Media Player${NC} [${haruna_st}]"
+        echo -e "  ${BOLD}${CYAN} 7)${NC} Set Default Player to: ${BOLD}Kodi Entertainment Center${NC} [${kodi_st}]"
+        echo -e "  ${BOLD}${CYAN} 8)${NC} Set Default Player to: ${BOLD}foobar2000${NC} (macOS & Windows) [${foobar_st}]"
+        echo -e "  ${BOLD}${CYAN} 9)${NC} Set Default Player to: ${BOLD}Winamp${NC} (Windows) [${winamp_st}]"
+        echo -e "  ${BOLD}${CYAN}10)${NC} Set Default Player to: ${BOLD}Apple Music${NC} (macOS) [${music_st}]"
+        echo -e "  ${BOLD}${CYAN}11)${NC} Set Default Player to: ${BOLD}Audacity Audio Editor${NC} [${audacity_st}]"
+        echo -e "  ${BOLD}${CYAN}12)${NC} Set Default Player to: ${BOLD}mpv Video/Audio Player${NC} [${mpv_st}]"
+        echo -e "  ${BOLD}${CYAN}13)${NC} Set Custom Audio Player Command / Binary"
         echo -e "  ${BOLD}${BLUE}──────────────────────────────────────────────────────────────────${NC}"
-        echo -e "  ${BOLD}${CYAN}13)${NC} Toggle Auto-Play Mix on Startup (${ap_badge})"
-        echo -e "  ${BOLD}${CYAN}14)${NC} Toggle Auto-Show Cover Art on Startup (${cov_badge})"
-        echo -e "  ${BOLD}${CYAN}15)${NC} Toggle Auto-Show Tracklist on Startup (${tl_badge})"
-        echo -e "  ${BOLD}${CYAN}16)${NC} Toggle Startup Mix Selection (Latest vs Random)"
-        echo -e "  ${BOLD}${CYAN}17)${NC} Test-Play Latest Mix Right Now in Default Player (${DEFAULT_AUDIO_PLAYER})"
-        echo -e "  ${BOLD}${CYAN}18)${NC} Configure Tracklist Window Viewer (${BOLD}${TRACKLIST_VIEWER:-console}${NC})"
-        echo -e "  ${BOLD}${CYAN}19)${NC} Configure Default Video Player (${BOLD}${DEFAULT_VIDEO_PLAYER:-vlc}${NC})"
-        echo -e "  ${BOLD}${CYAN}20)${NC} Configure Startup YouTube URL & Autoplay (${yt_badge})"
-        echo -e "  ${BOLD}${CYAN}21)${NC} Configure Live Weather Banner & Location (${BOLD}${WEATHER_LOCATION:-Swansea, UK}${NC})"
+        echo -e "  ${BOLD}${CYAN}14)${NC} Toggle Auto-Play Mix on Startup (${ap_badge})"
+        echo -e "  ${BOLD}${CYAN}15)${NC} Toggle Auto-Show Cover Art on Startup (${cov_badge})"
+        echo -e "  ${BOLD}${CYAN}16)${NC} Toggle Auto-Show Tracklist on Startup (${tl_badge})"
+        echo -e "  ${BOLD}${CYAN}17)${NC} Toggle Startup Mix Selection (Latest vs Random)"
+        echo -e "  ${BOLD}${CYAN}18)${NC} Test-Play Latest Mix Right Now in Default Player (${DEFAULT_AUDIO_PLAYER})"
+        echo -e "  ${BOLD}${CYAN}19)${NC} Configure Tracklist Window Viewer (${BOLD}${TRACKLIST_VIEWER:-console}${NC})"
+        echo -e "  ${BOLD}${CYAN}20)${NC} Configure Default Video Player (${BOLD}${DEFAULT_VIDEO_PLAYER:-vlc}${NC})"
+        echo -e "  ${BOLD}${CYAN}21)${NC} Configure Startup YouTube URL & Autoplay (${yt_badge})"
+        echo -e "  ${BOLD}${CYAN}22)${NC} Configure Live Weather Banner & Location (${BOLD}${WEATHER_LOCATION:-Swansea, UK}${NC})"
         echo -e "  ${BOLD}${CYAN} 0)${NC} Return to Main Menu\n"
-        read -r -p "Enter choice [0-21]: " set_choice
+        read -r -p "Enter choice [0-22]: " set_choice
 
         case "$set_choice" in
-            1)
+            1|mp|mp_player|mpplayer|p|P)
+                DEFAULT_AUDIO_PLAYER="mp_audio_player"
+                save_config_setting "DEFAULT_AUDIO_PLAYER" "mp_audio_player"
+                echo -e "\n${GREEN}✓ Default audio player set to 'mp_audio_player' (MP Audio Player) and saved to config.env!${NC}"
+                sleep 1
+                ;;
+            2|audacious)
                 DEFAULT_AUDIO_PLAYER="audacious"
                 save_config_setting "DEFAULT_AUDIO_PLAYER" "audacious"
                 echo -e "\n${GREEN}✓ Default audio player set to 'audacious' and saved to config.env!${NC}"
                 sleep 1
                 ;;
-            2)
+            3|cliamp)
                 DEFAULT_AUDIO_PLAYER="cliamp"
                 save_config_setting "DEFAULT_AUDIO_PLAYER" "cliamp"
                 echo -e "\n${GREEN}✓ Default audio player set to 'cliamp' and saved to config.env!${NC}"
                 sleep 1
                 ;;
-            3)
+            4|strawberry)
                 DEFAULT_AUDIO_PLAYER="strawberry"
                 save_config_setting "DEFAULT_AUDIO_PLAYER" "strawberry"
                 echo -e "\n${GREEN}✓ Default audio player set to 'strawberry' and saved to config.env!${NC}"
                 sleep 1
                 ;;
-            4)
+            5|vlc)
                 DEFAULT_AUDIO_PLAYER="vlc"
                 save_config_setting "DEFAULT_AUDIO_PLAYER" "vlc"
                 echo -e "\n${GREEN}✓ Default audio player set to 'vlc' and saved to config.env!${NC}"
                 sleep 1
                 ;;
-            5)
+            6|haruna)
                 DEFAULT_AUDIO_PLAYER="haruna"
                 save_config_setting "DEFAULT_AUDIO_PLAYER" "haruna"
                 echo -e "\n${GREEN}✓ Default audio player set to 'haruna' and saved to config.env!${NC}"
                 sleep 1
                 ;;
-            6)
+            7|kodi)
                 DEFAULT_AUDIO_PLAYER="kodi"
                 save_config_setting "DEFAULT_AUDIO_PLAYER" "kodi"
                 echo -e "\n${GREEN}✓ Default audio player set to 'kodi' and saved to config.env!${NC}"
                 sleep 1
                 ;;
-            7)
+            8|foobar|foobar2000)
                 DEFAULT_AUDIO_PLAYER="foobar2000"
                 save_config_setting "DEFAULT_AUDIO_PLAYER" "foobar2000"
                 echo -e "\n${GREEN}✓ Default audio player set to 'foobar2000' and saved to config.env!${NC}"
                 sleep 1
                 ;;
-            8)
+            9|winamp)
                 DEFAULT_AUDIO_PLAYER="winamp"
                 save_config_setting "DEFAULT_AUDIO_PLAYER" "winamp"
                 echo -e "\n${GREEN}✓ Default audio player set to 'winamp' and saved to config.env!${NC}"
                 sleep 1
                 ;;
-            9)
+            10|music|"apple music")
                 DEFAULT_AUDIO_PLAYER="music"
                 save_config_setting "DEFAULT_AUDIO_PLAYER" "music"
                 echo -e "\n${GREEN}✓ Default audio player set to 'music' (Apple Music) and saved to config.env!${NC}"
                 sleep 1
                 ;;
-            10)
+            11|audacity)
                 DEFAULT_AUDIO_PLAYER="audacity"
                 save_config_setting "DEFAULT_AUDIO_PLAYER" "audacity"
                 echo -e "\n${GREEN}✓ Default audio player set to 'audacity' and saved to config.env!${NC}"
                 sleep 1
                 ;;
-            11)
+            12|mpv)
                 DEFAULT_AUDIO_PLAYER="mpv"
                 save_config_setting "DEFAULT_AUDIO_PLAYER" "mpv"
                 echo -e "\n${GREEN}✓ Default audio player set to 'mpv' and saved to config.env!${NC}"
                 sleep 1
                 ;;
-            12)
+            13)
                 read -r -p "Enter custom audio player executable command: " cust_p
                 if [ -n "$cust_p" ]; then
                     DEFAULT_AUDIO_PLAYER="$cust_p"
@@ -7620,7 +7792,7 @@ configure_audio_player_and_startup() {
                     sleep 1.2
                 fi
                 ;;
-            13)
+            14)
                 if [ "${AUTO_PLAY_ON_STARTUP:-true}" = "true" ]; then
                     AUTO_PLAY_ON_STARTUP="false"
                 else
@@ -7630,7 +7802,7 @@ configure_audio_player_and_startup() {
                 echo -e "\n${GREEN}✓ Startup autoplay toggled to: ${AUTO_PLAY_ON_STARTUP}!${NC}"
                 sleep 1
                 ;;
-            14)
+            15)
                 if [ "${AUTO_SHOW_COVER_ON_STARTUP:-false}" = "true" ]; then
                     AUTO_SHOW_COVER_ON_STARTUP="false"
                 else
@@ -7640,7 +7812,7 @@ configure_audio_player_and_startup() {
                 echo -e "\n${GREEN}✓ Auto-show cover art toggled to: ${AUTO_SHOW_COVER_ON_STARTUP}!${NC}"
                 sleep 1
                 ;;
-            15)
+            16)
                 if [ "${AUTO_SHOW_TRACKLIST_ON_STARTUP:-true}" = "true" ]; then
                     AUTO_SHOW_TRACKLIST_ON_STARTUP="false"
                 else
@@ -7650,7 +7822,7 @@ configure_audio_player_and_startup() {
                 echo -e "\n${GREEN}✓ Auto-show tracklist toggled to: ${AUTO_SHOW_TRACKLIST_ON_STARTUP}!${NC}"
                 sleep 1
                 ;;
-            16)
+            17)
                 if [ "${AUTO_PLAY_MIX_SELECTION:-latest}" = "latest" ]; then
                     AUTO_PLAY_MIX_SELECTION="random"
                 else
@@ -7660,7 +7832,7 @@ configure_audio_player_and_startup() {
                 echo -e "\n${GREEN}✓ Startup mix selection toggled to: ${AUTO_PLAY_MIX_SELECTION}!${NC}"
                 sleep 1
                 ;;
-            17)
+            18)
                 echo -e "\n${BOLD}${YELLOW}Testing startup playback right now with player: ${DEFAULT_AUDIO_PLAYER}...${NC}\n"
                 execute_startup_autoplay
                 press_enter
@@ -7803,7 +7975,19 @@ manage_audio_players() {
         echo -e "       ${BOLD}${CYAN}📅 ${current_datetime}${NC}"
         echo ""
 
-        if get_audacious_track_info 2>/dev/null; then
+        if get_mp_audio_player_track_info 2>/dev/null; then
+            local st_badge
+            case "$MP_PLAYER_STATE" in
+                playing) st_badge="${BOLD}${GREEN}▶ PLAYING${NC}" ;;
+                paused)  st_badge="${BOLD}${YELLOW}⏸ PAUSED${NC}" ;;
+                stopped) st_badge="${BOLD}${RED}⏹ STOPPED${NC}" ;;
+                *)       st_badge="${BOLD}${CYAN}${MP_PLAYER_STATE^^}${NC}" ;;
+            esac
+            echo -e "  MP Audio Player:   ${st_badge} [${MP_PLAYER_POS_FMT} / ${MP_PLAYER_DUR_FMT}] (${MP_PLAYER_PROGRESS_PCT}%) ${CYAN}${MP_PLAYER_MINI_EQ}${NC}"
+            echo -e "  Current Track:     ${BOLD}${YELLOW}${MP_PLAYER_TITLE}${NC}"
+            [ -n "$MP_PLAYER_RESOLVED_PATH" ] && echo -e "  Active File Path:  ${BOLD}${CYAN}${MP_PLAYER_RESOLVED_PATH}${NC}"
+            echo -e "  --------------------------------------------------"
+        elif get_audacious_track_info 2>/dev/null; then
             local st_badge
             case "$AUDACIOUS_STATE" in
                 playing) st_badge="${BOLD}${GREEN}▶ PLAYING${NC}" ;;
@@ -7843,65 +8027,69 @@ manage_audio_players() {
         fi
 
         echo -e "${BOLD}Select an Audio Player to launch / manage:${NC}"
-        echo -e "  ${BOLD}${CYAN} 1)${NC} Launch Audacious Audio Player (New Window) (${GREEN}audacious / org.atheme.audacious${NC})"
-        echo -e "  ${BOLD}${CYAN} 2)${NC} Cliamp Music Player & Current Track Info (${GREEN}Now Playing Path, Controls & Launch${NC})"
-        echo -e "  ${BOLD}${CYAN} 3)${NC} Launch VLC Media Player (${GREEN}vlc / org.videolan.VLC${NC})"
-        echo -e "  ${BOLD}${CYAN} 4)${NC} Launch Haruna Media Player (${GREEN}org.kde.haruna${NC})"
-        echo -e "  ${BOLD}${CYAN} 5)${NC} Launch Kodi Entertainment Center (${GREEN}tv.kodi.Kodi${NC})"
-        echo -e "  ${BOLD}${CYAN} 6)${NC} Launch Strawberry Music Player (Legacy) (${GREEN}strawberry${NC})"
-        echo -e "  ${BOLD}${CYAN} 7)${NC} Launch foobar2000 Player (${fb_badge})"
-        echo -e "  ${BOLD}${CYAN} 8)${NC} Launch Winamp Player (${wa_badge})"
-        echo -e "  ${BOLD}${CYAN} 9)${NC} Launch Apple Music Player (${am_badge})"
-        echo -e "  ${BOLD}${CYAN}10)${NC} Launch Apple Podcasts App (${ap_badge})"
-        echo -e "  ${BOLD}${CYAN}11)${NC} Launch Audacity Audio Editor (${GREEN}audacity${NC})"
-        echo -e "  ${BOLD}${CYAN}12)${NC} Show Connected USB MIDI Devices (${GREEN}list-midi-devices${NC})"
-        echo -e "  ${BOLD}${CYAN}13)${NC} Configure Default Audio Player & Startup Autoplay (${GREEN}Current: ${DEFAULT_AUDIO_PLAYER:-audacious}${NC})"
-        echo -e "  ${BOLD}${CYAN}14)${NC} View Playing Mix Audio Specifications & Stream Metadata (${GREEN}Bit Depth, Sample Rate, Codec, Title${NC})"
+        echo -e "  ${BOLD}${CYAN} 1)${NC} Play Mix/Audio File (MP Audio Player) (${GREEN}Built-in Audiophile Player, Animated EQ${NC})"
+        echo -e "  ${BOLD}${CYAN} 2)${NC} Launch Audacious Audio Player (New Window) (${GREEN}audacious / org.atheme.audacious${NC})"
+        echo -e "  ${BOLD}${CYAN} 3)${NC} Cliamp Music Player & Current Track Info (${GREEN}Now Playing Path, Controls & Launch${NC})"
+        echo -e "  ${BOLD}${CYAN} 4)${NC} Launch VLC Media Player (${GREEN}vlc / org.videolan.VLC${NC})"
+        echo -e "  ${BOLD}${CYAN} 5)${NC} Launch Haruna Media Player (${GREEN}org.kde.haruna${NC})"
+        echo -e "  ${BOLD}${CYAN} 6)${NC} Launch Kodi Entertainment Center (${GREEN}tv.kodi.Kodi${NC})"
+        echo -e "  ${BOLD}${CYAN} 7)${NC} Launch Strawberry Music Player (Legacy) (${GREEN}strawberry${NC})"
+        echo -e "  ${BOLD}${CYAN} 8)${NC} Launch foobar2000 Player (${fb_badge})"
+        echo -e "  ${BOLD}${CYAN} 9)${NC} Launch Winamp Player (${wa_badge})"
+        echo -e "  ${BOLD}${CYAN}10)${NC} Launch Apple Music Player (${am_badge})"
+        echo -e "  ${BOLD}${CYAN}11)${NC} Launch Apple Podcasts App (${ap_badge})"
+        echo -e "  ${BOLD}${CYAN}12)${NC} Launch Audacity Audio Editor (${GREEN}audacity${NC})"
+        echo -e "  ${BOLD}${CYAN}13)${NC} Show Connected USB MIDI Devices (${GREEN}list-midi-devices${NC})"
+        echo -e "  ${BOLD}${CYAN}14)${NC} Configure Default Audio Player & Startup Autoplay (${GREEN}Current: ${DEFAULT_AUDIO_PLAYER:-mp_audio_player}${NC})"
+        echo -e "  ${BOLD}${CYAN}15)${NC} View Playing Mix Audio Specifications & Stream Metadata (${GREEN}Bit Depth, Sample Rate, Codec, Title${NC})"
         echo -e "  ${BOLD}${CYAN} 0)${NC} Return to Main Menu"
         echo ""
-        read -r -p "Enter choice [0-14]: " p_choice
+        read -r -p "Enter choice [0-15]: " p_choice
 
         case "$p_choice" in
-            1)
+            1|mp|mp_player|mpplayer|p|P)
+                manage_mp_audio_player
+                ;;
+            2|audacious)
                 launch_audacious
                 ;;
-            2)
+            3|cliamp)
                 manage_cliamp
                 ;;
-            3)
+            4|vlc)
                 launch_vlc
                 ;;
-            4)
+            5|haruna)
                 launch_haruna
                 ;;
-            5)
+            6|kodi)
                 launch_kodi
                 ;;
-            6)
+            7|strawberry)
                 launch_strawberry
                 ;;
-            7)
+            8|foobar|foobar2000)
                 launch_foobar2000
                 ;;
-            8)
+            9|winamp)
                 launch_winamp
                 ;;
-            9)
+            10|music|"apple music")
                 launch_apple_music
                 ;;
-            10)
+            11|podcasts|"apple podcasts")
                 launch_apple_podcasts
                 ;;
-            11)
+            12|audacity)
                 launch_audacity
                 ;;
-            12)
+            13|midi)
                 list_usb_midi_devices
                 ;;
-            13)
+            14|config|setup)
                 configure_audio_player_and_startup
                 ;;
-            14)
+            15|meta|metadata)
                 inspect_playing_audio_file
                 ;;
             0|[qQ])
@@ -10682,6 +10870,14 @@ get_manager_uptime() {
 }
 
 detect_currently_playing_mix() {
+    # 0. Check MP Audio Player (Built-in Audiophile Player)
+    if get_mp_audio_player_track_info 2>/dev/null; then
+        if [ -n "$MP_PLAYER_RAW_PATH" ] && [ -f "$MP_PLAYER_RAW_PATH" ]; then
+            echo "$MP_PLAYER_RAW_PATH"
+            return 0
+        fi
+    fi
+
     # 1. Check Audacious (MPRIS / qdbus / dbus-send / audtool)
     if get_audacious_track_info 2>/dev/null; then
         if [ -n "$AUDACIOUS_RESOLVED_PATH" ] && [ -f "$AUDACIOUS_RESOLVED_PATH" ]; then
@@ -12681,6 +12877,7 @@ while true; do
         "9|Cloud & Remote Backup Suite|(Google Drive, iCloud, Dropbox, Custom Folder)"
         "10|Storage Management & Multiple Mix Archives Setup|(Drive Space, Rescan, Configure Archives)"
         "SECTION|SECTION 2: STUDIO AUDIO, PLAYBACK, METADATA & VIDEO|"
+        "p|Play Mix/Audio File (MP Audio Player)|(Built-in Player, Custom Animated EQ, FLAC/WAV/MP3)"
         "11|Tracklist Management, Scanning & Metadata Suite|(Browse, Search, Picard, HTML Index)"
         "12|Audio Players & Retro Playback Suite|(cliamp, Strawberry, VLC, Audacity, Haruna, Winamp...)"
         "13|Configure Mix Archive Storage Locations|(Option 13: Primary & Multiple Archives)"
@@ -12847,8 +13044,11 @@ while true; do
             exit_mix_manager
             ;;
         # ----------------------------------------------------------------------
-        # Legacy Shortcut Aliases (for direct muscle-memory compatibility)
+        # MP Audio Player & Shortcut Aliases
         # ----------------------------------------------------------------------
+        p|P|play|Play|player|mp_player|mp-player|mpplayer|mp|"Play Mix/Audio File (MP Audio Player)")
+            manage_mp_audio_player
+            ;;
         audacious|audacious-launch)
             launch_audacious
             ;;
