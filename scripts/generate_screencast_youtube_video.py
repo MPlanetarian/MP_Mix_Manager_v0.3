@@ -2,11 +2,12 @@
 """
 Generate a 1080p YouTube video for "MPlanetarian - MP Harmony AI Agent Fixes MP Mix Manager".
 Features:
-- Hardware-accelerated NVENC encoding at 1080p Full HD (30fps)
-- 5s Intro with Sensorium_Interface.jpeg fading in from black, then dissolving into screencast
+- Hardware-accelerated NVIDIA NVENC encoding at 1080p Full HD (30fps)
+- 5s Intro with Sensorium_Interface.jpeg fading in from black
 - Screencast playback with seamless 5s image transitions every 5 minutes (cycling through 4 images)
-- Screencast finishes, dissolves into Cover_v3.jpeg, which fades out to black for 5s
-- High fidelity 320kbps AAC audio looped to match video length with 5s fades at start/end
+- 5s Outro with Cover_v3.jpeg fading out to black
+- High fidelity 320kbps AAC audio looped to match video length with 5s studio fades at start/end
+- Rock-solid single-stream segment architecture with uniform 90000 timescale
 """
 
 import os
@@ -26,8 +27,8 @@ WIDTH = 1920
 HEIGHT = 1080
 FPS = 30
 INTERVAL_SEC = 300.0  # 5 minutes
-TRANS_DUR = 5.0       # 5 seconds display window
-FADE_DUR = 1.0        # 1 second crossfade
+IMAGE_DUR = 5.0       # 5 seconds display
+FADE_DUR = 1.0        # 1 second fade
 
 INTRO_IMAGE_NAME = "Sensorium_Interface.jpeg"
 OUTRO_IMAGE_NAME = "Cover_v3.jpeg"
@@ -106,136 +107,104 @@ def main():
     print(f"\nSource Video Duration: {video_dur:.2f}s ({video_dur/60:.2f} mins)", flush=True)
     print(f"Source Audio Duration: {audio_dur:.2f}s ({audio_dur/60:.2f} mins)", flush=True)
 
-    # 3. Plan Segments
-    events = []
-    curr = INTERVAL_SEC
-    while curr + TRANS_DUR < video_dur:
-        events.append(curr)
-        curr += INTERVAL_SEC
-
-    print(f"\nPlanned {len(events)} artwork transition intervals (every 5 mins).", flush=True)
-
-    concat_list_file = os.path.join(TEMP_DIR, "concat_list.txt")
-    concat_entries = []
-
-    # Common encoder arguments
+    # Common encoder arguments ensuring uniform 90000 timescale
     enc_args = [
         "-c:v", "h264_nvenc",
         "-preset", "p3",
         "-cq", "20",
         "-g", "60",
-        "-pix_fmt", "yuv420p"
+        "-pix_fmt", "yuv420p",
+        "-video_track_timescale", "90000"
     ]
+
+    concat_list_file = os.path.join(TEMP_DIR, "concat_list.txt")
+    concat_entries = []
 
     print("\n[Step 2/5] Rendering segments with NVIDIA NVENC...", flush=True)
 
-    # Intro segment: 5 seconds of Sensorium_Interface fading in from black, then 1s dissolving into screencast (total 6s)
+    # Intro segment: 5 seconds of Sensorium_Interface fading in from black for 5s, fading out last 1s
     intro_seg = os.path.join(segments_dir, "seg_00_intro.mp4")
     if not os.path.exists(intro_seg):
         cmd = [
             "ffmpeg", "-y",
-            "-loop", "1", "-i", scaled_images[INTRO_IMAGE_NAME], "-t", "6",
-            "-ss", "0", "-i", VIDEO_FILE, "-t", f"{FADE_DUR:.6f}",
-            "-filter_complex",
-            f"[0:v]fps={FPS},setsar=1,fade=t=in:st=0:d=5:color=black,format=yuv420p[v0];"
-            f"[1:v]fps={FPS},scale=1728:1080,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black,setsar=1,format=yuv420p[v1];"
-            f"[v0][v1]xfade=transition=fade:duration={FADE_DUR}:offset=5.0[vout];"
-            f"[vout]format=yuv420p[final]",
-            "-map", "[final]",
-            "-t", "6",
+            "-loop", "1", "-i", scaled_images[INTRO_IMAGE_NAME], "-t", f"{IMAGE_DUR:.6f}",
+            "-vf", f"fps={FPS},setsar=1,fade=t=in:st=0:d=5:color=black,fade=t=out:st={IMAGE_DUR-FADE_DUR:.6f}:d={FADE_DUR:.6f}:color=black,format=yuv420p",
             *enc_args,
             intro_seg
         ]
-        run_cmd(cmd, "Rendering Intro card (5s display with fade-in + 1s crossfade)")
+        run_cmd(cmd, "Rendering Intro card (5s Sensorium_Interface with fade-in)")
     concat_entries.append(intro_seg)
 
-    # Screencast time covered by Intro's xfade: [0.0 .. 1.0]
-    last_sc_time = FADE_DUR
+    # Calculate 5-minute screencast chunks
+    # Chunk 0: 0 .. 300s
+    # Image 0: 5s
+    # Chunk 1: 300 .. 600s
+    # Image 1: 5s
+    # ...
+    curr_pos = 0.0
+    seg_idx = 0
 
-    for idx, ev_time in enumerate(events):
-        img_name = CYCLE_IMAGES[idx % len(CYCLE_IMAGES)]
-        # Plain screencast segment up to (ev_time - FADE_DUR)
-        sc_seg_start = last_sc_time
-        sc_seg_end = ev_time - FADE_DUR
-        sc_seg_dur = sc_seg_end - sc_seg_start
+    while curr_pos < video_dur:
+        chunk_dur = min(INTERVAL_SEC, video_dur - curr_pos)
+        is_first = (curr_pos == 0.0)
+        is_last = (curr_pos + chunk_dur >= video_dur)
 
-        seg_file = os.path.join(segments_dir, f"seg_body_{idx:02d}.mp4")
-        if sc_seg_dur > 0:
-            if not os.path.exists(seg_file):
+        # Build fade filter for this screencast segment:
+        # Fade in at start (if not first, fade in 1s; if first, fade in 1s to match intro fade-out)
+        # Fade out at end (if not last, fade out 1s; if last, fade out 1s)
+        filters = [
+            f"fps={FPS}",
+            "scale=1728:1080",
+            "pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black",
+            "setsar=1",
+            f"fade=t=in:st=0:d={min(FADE_DUR, chunk_dur/2.0):.6f}:color=black",
+            f"fade=t=out:st={max(0.0, chunk_dur - FADE_DUR):.6f}:d={min(FADE_DUR, chunk_dur/2.0):.6f}:color=black",
+            "format=yuv420p"
+        ]
+        vf_str = ",".join(filters)
+
+        body_seg = os.path.join(segments_dir, f"seg_body_{seg_idx:02d}.mp4")
+        if not os.path.exists(body_seg):
+            cmd = [
+                "ffmpeg", "-y",
+                "-ss", f"{curr_pos:.6f}", "-i", VIDEO_FILE, "-t", f"{chunk_dur:.6f}",
+                "-vf", vf_str,
+                *enc_args,
+                body_seg
+            ]
+            run_cmd(cmd, f"Rendering Screencast Chunk {seg_idx+1} ({curr_pos:.0f}s - {curr_pos+chunk_dur:.0f}s, dur {chunk_dur:.1f}s)")
+        concat_entries.append(body_seg)
+
+        curr_pos += chunk_dur
+
+        # If not at the end of the video, insert 5-second cycling artwork card
+        if curr_pos < video_dur:
+            img_name = CYCLE_IMAGES[seg_idx % len(CYCLE_IMAGES)]
+            art_seg = os.path.join(segments_dir, f"seg_art_{seg_idx:02d}.mp4")
+            if not os.path.exists(art_seg):
                 cmd = [
                     "ffmpeg", "-y",
-                    "-ss", f"{sc_seg_start:.6f}", "-i", VIDEO_FILE, "-t", f"{sc_seg_dur:.6f}",
-                    "-vf", f"fps={FPS},scale=1728:1080,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black,setsar=1,format=yuv420p",
+                    "-loop", "1", "-i", scaled_images[img_name], "-t", f"{IMAGE_DUR:.6f}",
+                    "-vf", f"fps={FPS},setsar=1,fade=t=in:st=0:d={FADE_DUR:.6f}:color=black,fade=t=out:st={IMAGE_DUR-FADE_DUR:.6f}:d={FADE_DUR:.6f}:color=black,format=yuv420p",
                     *enc_args,
-                    seg_file
+                    art_seg
                 ]
-                run_cmd(cmd, f"Rendering Screencast Segment {idx+1}/{len(events)+1} ({sc_seg_dur:.1f}s)")
-            concat_entries.append(seg_file)
+                run_cmd(cmd, f"Rendering Art Card {seg_idx+1} ({img_name}, 5s with fades)")
+            concat_entries.append(art_seg)
 
-        # Transition segment:
-        # Screencast [ev_time - 1.0 .. ev_time] (1.0s)
-        # Image (5.0s)
-        # Screencast [ev_time .. ev_time + 1.0] (1.0s)
-        # xfade 1: offset 0.0, dur 1.0 -> dissolves screencast to image
-        # xfade 2: offset 4.0, dur 1.0 -> dissolves image to screencast
-        # Output duration = 1 + 5 + 1 - 2 = 5.0 seconds
-        tr_file = os.path.join(segments_dir, f"seg_trans_{idx:02d}.mp4")
-        if not os.path.exists(tr_file):
-            cmd = [
-                "ffmpeg", "-y",
-                "-ss", f"{sc_seg_end:.6f}", "-i", VIDEO_FILE, "-t", f"{FADE_DUR:.6f}",
-                "-loop", "1", "-i", scaled_images[img_name],
-                "-ss", f"{ev_time:.6f}", "-i", VIDEO_FILE, "-t", f"{FADE_DUR:.6f}",
-                "-filter_complex",
-                f"[0:v]fps={FPS},scale=1728:1080,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black,setsar=1,format=yuv420p[v0];"
-                f"[1:v]fps={FPS},setsar=1,format=yuv420p[v1];"
-                f"[2:v]fps={FPS},scale=1728:1080,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black,setsar=1,format=yuv420p[v2];"
-                f"[v0][v1]xfade=transition=fade:duration={FADE_DUR}:offset=0.0[vx1];"
-                f"[vx1][v2]xfade=transition=fade:duration={FADE_DUR}:offset={TRANS_DUR-FADE_DUR:.1f}[vx2];"
-                f"[vx2]format=yuv420p[final]",
-                "-map", "[final]",
-                "-t", f"{TRANS_DUR:.6f}",
-                *enc_args,
-                tr_file
-            ]
-            run_cmd(cmd, f"Rendering Art Transition {idx+1}/{len(events)} ({img_name})")
-        concat_entries.append(tr_file)
+        seg_idx += 1
 
-        last_sc_time = ev_time + FADE_DUR
-
-    # Final screencast segment to end of video
-    rem_sc_dur = video_dur - FADE_DUR - last_sc_time
-    final_body_file = os.path.join(segments_dir, "seg_body_final.mp4")
-    if rem_sc_dur > 0:
-        if not os.path.exists(final_body_file):
-            cmd = [
-                "ffmpeg", "-y",
-                "-ss", f"{last_sc_time:.6f}", "-i", VIDEO_FILE, "-t", f"{rem_sc_dur:.6f}",
-                "-vf", f"fps={FPS},scale=1728:1080,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black,setsar=1,format=yuv420p",
-                *enc_args,
-                final_body_file
-            ]
-            run_cmd(cmd, f"Rendering Final Screencast Segment ({rem_sc_dur:.1f}s)")
-        concat_entries.append(final_body_file)
-
-    # Outro segment: Screencast final second dissolving into Cover_v3.jpeg (6s total: 1s crossfade + 5s fade out to black)
+    # Outro segment: 5 seconds of Cover_v3 fading in for 1s, then fading out to black over 5s
     outro_seg = os.path.join(segments_dir, "seg_outro.mp4")
     if not os.path.exists(outro_seg):
         cmd = [
             "ffmpeg", "-y",
-            "-ss", f"{video_dur - FADE_DUR:.6f}", "-i", VIDEO_FILE, "-t", f"{FADE_DUR:.6f}",
-            "-loop", "1", "-i", scaled_images[OUTRO_IMAGE_NAME], "-t", "6",
-            "-filter_complex",
-            f"[0:v]fps={FPS},scale=1728:1080,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black,setsar=1,format=yuv420p[v0];"
-            f"[1:v]fps={FPS},setsar=1,fade=t=out:st=1:d=5:color=black,format=yuv420p[v1];"
-            f"[v0][v1]xfade=transition=fade:duration={FADE_DUR}:offset=0.0[vout];"
-            f"[vout]format=yuv420p[final]",
-            "-map", "[final]",
-            "-t", "6",
+            "-loop", "1", "-i", scaled_images[OUTRO_IMAGE_NAME], "-t", f"{IMAGE_DUR:.6f}",
+            "-vf", f"fps={FPS},setsar=1,fade=t=in:st=0:d={FADE_DUR:.6f}:color=black,fade=t=out:st=0:d=5:color=black,format=yuv420p",
             *enc_args,
             outro_seg
         ]
-        run_cmd(cmd, "Rendering Outro card (1s crossfade + 5s fade-out to black)")
+        run_cmd(cmd, "Rendering Outro card (5s Cover_v3 with 5s fade-out to black)")
     concat_entries.append(outro_seg)
 
     # Write concat list
@@ -250,6 +219,7 @@ def main():
         "ffmpeg", "-y",
         "-f", "concat", "-safe", "0", "-i", concat_list_file,
         "-c", "copy",
+        "-video_track_timescale", "90000",
         concat_video_file
     ]
     run_cmd(cmd, "Stitching video segments")
@@ -257,7 +227,7 @@ def main():
     total_video_dur = get_duration(concat_video_file)
     print(f"Stitched Video Duration: {total_video_dur:.2f}s ({total_video_dur/60:.2f} mins)", flush=True)
 
-    # 5. Mux with Audio Loop & Audio Fades
+    # 5. Mux with Looped Audio & Audio Fades
     print("\n[Step 4/5] Muxing looped WAV audio (320kbps AAC) with 5s fades at start & end...", flush=True)
     audio_fade_out_start = max(0.0, total_video_dur - 5.0)
 
@@ -268,6 +238,7 @@ def main():
         "-map", "0:v:0",
         "-map", "1:a:0",
         "-c:v", "copy",
+        "-video_track_timescale", "90000",
         "-af", f"afade=t=in:st=0:d=5,afade=t=out:st={audio_fade_out_start:.6f}:d=5",
         "-c:a", "aac",
         "-b:a", "320k",

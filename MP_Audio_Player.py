@@ -721,7 +721,7 @@ class PlayerIPCServer:
                 tmp_file.replace(STATE_FILE)
             except Exception:
                 pass
-            time.sleep(0.25)
+            time.sleep(0.04)
 
 
 # ==============================================================================
@@ -729,13 +729,12 @@ class PlayerIPCServer:
 # ==============================================================================
 
 def send_ipc_command(cmd: str, **kwargs) -> Optional[Dict[str, Any]]:
-    for attempt in range(10):
-        if not SOCKET_PATH.exists():
-            time.sleep(0.08)
-            continue
+    if not SOCKET_PATH.exists():
+        return None
+    for attempt in range(3):
         try:
             sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            sock.settimeout(1.5)
+            sock.settimeout(0.6)
             sock.connect(str(SOCKET_PATH))
             payload = {"cmd": cmd}
             payload.update(kwargs)
@@ -745,7 +744,7 @@ def send_ipc_command(cmd: str, **kwargs) -> Optional[Dict[str, Any]]:
             if raw:
                 return json.loads(raw)
         except Exception:
-            time.sleep(0.08)
+            time.sleep(0.05)
     return None
 
 
@@ -1005,6 +1004,7 @@ class TerminalPlayerUI:
         self.search_query = ""
         self.selected_row = 0
         self.scroll_offset = 0
+        self._initial_row_synced = False
 
         self.cached_status = {
             "title": "Loading...",
@@ -1023,6 +1023,13 @@ class TerminalPlayerUI:
 
     def _get_status(self) -> Dict[str, Any]:
         if self.is_remote:
+            if STATE_FILE.exists():
+                try:
+                    with open(STATE_FILE, "r", encoding="utf-8") as f:
+                        self.cached_status = json.load(f)
+                    return self.cached_status
+                except Exception:
+                    pass
             res = send_ipc_command("status")
             if res and "data" in res:
                 self.cached_status = res["data"]
@@ -1031,29 +1038,73 @@ class TerminalPlayerUI:
             return self.engine.get_status_dict()
         return self.cached_status
 
+    def _sync_initial_selection(self, status: Dict[str, Any]):
+        if self._initial_row_synced:
+            return
+        cur_path = status.get("path")
+        if cur_path:
+            mixes = self.scanner.get_mixes(self.search_query)
+            for idx, m in enumerate(mixes):
+                if m["path"] == cur_path:
+                    self.selected_row = idx
+                    self._initial_row_synced = True
+                    return
+
     def _send_cmd(self, cmd: str, **kwargs):
         if self.is_remote:
-            send_ipc_command(cmd, **kwargs)
+            threading.Thread(target=send_ipc_command, args=(cmd,), kwargs=kwargs, daemon=True).start()
         elif self.engine:
-            if cmd == "toggle": self.engine.toggle_play_pause()
-            elif cmd == "next": self.engine.next_track()
-            elif cmd == "prev": self.engine.prev_track()
-            elif cmd == "seek": self.engine.seek_relative(kwargs.get("seconds", 10.0))
-            elif cmd == "vol_up": self.engine.change_volume(kwargs.get("step", 5))
-            elif cmd == "vol_down": self.engine.change_volume(-kwargs.get("step", 5))
-            elif cmd == "mute": self.engine.toggle_mute()
-            elif cmd == "shuffle": self.engine.toggle_shuffle()
-            elif cmd == "repeat": self.engine.cycle_repeat()
-            elif cmd == "stop": self.engine.stop_playback()
-            elif cmd == "select_index": self.engine.load_track(kwargs.get("index", 0), start_playing=True)
+            if cmd in ("toggle", "play_pause"):
+                self.engine.toggle_play_pause()
+            elif cmd == "play":
+                file_arg = kwargs.get("file")
+                if file_arg:
+                    for idx, item in enumerate(self.engine.playlist):
+                        if item["path"] == file_arg:
+                            self.engine.load_track(idx, start_playing=True)
+                            break
+                    else:
+                        new_track = {
+                            "name": os.path.basename(file_arg),
+                            "path": file_arg,
+                            "size_mb": os.path.getsize(file_arg)/(1024*1024) if os.path.exists(file_arg) else 0,
+                            "mtime": time.time(),
+                            "ext": os.path.splitext(file_arg)[1].replace(".", "").upper()
+                        }
+                        self.engine.playlist.insert(0, new_track)
+                        self.engine.load_track(0, start_playing=True)
+                else:
+                    self.engine.play()
+            elif cmd == "pause":
+                self.engine.pause()
+            elif cmd == "next":
+                self.engine.next_track()
+            elif cmd == "prev":
+                self.engine.prev_track()
+            elif cmd == "seek":
+                self.engine.seek_relative(kwargs.get("seconds", 10.0))
+            elif cmd == "vol_up":
+                self.engine.change_volume(kwargs.get("step", 5))
+            elif cmd == "vol_down":
+                self.engine.change_volume(-kwargs.get("step", 5))
+            elif cmd == "mute":
+                self.engine.toggle_mute()
+            elif cmd == "shuffle":
+                self.engine.toggle_shuffle()
+            elif cmd == "repeat":
+                self.engine.cycle_repeat()
+            elif cmd == "stop":
+                self.engine.stop_playback()
+            elif cmd == "select_index":
+                self.engine.load_track(kwargs.get("index", 0), start_playing=True)
 
     def run(self):
         fd = sys.stdin.fileno() if sys.stdin.isatty() else None
         old_settings = None
-        if fd and termios:
+        if fd and termios and tty:
             try:
                 old_settings = termios.tcgetattr(fd)
-                tty.setcbreak(fd)
+                tty.setraw(fd)
             except Exception:
                 pass
 
@@ -1069,6 +1120,7 @@ class TerminalPlayerUI:
                 self._draw_frame()
                 time.sleep(0.04)  # ~25 FPS animation
         finally:
+            self.running = False
             if fd and old_settings and termios:
                 try:
                     termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
@@ -1078,78 +1130,137 @@ class TerminalPlayerUI:
             sys.stdout.flush()
 
     def _input_loop(self):
+        fd = sys.stdin.fileno() if sys.stdin.isatty() else None
+        if not fd:
+            return
+
         while self.running:
             try:
-                if not sys.stdin.isatty():
-                    time.sleep(0.1)
+                r, _, _ = select.select([fd], [], [], 0.05)
+                if not r or not self.running:
                     continue
 
-                ch = sys.stdin.read(1)
-                if not ch:
+                data = os.read(fd, 32)
+                if not data:
                     continue
 
-                if self.search_mode:
-                    if ch in ('\r', '\n', '\x1b'):
-                        self.search_mode = False
-                    elif ch in ('\x7f', '\x08'):
-                        self.search_query = self.search_query[:-1]
-                    elif ch.isprintable():
-                        self.search_query += ch
-                    continue
+                # Distinguish standalone Escape from arrow/function escape sequences
+                if data == b"\x1b":
+                    r2, _, _ = select.select([fd], [], [], 0.03)
+                    if r2:
+                        data += os.read(fd, 31)
 
-                if ch == ' ':
-                    self._send_cmd("toggle")
-                elif ch in ('n', '>'):
-                    self._send_cmd("next")
-                elif ch in ('p', '<'):
-                    self._send_cmd("prev")
-                elif ch in ('+', '='):
-                    self._send_cmd("vol_up", step=5)
-                elif ch in ('-', '_'):
-                    self._send_cmd("vol_down", step=5)
-                elif ch == 'm':
-                    self._send_cmd("mute")
-                elif ch == 's':
-                    self._send_cmd("shuffle")
-                elif ch == 'r':
-                    self._send_cmd("repeat")
-                elif ch in ('e', 'v'):
-                    self.visualizer.cycle_style()
-                elif ch in ('c', 't'):
-                    self.visualizer.cycle_theme()
-                elif ch == '/':
-                    self.search_mode = True
-                    self.search_query = ""
-                elif ch in ('b', 'q', '\x1b'):
-                    self.running = False
-                elif ch == 'x':
-                    self._send_cmd("stop")
-                    self.running = False
-                elif ch == '\x1b':
-                    seq1 = sys.stdin.read(1)
-                    if seq1 == '[':
-                        seq2 = sys.stdin.read(1)
-                        if seq2 == 'A':
-                            self._navigate_list(-1)
-                        elif seq2 == 'B':
-                            self._navigate_list(1)
-                        elif seq2 == 'C':
-                            self._send_cmd("seek", seconds=10.0)
-                        elif seq2 == 'D':
-                            self._send_cmd("seek", seconds=-10.0)
-                elif ch in ('\r', '\n'):
-                    filtered = self.scanner.get_mixes(self.search_query)
-                    if filtered and 0 <= self.selected_row < len(filtered):
-                        chosen = filtered[self.selected_row]
-                        if self.is_remote:
-                            self._send_cmd("play", file=chosen["path"])
-                        elif self.engine:
-                            for idx, item in enumerate(self.engine.playlist):
-                                if item["path"] == chosen["path"]:
-                                    self._send_cmd("select_index", index=idx)
-                                    break
+                self._process_key(data)
             except Exception:
                 pass
+
+    def _process_key(self, data: bytes):
+        if not data:
+            return
+
+        # 1. Search Mode Handling
+        if self.search_mode:
+            if data in (b"\r", b"\n"):
+                self.search_mode = False
+                return
+            elif data == b"\x1b":
+                self.search_mode = False
+                self.search_query = ""
+                return
+            elif data in (b"\x7f", b"\x08"):
+                self.search_query = self.search_query[:-1]
+                self.selected_row = 0
+                return
+            elif data in (b"\x1b[A", b"\x1bOA"):
+                self._navigate_list(-1)
+                return
+            elif data in (b"\x1b[B", b"\x1bOB"):
+                self._navigate_list(1)
+                return
+            else:
+                try:
+                    text = data.decode("utf-8", errors="ignore")
+                    if text.isprintable():
+                        self.search_query += text
+                        self.selected_row = 0
+                except Exception:
+                    pass
+                return
+
+        # 2. Navigation Keys (Arrow keys, Page up/down, Home/End, Vim keys)
+        if data in (b"\x1b[A", b"\x1bOA", b"k", b"K"):
+            self._navigate_list(-1)
+        elif data in (b"\x1b[B", b"\x1bOB", b"j", b"J"):
+            self._navigate_list(1)
+        elif data in (b"\x1b[5~",):
+            self._navigate_list(-5)
+        elif data in (b"\x1b[6~",):
+            self._navigate_list(5)
+        elif data in (b"\x1b[H", b"\x1b[1~", b"\x1b[7~", b"\x1bOH"):
+            self.selected_row = 0
+        elif data in (b"\x1b[F", b"\x1b[4~", b"\x1b[8~", b"\x1bOF"):
+            filtered = self.scanner.get_mixes(self.search_query)
+            if filtered:
+                self.selected_row = len(filtered) - 1
+
+        # 3. Seeking (Left/Right arrow)
+        elif data in (b"\x1b[D", b"\x1bOD"):
+            self._send_cmd("seek", seconds=-10.0)
+        elif data in (b"\x1b[C", b"\x1bOC"):
+            self._send_cmd("seek", seconds=10.0)
+
+        # 4. Play Selected Mix (Enter)
+        elif data in (b"\r", b"\n"):
+            filtered = self.scanner.get_mixes(self.search_query)
+            if filtered and 0 <= self.selected_row < len(filtered):
+                chosen = filtered[self.selected_row]
+                if self.is_remote:
+                    self._send_cmd("play", file=chosen["path"])
+                elif self.engine:
+                    for idx, item in enumerate(self.engine.playlist):
+                        if item["path"] == chosen["path"]:
+                            self._send_cmd("select_index", index=idx)
+                            break
+                    else:
+                        self._send_cmd("play", file=chosen["path"])
+
+        # 5. Playback Controls
+        elif data == b" ":
+            self._send_cmd("toggle")
+        elif data in (b"n", b"N", b">", b"]"):
+            self._send_cmd("next")
+        elif data in (b"p", b"P", b"<", b"["):
+            self._send_cmd("prev")
+        elif data in (b"+", b"="):
+            self._send_cmd("vol_up", step=5)
+        elif data in (b"-", b"_"):
+            self._send_cmd("vol_down", step=5)
+        elif data in (b"m", b"M"):
+            self._send_cmd("mute")
+        elif data in (b"s", b"S"):
+            self._send_cmd("shuffle")
+        elif data in (b"r", b"R"):
+            self._send_cmd("repeat")
+
+        # 6. EQ & Themes
+        elif data in (b"e", b"E", b"v", b"V"):
+            self.visualizer.cycle_style()
+        elif data in (b"c", b"C", b"t", b"T"):
+            self.visualizer.cycle_theme()
+
+        # 7. Search Filter
+        elif data == b"/":
+            self.search_mode = True
+            self.search_query = ""
+
+        # 8. Stop & Exit
+        elif data in (b"x", b"X"):
+            self._send_cmd("stop")
+            self.running = False
+
+        # 9. Return to previous menu / Exit UI
+        elif data in (b"q", b"Q", b"b", b"B", b"\x1b", b"\x03"):
+            self.running = False
 
     def _navigate_list(self, delta: int):
         filtered = self.scanner.get_mixes(self.search_query)
@@ -1161,6 +1272,7 @@ class TerminalPlayerUI:
     def _draw_frame(self):
         term_width, term_height = shutil.get_terminal_size((80, 24))
         status = self._get_status()
+        self._sync_initial_selection(status)
         lines = []
 
         # 1. Header Banner
@@ -1211,7 +1323,7 @@ class TerminalPlayerUI:
 
         lines.append(f"  {BOLD}{MAGENTA}┌── MIX ARCHIVE PLAYLIST ({total_mixes} Mixes Available) ───────────────────────┐{NC}")
 
-        visible_rows = max(3, min(6, term_height - len(lines) - 6))
+        visible_rows = max(4, min(14, term_height - len(lines) - 6))
 
         if self.selected_row < self.scroll_offset:
             self.scroll_offset = self.selected_row
@@ -1249,7 +1361,7 @@ class TerminalPlayerUI:
         lines.append(f"  {DIM}[Space] Play/Pause  [n/p] Next/Prev  [←/→] Seek  [+/-] Vol  [e] EQ Style  [b/q] Return to Menu  [x] Stop{NC}")
 
         frame_str = "\n".join(lines)
-        sys.stdout.write(f"\033[?2026h\033[H{frame_str}\033[J\033[?2026l")
+        sys.stdout.write(f"\033[H{frame_str}\033[J")
         sys.stdout.flush()
 
 

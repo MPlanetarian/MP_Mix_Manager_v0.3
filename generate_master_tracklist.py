@@ -631,10 +631,23 @@ def main():
 </html>
 """
 
+    # Write the final HTML file to disk.
     master_html = "master_tracklists.html"
     with open(master_html, "w", encoding="utf-8") as handle:
         handle.write(html_content)
-    log(f"\nSuccessfully generated master tracklist HTML with {len(mix_entries)} entries across {len(scan_dirs)} archives at: {os.path.abspath(master_html)}")
+
+    abs_path = os.path.abspath(master_html)
+    log(
+        f"\nSuccessfully generated master tracklist HTML with {len(mix_entries)} entries across "
+        f"{len(scan_dirs)} archives at: {abs_path}"
+    )
+
+    # Try to auto‑open the page in a browser.  If no GUI/browser is available we simply ignore it.
+    try:
+        import webbrowser          # Imported lazily so environments without it still work
+        webbrowser.open_new_tab("file://" + abs_path)
+    except Exception as exc:      # pragma: no cover – defensive programming
+        log(f"Could not automatically open generated tracklist ({exc}).")
     return 0
 
 
