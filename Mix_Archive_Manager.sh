@@ -4525,6 +4525,10 @@ manage_open_webui() {
     run_sub_script "manage_open_webui.sh" "$@"
 }
 
+manage_harmony_agent() {
+    run_sub_script "manage_harmony_agent.sh" "$@"
+}
+
 manage_dsh_mobile() {
     run_sub_script "dsh_mobile.sh" "$@"
 }
@@ -11641,6 +11645,10 @@ elif [ "$1" = "--open-webui" ] || [ "$1" = "--webui" ] || [ "$1" = "webui" ] || 
     shift
     run_sub_script "manage_open_webui.sh" "$@"
     exit 0
+elif [ "$1" = "--harmony" ] || [ "$1" = "--mp-harmony" ] || [ "$1" = "harmony" ] || [ "$1" = "mp-harmony" ] || [ "$1" = "--harmony-agent" ]; then
+    shift
+    run_sub_script "manage_harmony_agent.sh" "$@"
+    exit 0
 elif [ "$1" = "--dsh-mobile" ] || [ "$1" = "--dsh" ] || [ "$1" = "--dsh-start" ] || { [ "$1" = "59" ] && [ "$2" = "1" ]; }; then
     run_sub_script "dsh_mobile.sh" start
     exit 0
@@ -12669,9 +12677,10 @@ manage_ai_and_servers() {
             "1|Launch AI Assistant / Models|(Claude Opus, Claude Sonnet, GPT-OSS, Gemini, Ollama, DeepSeek)"
             "2|Manage Ollama Server|(ollama serve in distrobox, Chat, Models, Logs :11434)"
             "3|Manage Open WebUI Server & Web Chat|(Open Web UI Web Chat AI Harness, Service, Browser :42004)"
-            "4|Manage DeepSeek Harness Server|(dsh-mobile - Start, Stop, Mobile Web UI :3080)"
-            "5|Manage WAN2GP Server|(Start, Stop, Restart in Profile 2 or 4.5)"
-            "6|Manage Beszel Server & Monitoring Agent|(Start Hub & Agent, Status, Dashboard :8090)"
+            "4|Manage MP Harmony AI Agent|(Autonomous Engineering Engine & Voice Bridge :11435)"
+            "5|Manage DeepSeek Harness Server|(dsh-mobile - Start, Stop, Mobile Web UI :3080)"
+            "6|Manage WAN2GP Server|(Start, Stop, Restart in Profile 2 or 4.5)"
+            "7|Manage Beszel Server & Monitoring Agent|(Start Hub & Agent, Status, Dashboard :8090)"
             "0|Return to Main Menu|(or Esc / q)"
         )
         run_interactive_submenu "AI ASSISTANT & LOCAL LLM SERVERS SUITE" "" opts 0
@@ -12686,13 +12695,16 @@ manage_ai_and_servers() {
             3|open-webui|openwebui|webui|web-chat)
                 manage_open_webui
                 ;;
-            4)
-                manage_dsh_mobile
+            4|harmony|mp-harmony|harmony-agent|ha)
+                manage_harmony_agent
                 ;;
             5)
-                manage_wan2gp
+                manage_dsh_mobile
                 ;;
             6)
+                manage_wan2gp
+                ;;
+            7)
                 manage_beszel
                 ;;
             0|[qQ]|[eE][xX][iI][tT]|ESC)
@@ -12911,7 +12923,7 @@ while true; do
         "29|Desktop Display Settings, Audio Routing & App Control|(Wayland/X11/macOS/Windows, Close Apps)"
         "30|Universal System Maintenance & Cleanup|(Drive space, OS Updates, Package Clean, Logs)"
         "31|Monitor System Processes and Bash Commands with System Info|(MP_Monitor_Bash.sh, new Terminal tab)"
-        "32|AI Assistant & Local LLM Servers Suite|(Claude, GPT, Ollama, Open WebUI, DeepSeek, WAN2GP, Beszel)"
+        "32|AI Assistant & Local LLM Servers Suite|(Claude, GPT, Ollama, Open WebUI, MP Harmony, DeepSeek, WAN2GP, Beszel)"
         "33|Dynamic MOTD Banner Manager & Drive Burner|(Last 3 Mixes, Netpbm, ISO USB Burner)"
         "34|Manager Settings, Themes, Shell CLI & Reboot|(Themes, Migration, Bash CLI, Reboot)"
         "SEP|SEP|"
@@ -13048,6 +13060,9 @@ while true; do
             ;;
         open-webui|openwebui|webui|web-chat)
             manage_open_webui
+            ;;
+        harmony|mp-harmony|mp_harmony|harmony-agent|ha)
+            manage_harmony_agent
             ;;
         33)
             manage_motd_and_tools
