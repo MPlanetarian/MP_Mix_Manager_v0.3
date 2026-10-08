@@ -1086,6 +1086,410 @@ find_cover_for_audio() {
     echo "Cover.png"
 }
 
+# ==============================================================================
+# THEME-AWARE CONSOLE STYLING
+# Reuses set_theme_colors() from Mix_Archive_Manager.sh so the conversion output
+# always matches the theme saved in ~/.config/mix-manager/theme.
+# ==============================================================================
+load_conversion_theme() {
+    local mgr="" cand fn_src saved_theme="dreamworlds"
+    for cand in "$SCRIPT_DIR/Mix_Archive_Manager.sh" "$PARENT_DIR/Mix_Archive_Manager.sh" \
+        "${MIX_ARCHIVE_DIR:-}/Mix_Archive_Manager.sh" "$HOME/MP_Mix_Manager_v0.3/Mix_Archive_Manager.sh"; do
+        if [ -f "$cand" ]; then
+            mgr="$cand"
+            break
+        fi
+    done
+    if [ -n "$mgr" ]; then
+        fn_src="$(awk '/^set_theme_colors\(\)/{f=1} f{print} f&&/^}/{exit}' "$mgr" 2>/dev/null || true)"
+        if [ -n "$fn_src" ]; then
+            eval "$fn_src"
+        fi
+    fi
+    if ! declare -F set_theme_colors >/dev/null 2>&1; then
+        # Fallback: MPlanetarian Dreamworlds [Default] palette
+        set_theme_colors() {
+            NC='\033[0m'; BOLD='\033[1m'; DIM='\033[2m'
+            RED='\033[38;2;237;37;78m'; GREEN='\033[38;2;0;229;255m'; YELLOW='\033[38;2;255;170;0m'
+            BLUE='\033[38;2;155;89;182m'; MAGENTA='\033[38;2;247;37;133m'; CYAN='\033[38;2;0;193;228m'
+            CURRENT_THEME="dreamworlds"
+        }
+    fi
+    if [ -f "$HOME/.config/mix-manager/theme" ]; then
+        saved_theme="$(tr -d ' \t\n\r' < "$HOME/.config/mix-manager/theme" 2>/dev/null || true)"
+    fi
+    set_theme_colors "${saved_theme:-dreamworlds}"
+    if [ ! -t 1 ] || [ -n "${NO_COLOR:-}" ]; then
+        NC=''; BOLD=''; DIM=''; RED=''; GREEN=''; YELLOW=''; BLUE=''; MAGENTA=''; CYAN=''
+    fi
+    return 0
+}
+load_conversion_theme
+
+SOF_RULE_HEAVY="══════════════════════════════════════════════════════════════════════"
+SOF_RULE_LIGHT="──────────────────────────────────────────────────────────────────────"
+
+themed_header() {
+    # themed_header "TITLE" [colour]
+    local title="$1" colour="${2:-$MAGENTA}"
+    printf '%b\n' "${BOLD}${BLUE}${SOF_RULE_HEAVY}${NC}"
+    printf '%b\n' "  ${BOLD}${colour}${title}${NC}"
+    printf '%b\n' "${BOLD}${BLUE}${SOF_RULE_HEAVY}${NC}"
+}
+
+# Render a tracklist .txt file using the active theme colours.
+render_themed_tracklist() {
+    local path="$1" line num rest artist title remix key val
+    if [ -z "$path" ] || [ ! -f "$path" ]; then
+        printf '%b\n' "  ${DIM}(no tracklist file was written)${NC}"
+        return 0
+    fi
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%$'\r'}"
+        if [[ "$line" =~ ^=+$ ]]; then
+            printf '%b\n' "${BOLD}${BLUE}${SOF_RULE_HEAVY}${NC}"
+        elif [[ "$line" =~ ^-+$ ]]; then
+            printf '%b\n' "${DIM}${BLUE}${SOF_RULE_LIGHT}${NC}"
+        elif [[ "$line" =~ ^([0-9]+)\.[[:space:]]+(.*)$ ]]; then
+            num="${BASH_REMATCH[1]}"
+            rest="${BASH_REMATCH[2]}"
+            artist=""
+            title="$rest"
+            if [[ "$rest" == *" - "* ]]; then
+                artist="${rest%% - *}"
+                title="${rest#* - }"
+            fi
+            remix=""
+            if [[ "$title" =~ ^(.*[^[:space:]])[[:space:]]+(\(.*\))$ ]]; then
+                title="${BASH_REMATCH[1]}"
+                remix="${BASH_REMATCH[2]}"
+            fi
+            if [ -n "$artist" ]; then
+                printf '%b\n' "  ${BOLD}${YELLOW}${num}.${NC} ${BOLD}${GREEN}${artist}${NC} ${DIM}-${NC} ${BOLD}${title}${NC}${remix:+ ${MAGENTA}${remix}${NC}}"
+            else
+                printf '%b\n' "  ${BOLD}${YELLOW}${num}.${NC} ${BOLD}${title}${NC}${remix:+ ${MAGENTA}${remix}${NC}}"
+            fi
+        elif [[ "$line" =~ ^[[:space:]]*-[[:space:]](.*)$ ]]; then
+            printf '%b\n' "   ${DIM}${CYAN}•${NC} ${DIM}${BASH_REMATCH[1]}${NC}"
+        elif [[ "$line" =~ ^([A-Za-z][A-Za-z\ ]{1,22}):[[:space:]]*(.*)$ ]]; then
+            key="${BASH_REMATCH[1]}"
+            val="${BASH_REMATCH[2]}"
+            printf '%b\n' "  ${BOLD}${CYAN}${key}:${NC} ${val}"
+        elif [ -n "$line" ] && [[ ! "$line" =~ [a-z] ]]; then
+            printf '%b\n' "  ${BOLD}${MAGENTA}${line}${NC}"
+        else
+            printf '%b\n' "  ${line}"
+        fi
+    done < "$path"
+    return 0
+}
+
+# Show the Traktor tracklist while the conversion runs.
+display_conversion_tracklist() {
+    echo ""
+    if [ "${tracklist_found:-false}" = true ]; then
+        themed_header "♫  NOW CONVERTING - TRACKLIST FOUND IN TRAKTOR HISTORY" "$GREEN"
+    else
+        themed_header "♫  NOW CONVERTING - NO TRAKTOR TRACKLIST FOUND (placeholder, review after conversion)" "$YELLOW"
+    fi
+    render_themed_tracklist "$tracklist_path"
+    echo ""
+    return 0
+}
+
+# ------------------------------------------------------------------------------
+# Live progress meter with ETA and predictive output size
+# ------------------------------------------------------------------------------
+fmt_bytes() {
+    awk -v b="${1:-0}" 'BEGIN { split("B KB MB GB TB", u, " "); i = 1; while (b >= 1024 && i < 5) { b /= 1024; i++ }; if (i == 1) printf "%d %s", b, u[i]; else printf "%.1f %s", b, u[i] }'
+}
+
+fmt_hms() {
+    local s="${1:-0}"
+    s="${s%%.*}"
+    [[ "$s" =~ ^-?[0-9]+$ ]] || s=0
+    if [ "$s" -lt 0 ]; then s=0; fi
+    printf '%02d:%02d:%02d' $((s / 3600)) $((s % 3600 / 60)) $((s % 60))
+}
+
+file_size_bytes() {
+    local sz=""
+    sz=$(stat -c %s "$1" 2>/dev/null || stat -f %z "$1" 2>/dev/null || wc -c < "$1" 2>/dev/null || echo 0)
+    echo "${sz//[[:space:]]/}"
+}
+
+probe_duration_seconds() {
+    local d
+    d=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$1" 2>/dev/null | head -n 1 || true)
+    awk -v d="$d" 'BEGIN { if (d + 0 > 0) printf "%d", d + 0.5; else print 0 }'
+}
+
+# predict_output_bytes <format> <duration_sec> <sample_rate> <channels> <source_bytes>
+predict_output_bytes() {
+    awk -v f="$1" -v d="${2:-0}" -v sr="${3:-44100}" -v ch="${4:-2}" -v src="${5:-0}" 'BEGIN {
+        if (sr + 0 <= 0) sr = 44100
+        if (ch + 0 <= 0) ch = 2
+        pcm24 = d * sr * ch * 3
+        if (f == "mp3")      b = d * 320000 / 8 + 500000
+        else if (f == "ogg") b = d * 256000 / 8
+        else if (f == "wav") b = pcm24 + 1024
+        else if (f == "mp4") b = d * (320000 + 160000) / 8
+        else if (f == "pcm") b = pcm24
+        else { if (src + 0 > 0) b = src * 0.62 + 500000; else b = pcm24 * 0.62 + 500000 }
+        printf "%d", b
+    }'
+}
+
+# run_ffmpeg_with_progress <label> <total_seconds> <predicted_bytes> <ffmpeg args...>
+# The last ffmpeg argument must be the output file.
+run_ffmpeg_with_progress() {
+    local label="$1" total_sec="${2:-0}" est_bytes="${3:-0}"
+    shift 3
+    local out_file="${*: -1}"
+
+    if [ ! -t 1 ] || [ "${SOF_NO_PROGRESS:-0}" = "1" ] || [ "${total_sec:-0}" -le 0 ] 2>/dev/null; then
+        ffmpeg -nostdin "$@" >/dev/null 2>&1
+        return $?
+    fi
+
+    local prog_file
+    prog_file=$(safe_mktemp)
+    ffmpeg -nostdin -nostats -progress "$prog_file" "$@" >/dev/null 2>&1 &
+    local ff_pid=$!
+    # Background jobs ignore SIGINT in scripts, so stop ffmpeg explicitly on Ctrl+C.
+    trap "kill $ff_pid 2>/dev/null; rm -f '$prog_file'; printf '\033[?25h\n'; exit 130" INT TERM
+    printf '\033[?25l'
+
+    local start_ts now elapsed vals t_us size speed pct permille eta proj pos
+    local bar_w=28 filled i bar cols eta_txt
+    start_ts=$(date +%s)
+    while kill -0 "$ff_pid" 2>/dev/null; do
+        now=$(date +%s)
+        elapsed=$((now - start_ts))
+        vals=$(tail -n 30 "$prog_file" 2>/dev/null | awk -F= '
+            /^out_time_us=/ { if ($2 != "N/A") t = $2 }
+            /^out_time_ms=/ { if ($2 != "N/A") tm = $2 }
+            /^total_size=/  { if ($2 != "N/A") s = $2 }
+            /^speed=/       { sp = $2 }
+            END { if (t == "") t = tm; if (t == "") t = 0; if (s == "") s = 0; if (sp == "" || sp == "N/A") sp = "-"; gsub(/ /, "", sp); print t + 0, s + 0, sp }' || echo "0 0 -")
+        read -r t_us size speed <<< "$vals"
+        vals=$(awk -v t="${t_us:-0}" -v tot="$total_sec" -v sz="${size:-0}" -v est="$est_bytes" -v el="$elapsed" 'BEGIN {
+            pos = t / 1000000; f = (tot > 0) ? pos / tot : 0
+            if (f > 1) f = 1; if (f < 0) f = 0
+            eta = (f > 0.002 && el > 0) ? el * (1 - f) / f : -1
+            if (f >= 0.02 && sz > 0) { live = sz / f; w = f * 4; if (w > 1) w = 1; proj = (est > 0) ? w * live + (1 - w) * est : live } else proj = est
+            printf "%.1f %d %d %d %d\n", f * 100, f * 1000, eta, proj, pos }')
+        read -r pct permille eta proj pos <<< "$vals"
+        filled=$((permille * bar_w / 1000))
+        bar=""
+        for ((i = 0; i < bar_w; i++)); do
+            if [ "$i" -lt "$filled" ]; then bar+="█"; else bar+="░"; fi
+        done
+        if [ "${eta:--1}" -ge 0 ] 2>/dev/null; then eta_txt="$(fmt_hms "$eta")"; else eta_txt="--:--:--"; fi
+        cols=$(tput cols 2>/dev/null || echo 120)
+        if [ "${cols:-120}" -ge 125 ]; then
+            printf '\r\033[K%b' "  ${BOLD}${MAGENTA}⟳ ${label}${NC} ${CYAN}[${GREEN}${bar}${CYAN}]${NC} ${BOLD}${YELLOW}$(printf '%5s' "$pct")%${NC}  ${DIM}$(fmt_hms "$pos")/$(fmt_hms "$total_sec")${NC} ${BLUE}│${NC} ETA ${BOLD}${eta_txt}${NC} ${BLUE}│${NC} ${CYAN}${speed}${NC} ${BLUE}│${NC} $(fmt_bytes "$size") ${DIM}→${NC} ${BOLD}${GREEN}~$(fmt_bytes "$proj")${NC}"
+        elif [ "${cols:-120}" -ge 90 ]; then
+            printf '\r\033[K%b' "  ${BOLD}${MAGENTA}⟳${NC} ${CYAN}[${GREEN}${bar}${CYAN}]${NC} ${BOLD}${YELLOW}$(printf '%5s' "$pct")%${NC} ETA ${BOLD}${eta_txt}${NC} ${CYAN}${speed}${NC} ${DIM}→${NC} ${BOLD}${GREEN}~$(fmt_bytes "$proj")${NC}"
+        else
+            printf '\r\033[K%b' "  ${BOLD}${YELLOW}$(printf '%5s' "$pct")%${NC} ETA ${eta_txt} ~$(fmt_bytes "$proj")"
+        fi
+        sleep "${SOF_PROGRESS_INTERVAL:-0.5}"
+    done
+
+    local rc=0
+    if wait "$ff_pid"; then rc=0; else rc=$?; fi
+    trap - INT TERM
+    rm -f "$prog_file"
+    printf '\033[?25h'
+
+    elapsed=$(( $(date +%s) - start_ts ))
+    if [ "$rc" -eq 0 ]; then
+        local final_bytes accuracy
+        final_bytes=$(file_size_bytes "$out_file")
+        accuracy=$(awk -v a="${final_bytes:-0}" -v p="$est_bytes" 'BEGIN { if (a > 0 && p > 0) { d = (a - p) / a; if (d < 0) d = -d; acc = 100 - d * 100; if (acc < 0) acc = 0; printf "%.1f", acc } else print "-" }')
+        bar=""
+        for ((i = 0; i < bar_w; i++)); do bar+="█"; done
+        printf '\r\033[K%b\n' "  ${BOLD}${GREEN}✓ ${label}${NC} ${CYAN}[${GREEN}${bar}${CYAN}]${NC} ${BOLD}${YELLOW}100.0%${NC}  done in ${BOLD}$(fmt_hms "$elapsed")${NC} ${BLUE}│${NC} size ${BOLD}${GREEN}$(fmt_bytes "$final_bytes")${NC} ${DIM}(predicted ~$(fmt_bytes "$est_bytes"), accuracy ${accuracy}%)${NC}"
+    else
+        printf '\r\033[K%b\n' "  ${BOLD}${RED}✗ ${label} failed (ffmpeg exit code ${rc}) after $(fmt_hms "$elapsed")${NC}"
+    fi
+    return "$rc"
+}
+
+# Print a forecast of the conversion before ffmpeg starts.
+show_conversion_forecast() {
+    local src_count="$1" src_bytes="$2" dur="$3" sr="$4" ch="$5" pred="$6"
+    themed_header "📊  CONVERSION FORECAST (PREDICTIVE ANALYTICS)" "$CYAN"
+    printf '%b\n' "  ${BOLD}${CYAN}Source files:${NC}     ${src_count} file(s), $(fmt_bytes "$src_bytes")"
+    printf '%b\n' "  ${BOLD}${CYAN}Mix duration:${NC}     $(fmt_hms "$dur")   ${DIM}(${sr:-?} Hz / ${ch:-?} ch)${NC}"
+    printf '%b\n' "  ${BOLD}${CYAN}Output format:${NC}    ${OUTPUT_LABEL}"
+    printf '%b\n' "  ${BOLD}${CYAN}Output file:${NC}      ${output_path}"
+    printf '%b\n' "  ${BOLD}${CYAN}Predicted size:${NC}   ${BOLD}${GREEN}~$(fmt_bytes "$pred")${NC}  ${DIM}(refined live while converting)${NC}"
+    printf '%b\n' "${BOLD}${BLUE}${SOF_RULE_HEAVY}${NC}"
+    return 0
+}
+
+# ------------------------------------------------------------------------------
+# Archive accumulation stats
+# ------------------------------------------------------------------------------
+archive_snapshot() {
+    # archive_snapshot <dir> <ext>  ->  "<count> <bytes>"
+    local dir="$1" ext="$2"
+    if [ ! -d "$dir" ]; then
+        echo "0 0"
+        return 0
+    fi
+    python3 - "$dir" "$ext" <<'PY' 2>/dev/null || echo "0 0"
+import os, sys
+d, e = sys.argv[1], "." + sys.argv[2].lower()
+c = b = 0
+for n in os.listdir(d):
+    if n.lower().endswith(e):
+        p = os.path.join(d, n)
+        try:
+            if os.path.isfile(p):
+                c += 1
+                b += os.path.getsize(p)
+        except OSError:
+            pass
+print(c, b)
+PY
+    return 0
+}
+
+show_archive_accumulation() {
+    [ ${#newly_exported_flacs[@]} -eq 0 ] && return 0
+    local after after_count after_bytes added_count added_bytes growth free_bytes f sz dur
+    after="$(archive_snapshot "$OUTPUT_DIR" "$OUTPUT_EXT")"
+    read -r after_count after_bytes <<< "$after"
+    added_count=$(( ${after_count:-0} - ${ARCHIVE_BEFORE_COUNT:-0} ))
+    added_bytes=$(( ${after_bytes:-0} - ${ARCHIVE_BEFORE_BYTES:-0} ))
+    growth=$(awk -v a="$added_bytes" -v b="${ARCHIVE_BEFORE_BYTES:-0}" 'BEGIN { if (b > 0) printf "+%.2f%%", a / b * 100; else print "new archive" }')
+    free_bytes=$(df -Pk "$OUTPUT_DIR" 2>/dev/null | awk 'NR == 2 { printf "%d", $4 * 1024 }' || echo 0)
+
+    echo ""
+    themed_header "📀  MIX ARCHIVE STATS - ACCUMULATION AFTER THIS CONVERSION" "$MAGENTA"
+    printf '%b\n' "  ${BOLD}${CYAN}Archive folder:${NC}   $(get_abs_path "$OUTPUT_DIR" 2>/dev/null || echo "$OUTPUT_DIR")"
+    printf '%b\n' "  ${BOLD}${CYAN}Format:${NC}           ${OUTPUT_LABEL} (*.${OUTPUT_EXT})"
+    printf '%b\n' "${DIM}${BLUE}${SOF_RULE_LIGHT}${NC}"
+    printf '%b\n' "  ${BOLD}${CYAN}Mixes before:${NC}     $(printf '%-8s' "${ARCHIVE_BEFORE_COUNT:-0}") ${BOLD}${CYAN}Size before:${NC} $(fmt_bytes "${ARCHIVE_BEFORE_BYTES:-0}")"
+    printf '%b\n' "  ${BOLD}${GREEN}Newly added:${NC}      ${BOLD}${GREEN}$(printf '%-8s' "+${added_count}")${NC} ${BOLD}${GREEN}Size added:${NC}  ${BOLD}${GREEN}+$(fmt_bytes "$added_bytes")${NC}"
+    printf '%b\n' "  ${BOLD}${YELLOW}Mixes now:${NC}        ${BOLD}${YELLOW}$(printf '%-8s' "${after_count:-0}")${NC} ${BOLD}${YELLOW}Size now:${NC}    ${BOLD}${YELLOW}$(fmt_bytes "${after_bytes:-0}")${NC}"
+    printf '%b\n' "  ${BOLD}${CYAN}Archive growth:${NC}   ${growth} by size"
+    if [ "${free_bytes:-0}" -gt 0 ] 2>/dev/null; then
+        printf '%b\n' "  ${BOLD}${CYAN}Free space left:${NC}  $(fmt_bytes "$free_bytes") on the archive drive"
+    fi
+    printf '%b\n' "${DIM}${BLUE}${SOF_RULE_LIGHT}${NC}"
+    printf '%b\n' "  ${BOLD}${MAGENTA}Added in this batch:${NC}"
+    for f in "${newly_exported_flacs[@]}"; do
+        if [ -f "$f" ]; then
+            sz=$(file_size_bytes "$f")
+            dur=$(probe_duration_seconds "$f")
+            printf '%b\n' "   ${BOLD}${GREEN}✓${NC} $(basename "$f")  ${DIM}│${NC} ${BOLD}$(fmt_bytes "$sz")${NC} ${DIM}│${NC} $(fmt_hms "$dur")"
+        fi
+    done
+    printf '%b\n' "${BOLD}${BLUE}${SOF_RULE_HEAVY}${NC}"
+
+    # Offer the full multi-archive report (it scans every archive and can take a while).
+    if [ -r /dev/tty ]; then
+        local stats_script="" cand full_stats=""
+        for cand in "$SCRIPT_DIR/SOF_Archive_Stats.sh" "$PARENT_DIR/SOF_Archive_Stats.sh" \
+            "${MIX_ARCHIVE_DIR:-}/SOF_Archive_Stats.sh" "$SCRIPT_DIR/scripts/SOF_Archive_Stats.sh"; do
+            if [ -f "$cand" ]; then
+                stats_script="$cand"
+                break
+            fi
+        done
+        if [ -n "$stats_script" ]; then
+            read -r -p "Show the full multi-archive stats report as well? [y/N]: " full_stats </dev/tty || full_stats=""
+            case "$full_stats" in
+                [yY]*) bash "$stats_script" </dev/tty || true ;;
+            esac
+        fi
+    fi
+    return 0
+}
+
+# ------------------------------------------------------------------------------
+# Final review: listen to the converted audio
+# ------------------------------------------------------------------------------
+listen_to_converted_audio() {
+    [ ${#newly_exported_flacs[@]} -eq 0 ] && return 0
+    [ ! -r /dev/tty ] && return 0
+
+    local files=() f listen=""
+    for f in "${newly_exported_flacs[@]}"; do
+        if [ -f "$f" ]; then files+=("$f"); fi
+    done
+    [ ${#files[@]} -eq 0 ] && return 0
+
+    echo ""
+    themed_header "🎧  LISTEN & REVIEW" "$CYAN"
+    printf '%b\n' "  Would you like to listen to the converted audio file now for reviewing?"
+    for f in "${files[@]}"; do
+        printf '%b\n' "   ${BOLD}${YELLOW}♪${NC} $(basename "$f")"
+    done
+    printf '%b\n' "  ${DIM}[y/N] (Default: Enter = No)${NC}"
+    printf '%b\n' "${BOLD}${BLUE}${SOF_RULE_HEAVY}${NC}"
+    read -r -p "Listen now? [y/N]: " listen </dev/tty || listen=""
+    case "$listen" in
+        [yY]*) ;;
+        *)
+            echo " -> Skipping playback review."
+            return 0
+            ;;
+    esac
+
+    local player="" p
+    if [ -n "${SOF_REVIEW_PLAYER:-}" ] && command -v "$SOF_REVIEW_PLAYER" >/dev/null 2>&1; then
+        player="$SOF_REVIEW_PLAYER"
+    else
+        for p in audacious strawberry clementine vlc celluloid; do
+            if command -v "$p" >/dev/null 2>&1; then
+                player="$p"
+                break
+            fi
+        done
+    fi
+
+    if [ -n "$player" ]; then
+        echo " -> Opening in ${player}..."
+        nohup "$player" "${files[@]}" >/dev/null 2>&1 &
+        return 0
+    fi
+
+    if command -v flatpak >/dev/null 2>&1; then
+        local fp_app
+        for fp_app in org.atheme.audacious org.strawberrymusicplayer.strawberry org.videolan.VLC; do
+            if flatpak info "$fp_app" >/dev/null 2>&1; then
+                echo " -> Opening in ${fp_app} (Flatpak)..."
+                nohup flatpak run "$fp_app" "${files[@]}" >/dev/null 2>&1 &
+                return 0
+            fi
+        done
+    fi
+
+    if command -v mpv >/dev/null 2>&1; then
+        echo " -> Playing with mpv (press q to stop)..."
+        mpv --no-video "${files[@]}" </dev/tty || true
+    elif command -v ffplay >/dev/null 2>&1; then
+        echo " -> Playing with ffplay (press q or Esc to stop)..."
+        for f in "${files[@]}"; do
+            ffplay -nodisp -autoexit -loglevel error "$f" </dev/tty || true
+        done
+    elif [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then
+        open "${files[0]}" 2>/dev/null || true
+    elif command -v xdg-open >/dev/null 2>&1; then
+        nohup xdg-open "${files[0]}" >/dev/null 2>&1 &
+    elif command -v cmd.exe >/dev/null 2>&1; then
+        cmd.exe /c start "" "${files[0]}" 2>/dev/null || true
+    else
+        echo "WARNING: No audio player was found on this system."
+    fi
+    return 0
+}
+
 post_conversion_tasks() {
     [ ${#newly_exported_flacs[@]} -eq 0 ] && return 0
     [ ! -r /dev/tty ] && return 0

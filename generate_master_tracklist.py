@@ -105,12 +105,33 @@ def cache_file(remote, rel_dir, name):
 
 
 def run_cmd(cmd, timeout):
-    proc = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        start_new_session=True,
-    )
+    """
+    Execute a shell command and return its exit code, stdout, and stderr.
+    
+    The original implementation assumed that the executable (e.g., ``rclone``)
+    was present on the system. When it is missing, :class:`FileNotFoundError`
+    would be raised by :func:`subprocess.Popen`, propagating up to callers
+    such as :func:`rclone_cat` and causing an unhandled exception in the main
+    script. To make the tool more robust we catch this error and return a
+    conventional non‑zero exit status (127) along with empty output streams.
+    Callers can then handle the failure gracefully without crashing.
+    
+    Parameters
+    ----------
+    cmd: list[str]
+        The command and its arguments.
+    timeout: int | float
+        Maximum number of seconds before killing the process.
+    """
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True,
+        )
+    except FileNotFoundError as exc:  # pragma: no cover - exercised by test harness
+        return 127, b"", str(exc).encode("utf-8")
     try:
         out, err = proc.communicate(timeout=timeout)
         return proc.returncode, out, err
