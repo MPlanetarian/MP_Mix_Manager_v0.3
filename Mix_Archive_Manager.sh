@@ -11649,6 +11649,9 @@ elif [ "$1" = "--harmony" ] || [ "$1" = "--mp-harmony" ] || [ "$1" = "harmony" ]
     shift
     run_sub_script "manage_harmony_agent.sh" "$@"
     exit 0
+elif [ "$1" = "--harmony-voice" ] || [ "$1" = "--voice-talk" ] || [ "$1" = "voice-talk" ] || [ "$1" = "--harmony-voice-chat" ]; then
+    run_sub_script "manage_harmony_agent.sh" voice
+    exit 0
 elif [ "$1" = "--dsh-mobile" ] || [ "$1" = "--dsh" ] || [ "$1" = "--dsh-start" ] || { [ "$1" = "59" ] && [ "$2" = "1" ]; }; then
     run_sub_script "dsh_mobile.sh" start
     exit 0

@@ -15,6 +15,7 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 DIM='\033[2m'
 NC='\033[0m' # No Color
+export PATH="$HOME/bin:$HOME/.local/bin:$PATH"
 
 HARMONY_DIR="${HARMONY_DIR:-/var/home/mplanetarian/OpenAI/MP_Harmony_Agent}"
 if [ ! -d "$HARMONY_DIR" ] && [ -d "$HOME/OpenAI/MP_Harmony_Agent" ]; then
@@ -255,6 +256,51 @@ launch_chat_cli() {
     )
 }
 
+launch_voice_chat_cli() {
+    echo -e "\n${BOLD}${MAGENTA}======================================================================${NC}"
+    echo -e "${BOLD}${MAGENTA}    LAUNCHING VOICE CHAT CLI WITH MP HARMONY AGENT (TERMINAL)        ${NC}"
+    echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
+
+    # Ensure backend Ollama is running
+    if ! is_ollama_running; then
+        echo -e "  ${YELLOW}Notice: Ollama backend is not detected. Starting Ollama in background...${NC}"
+        if [ -f "$(dirname "${BASH_SOURCE[0]}")/manage_ollama.sh" ]; then
+            "$(dirname "${BASH_SOURCE[0]}")/manage_ollama.sh" start >/dev/null 2>&1 || true
+            sleep 1
+        fi
+    fi
+
+    # Ensure MP Harmony server is running on 11435
+    if ! is_harmony_running; then
+        echo -e "  ${YELLOW}Notice: MP Harmony Voice Bridge is not currently running.${NC}"
+        echo -e "  Starting MP Harmony Agent server in background on port ${HARMONY_PORT}..."
+        start_harmony_bg
+        sleep 2
+    fi
+
+    local target_model
+    target_model=$(get_active_model)
+    target_model="${target_model//[\'\";]/}"
+    [ -z "$target_model" ] && target_model="gpt-oss-pinned:latest"
+
+    local voice_bin
+    voice_bin=$(command -v local-voice-talk 2>/dev/null || echo "$HOME/bin/local-voice-talk")
+
+    if [ ! -x "$voice_bin" ] && ! command -v local-voice-talk >/dev/null 2>&1; then
+        echo -e "${RED}Error: 'local-voice-talk' command not found!${NC}"
+        echo -e "${YELLOW}Expected at: $HOME/bin/local-voice-talk${NC}"
+        return 1
+    fi
+
+    echo -e "  • Bridge URL: ${BOLD}${CYAN}http://127.0.0.1:${HARMONY_PORT}${NC}"
+    echo -e "  • Model:      ${BOLD}${YELLOW}${target_model}${NC}"
+    echo -e "  • Engine:     ${BOLD}${GREEN}Whisper STT + MP Harmony Voice Bridge${NC}"
+    echo -e "  • Command:    ${DIM}OLLAMA_URL=\"http://127.0.0.1:11435\" local-voice-talk --model ${target_model}${NC}\n"
+    sleep 1
+
+    OLLAMA_URL="http://127.0.0.1:11435" "$voice_bin" --model "$target_model"
+}
+
 stop_harmony() {
     echo -e "\n${BOLD}${YELLOW}Stopping MP Harmony AI Agent...${NC}"
     if ! is_harmony_running; then
@@ -427,14 +473,15 @@ interactive_menu() {
         echo -e "${BOLD}${MAGENTA}----------------------------------------------------------------------${NC}"
         echo -e "${BOLD}Select an MP Harmony Agent operation:${NC}\n"
         echo -e "  ${BOLD}${CYAN} 1)${NC} Launch Interactive Chat CLI with MP Harmony Agent (${BOLD}${GREEN}Terminal Console${NC})"
-        echo -e "  ${BOLD}${CYAN} 2)${NC} Start MP Harmony Voice Bridge / Server (${BOLD}${GREEN}Background Daemon${NC}) [:11435]"
-        echo -e "  ${BOLD}${CYAN} 3)${NC} Start MP Harmony Voice Bridge in ${BOLD}${YELLOW}New Terminal Window${NC} (Live Logs)"
-        echo -e "  ${BOLD}${CYAN} 4)${NC} Stop Running MP Harmony Agent / Server"
-        echo -e "  ${BOLD}${CYAN} 5)${NC} Restart MP Harmony Agent / Server"
-        echo -e "  ${BOLD}${CYAN} 6)${NC} View Archived Audio Responses & Transcripts (${AUDIO_DIR})"
-        echo -e "  ${BOLD}${CYAN} 7)${NC} View Server Log File (${LOG_FILE})"
-        echo -e "  ${BOLD}${CYAN} 8)${NC} Return to Previous Menu\n"
-        read -r -p "Enter choice [1-8, or q to return]: " h_choice
+        echo -e "  ${BOLD}${CYAN} 2)${NC} Launch Voice Chat CLI with MP Harmony Agent (${BOLD}${GREEN}Terminal Console${NC})"
+        echo -e "  ${BOLD}${CYAN} 3)${NC} Start MP Harmony Voice Bridge / Server (${BOLD}${GREEN}Background Daemon${NC}) [:11435]"
+        echo -e "  ${BOLD}${CYAN} 4)${NC} Start MP Harmony Voice Bridge in ${BOLD}${YELLOW}New Terminal Window${NC} (Live Logs)"
+        echo -e "  ${BOLD}${CYAN} 5)${NC} Stop Running MP Harmony Agent / Server"
+        echo -e "  ${BOLD}${CYAN} 6)${NC} Restart MP Harmony Agent / Server"
+        echo -e "  ${BOLD}${CYAN} 7)${NC} View Archived Audio Responses & Transcripts (${AUDIO_DIR})"
+        echo -e "  ${BOLD}${CYAN} 8)${NC} View Server Log File (${LOG_FILE})"
+        echo -e "  ${BOLD}${CYAN} 9)${NC} Return to Previous Menu\n"
+        read -r -p "Enter choice [1-9, or q to return]: " h_choice
 
         case "$h_choice" in
             1)
@@ -443,32 +490,37 @@ interactive_menu() {
                 read -r -p "Press Enter to continue..."
                 ;;
             2)
-                start_harmony_bg
+                launch_voice_chat_cli
                 echo ""
                 read -r -p "Press Enter to continue..."
                 ;;
             3)
-                start_harmony_window
+                start_harmony_bg
                 echo ""
                 read -r -p "Press Enter to continue..."
                 ;;
             4)
-                stop_harmony
+                start_harmony_window
                 echo ""
                 read -r -p "Press Enter to continue..."
                 ;;
             5)
-                restart_harmony
+                stop_harmony
                 echo ""
                 read -r -p "Press Enter to continue..."
                 ;;
             6)
-                view_audio_responses
+                restart_harmony
+                echo ""
+                read -r -p "Press Enter to continue..."
                 ;;
             7)
+                view_audio_responses
+                ;;
+            8)
                 view_logs
                 ;;
-            8|[qQ])
+            9|[qQ])
                 return 0
                 ;;
             *)
@@ -480,6 +532,10 @@ interactive_menu() {
 }
 
 case "${1:-}" in
+    voice|voice-chat|talk|voice-talk)
+        shift
+        launch_voice_chat_cli "$@"
+        ;;
     chat|cli|run|interactive)
         shift
         launch_chat_cli "$@"
@@ -509,7 +565,7 @@ case "${1:-}" in
         interactive_menu
         ;;
     *)
-        echo "Usage: $(basename "$0") {chat|start|start-window|stop|restart|status|audio|logs}"
+        echo "Usage: $(basename "$0") {chat|voice|start|start-window|stop|restart|status|audio|logs}"
         exit 1
         ;;
 esac
