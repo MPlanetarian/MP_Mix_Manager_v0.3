@@ -3496,9 +3496,10 @@ ${BOLD}${MAGENTA}===============================================================
     echo -e "  ${BOLD}${CYAN}4)${NC} Looping MP4-to-MP4 Video Creator (${GREEN}Loop MP4 with Segment Fades, Audio & Thumbnails${NC})"
     echo -e "  ${BOLD}${CYAN}5)${NC} Launch Universal Video Generator Wizard (${GREEN}generate_youtube_video.sh${NC})"
     echo -e "  ${BOLD}${CYAN}6)${NC} Download YouTube Videos & Shorts in 1080p (${GREEN}Single URL, 1/3/6 Mo, All Videos/Shorts - MP_YouTube_Channel_Downloader.sh${NC})"
-    echo -e "  ${BOLD}${CYAN}7)${NC} Cancel & Return to Main Menu
+    echo -e "  ${BOLD}${CYAN}7)${NC} Generate YouTube Shorts Promo Video (${GREEN}1080x1920 Vertical 42s Dreamworlds Promo - generate_youtube_short_promo.py${NC})"
+    echo -e "  ${BOLD}${CYAN}8)${NC} Cancel & Return to Main Menu
 "
-    read -r -p "Enter choice [1-7, default: 2]: " v_choice
+    read -r -p "Enter choice [1-8, default: 2]: " v_choice
 
     local res="1080p"
     case "$v_choice" in
@@ -3526,7 +3527,13 @@ ${BOLD}${MAGENTA}===============================================================
             press_enter
             return 0
             ;;
-        7|[qQ])
+        7|short|shorts)
+            echo -e "\n${BOLD}${CYAN}--- YouTube Shorts Promo Video Generator (1080x1920) ---${NC}\n"
+            python3 "$SCRIPT_DIR/scripts/generate_youtube_short_promo.py"
+            press_enter
+            return 0
+            ;;
+        8|[qQ])
             return 0
             ;;
         *)
