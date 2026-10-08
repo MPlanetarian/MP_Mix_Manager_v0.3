@@ -50,7 +50,11 @@ for cfg in "$BASE_DIR/config.env" "$SCRIPT_DIR/config.env" "$PWD/config.env" "${
 done
 
 # Defaults & Configured Settings
-LOG_DIR="${BASE_DIR}/BACKUP_LOGS"
+if [ -n "${MIX_ARCHIVE_DIR:-}" ] && [ -d "${MIX_ARCHIVE_DIR}/BACKUP_LOGS" ]; then
+    LOG_DIR="${MIX_ARCHIVE_DIR}/BACKUP_LOGS"
+else
+    LOG_DIR="${BASE_DIR}/BACKUP_LOGS"
+fi
 mkdir -p "$LOG_DIR" 2>/dev/null || true
 
 GDRIVE_REMOTE="${GDRIVE_REMOTE:-gdrive:MIX_ARCHIVE/FLAC_CONVERTED_OUTPUTS}"
@@ -93,11 +97,13 @@ detect_default_cloud_paths() {
     # Auto-detect Google Drive remote in rclone if configured remote not present
     if command -v rclone >/dev/null 2>&1; then
         local configured_remote="${GDRIVE_REMOTE%%:*}"
+        local remote_subpath="${GDRIVE_REMOTE#*:}"
+        [ "$remote_subpath" = "$GDRIVE_REMOTE" ] && remote_subpath="MIX_ARCHIVE/FLAC_CONVERTED_OUTPUTS"
         if ! rclone listremotes 2>/dev/null | grep -qi "^${configured_remote}:"; then
             if rclone listremotes 2>/dev/null | grep -qi "^google3:"; then
-                GDRIVE_REMOTE="google3:MIX_ARCHIVE/FLAC_CONVERTED_OUTPUTS"
+                GDRIVE_REMOTE="google3:${remote_subpath}"
             elif rclone listremotes 2>/dev/null | grep -qi "^gdrive:"; then
-                GDRIVE_REMOTE="gdrive:MIX_ARCHIVE/FLAC_CONVERTED_OUTPUTS"
+                GDRIVE_REMOTE="gdrive:${remote_subpath}"
             fi
         fi
     fi

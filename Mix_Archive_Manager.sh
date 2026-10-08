@@ -188,30 +188,50 @@ show_dreamworlds_ascii_banner() {
 
 # Key reader for interactive navigation
 read_nav_key() {
-    local k=""
-    IFS= read -rsn1 k || return 1
-    if [[ "$k" == $'\x1b' || "$k" == $'\e' ]]; then
+    local _out_var="$1"
+    local _k=""
+    _emit_key() {
+        if [ -n "$_out_var" ]; then
+            printf -v "$_out_var" "%s" "$1"
+        else
+            echo "$1"
+        fi
+        return 0
+    }
+
+    IFS= read -rsn1 _k || {
+        if [ -n "$_out_var" ]; then
+            printf -v "$_out_var" "%s" ""
+        fi
+        return 1
+    }
+
+    if [[ -z "$_k" || "$_k" == $'\n' || "$_k" == $'\r' ]]; then
+        _emit_key "ENTER"
+    elif [[ "$_k" == $'\x7f' || "$_k" == $'\x08' ]]; then
+        _emit_key "BACKSPACE"
+    elif [[ "$_k" == $'\x1b' || "$_k" == $'\e' ]]; then
         local c2=""
         if IFS= read -rsn1 -t 0.05 c2; then
             if [[ "$c2" == "[" ]]; then
                 local c3=""
                 if IFS= read -rsn1 -t 0.05 c3; then
                     case "$c3" in
-                        "A") echo "UP"; return 0 ;;
-                        "B") echo "DOWN"; return 0 ;;
-                        "C") echo "RIGHT"; return 0 ;;
-                        "D") echo "LEFT"; return 0 ;;
-                        "H") echo "HOME"; return 0 ;;
-                        "F") echo "END"; return 0 ;;
+                        "A") _emit_key "UP" ;;
+                        "B") _emit_key "DOWN" ;;
+                        "C") _emit_key "RIGHT" ;;
+                        "D") _emit_key "LEFT" ;;
+                        "H") _emit_key "HOME" ;;
+                        "F") _emit_key "END" ;;
                         "[")
                             local c4=""
                             if IFS= read -rsn1 -t 0.05 c4; then
                                 case "$c4" in
-                                    "A") echo "UP"; return 0 ;;
-                                    "B") echo "DOWN"; return 0 ;;
-                                    "C") echo "RIGHT"; return 0 ;;
-                                    "D") echo "LEFT"; return 0 ;;
-                                    *) echo "UNKNOWN"; return 0 ;;
+                                    "A") _emit_key "UP" ;;
+                                    "B") _emit_key "DOWN" ;;
+                                    "C") _emit_key "RIGHT" ;;
+                                    "D") _emit_key "LEFT" ;;
+                                    *) _emit_key "UNKNOWN" ;;
                                 esac
                             fi
                             ;;
@@ -219,33 +239,32 @@ read_nav_key() {
                             local c4=""
                             if IFS= read -rsn1 -t 0.05 c4; then
                                 case "${c3}${c4}" in
-                                    "5~") echo "PAGE_UP"; return 0 ;;
-                                    "6~") echo "PAGE_DOWN"; return 0 ;;
-                                    "1~"|"7~") echo "HOME"; return 0 ;;
-                                    "4~"|"8~") echo "END"; return 0 ;;
-                                    "2~") echo "INSERT"; return 0 ;;
-                                    "3~") echo "DELETE"; return 0 ;;
+                                    "5~") _emit_key "PAGE_UP" ;;
+                                    "6~") _emit_key "PAGE_DOWN" ;;
+                                    "1~"|"7~") _emit_key "HOME" ;;
+                                    "4~"|"8~") _emit_key "END" ;;
+                                    "2~") _emit_key "INSERT" ;;
+                                    "3~") _emit_key "DELETE" ;;
                                     *)
                                         local cur="${c4}"
                                         while [[ ! "$cur" =~ [A-Za-z~] ]]; do
                                             IFS= read -rsn1 -t 0.05 cur || break
                                         done
                                         case "$cur" in
-                                            "A") echo "UP"; return 0 ;;
-                                            "B") echo "DOWN"; return 0 ;;
-                                            "C") echo "RIGHT"; return 0 ;;
-                                            "D") echo "LEFT"; return 0 ;;
-                                            "H") echo "HOME"; return 0 ;;
-                                            "F") echo "END"; return 0 ;;
-                                            *) echo "UNKNOWN"; return 0 ;;
+                                            "A") _emit_key "UP" ;;
+                                            "B") _emit_key "DOWN" ;;
+                                            "C") _emit_key "RIGHT" ;;
+                                            "D") _emit_key "LEFT" ;;
+                                            "H") _emit_key "HOME" ;;
+                                            "F") _emit_key "END" ;;
+                                            *) _emit_key "UNKNOWN" ;;
                                         esac
                                         ;;
                                 esac
                             fi
                             ;;
                         *)
-                            echo "UNKNOWN"
-                            return 0
+                            _emit_key "UNKNOWN"
                             ;;
                     esac
                 fi
@@ -253,28 +272,85 @@ read_nav_key() {
                 local c3=""
                 if IFS= read -rsn1 -t 0.05 c3; then
                     case "$c3" in
-                        "A") echo "UP"; return 0 ;;
-                        "B") echo "DOWN"; return 0 ;;
-                        "C") echo "RIGHT"; return 0 ;;
-                        "D") echo "LEFT"; return 0 ;;
-                        "H") echo "HOME"; return 0 ;;
-                        "F") echo "END"; return 0 ;;
-                        *) echo "UNKNOWN"; return 0 ;;
+                        "A") _emit_key "UP" ;;
+                        "B") _emit_key "DOWN" ;;
+                        "C") _emit_key "RIGHT" ;;
+                        "D") _emit_key "LEFT" ;;
+                        "H") _emit_key "HOME" ;;
+                        "F") _emit_key "END" ;;
+                        *) _emit_key "UNKNOWN" ;;
                     esac
                 fi
             else
-                echo "UNKNOWN"
-                return 0
+                _emit_key "UNKNOWN"
             fi
+        else
+            _emit_key "ESC"
         fi
-        echo "ESC"
-        return 0
-    elif [[ -z "$k" || "$k" == $'\n' || "$k" == $'\r' ]]; then
-        echo "ENTER"
-    elif [[ "$k" == $'\x7f' || "$k" == $'\x08' ]]; then
-        echo "BACKSPACE"
     else
-        echo "CHAR:$k"
+        _emit_key "CHAR:$_k"
+    fi
+}
+
+# Highlight a menu item line with modern desktop window manager text-selection styling.
+# Color order: Pink -> Cyan -> Orange -> Grey (repeating in order).
+# Efficient in-memory formatting with zero subprocess forks.
+highlight_menu_line() {
+    local key="$1"
+    local label="$2"
+    local extra="$3"
+    local color_idx="${4:-0}"
+    local _out_var="$5"
+
+    local c_mod=$(( color_idx % 4 ))
+    [ "$c_mod" -lt 0 ] && c_mod=$(( c_mod + 4 ))
+
+    local bg="" fg_key="" fg_lbl="" fg_ext="" ptr_col=""
+    if [ "${COLORTERM:-}" = "truecolor" ] || [ "${COLORTERM:-}" = "24bit" ] || true; then
+        case "$c_mod" in
+            0) # Pink (#f72585 Sweet Neon Hot Pink)
+                bg="\033[48;2;247;37;133m"
+                fg_key="\033[1;38;2;0;0;0m"
+                fg_lbl="\033[1;38;2;0;0;0m"
+                fg_ext="\033[0;38;2;40;5;20m"
+                ptr_col="\033[1;38;2;247;37;133m"
+                ;;
+            1) # Cyan (#00e5ff Sweet Electric Aqua Cyan)
+                bg="\033[48;2;0;229;255m"
+                fg_key="\033[1;38;2;0;0;0m"
+                fg_lbl="\033[1;38;2;0;0;0m"
+                fg_ext="\033[0;38;2;0;35;45m"
+                ptr_col="\033[1;38;2;0;229;255m"
+                ;;
+            2) # Orange (#ff8c00 Sweet Amber Orange)
+                bg="\033[48;2;255;140;0m"
+                fg_key="\033[1;38;2;0;0;0m"
+                fg_lbl="\033[1;38;2;0;0;0m"
+                fg_ext="\033[0;38;2;45;20;0m"
+                ptr_col="\033[1;38;2;255;140;0m"
+                ;;
+            3) # Grey (#586276 Desktop Selection Slate Grey)
+                bg="\033[48;2;88;98;118m"
+                fg_key="\033[1;38;2;255;255;255m"
+                fg_lbl="\033[1;38;2;255;255;255m"
+                fg_ext="\033[0;38;2;215;225;238m"
+                ptr_col="\033[1;38;2;160;175;205m"
+                ;;
+        esac
+    fi
+
+    local rst="\033[0m"
+    local ptr="${ptr_col} ▶ ❯${rst}"
+    local formatted_key
+    printf -v formatted_key "[%2s]" "$key"
+    local ext_part=""
+    [ -n "$extra" ] && ext_part="  ${fg_ext}${extra}"
+
+    local line_out="${ptr}${bg}${fg_key} ${formatted_key} ${fg_lbl}${label}${ext_part} ${rst}\033[K"
+    if [ -n "$_out_var" ]; then
+        printf -v "$_out_var" "%s" "$line_out"
+    else
+        printf "%b\n" "$line_out"
     fi
 }
 
@@ -301,6 +377,20 @@ run_interactive_submenu() {
         cur_idx=$(( (cur_idx + 1) % total_opts ))
         ((start_attempts++))
     done
+
+    # Pre-map selectable items to sequential indexes for Pink/Cyan/Orange/Grey color rotation
+    local -a selectable_map=()
+    local s_count=0
+    local i
+    for (( i=0; i<total_opts; i++ )); do
+        IFS='|' read -r k_chk _ _ <<< "${_opts_ref[$i]}"
+        if [ "$k_chk" != "SECTION" ] && [ "$k_chk" != "SEP" ]; then
+            selectable_map[i]=$s_count
+            ((s_count++))
+        else
+            selectable_map[i]=-1
+        fi
+    done
     
     # Non-interactive fallback
     if [ ! -t 0 ]; then
@@ -326,6 +416,34 @@ run_interactive_submenu() {
         read -r -p "Enter choice: " REPLY
         return 0
     fi
+
+    # Pre-render static header block and line count once to eliminate runtime forks
+    local header_count=0
+    local cached_header_block=""
+    if [ -n "$menu_title" ]; then
+        cached_header_block+="${BOLD}${MAGENTA}╭──────────────────────────────────────────────────────────────────────────╮\033[K${NC}\n"
+        local title_line
+        printf -v title_line "${BOLD}${MAGENTA}│ %-72s │\033[K${NC}\n" "  ${menu_title}"
+        cached_header_block+="$title_line"
+        cached_header_block+="${BOLD}${MAGENTA}╰──────────────────────────────────────────────────────────────────────────╯\033[K${NC}\n"
+    fi
+    if [ -n "$menu_header" ]; then
+        local exp_hdr=""
+        printf -v exp_hdr "%b" "$menu_header"
+        while IFS= read -r h_line; do
+            cached_header_block+="${h_line}\033[K\n"
+            ((header_count++))
+        done <<< "$exp_hdr"
+    fi
+    if [ -n "$menu_title" ]; then
+        cached_header_block+="  ${DIM}${BLUE}Use [↑/↓] Arrow Keys to navigate, [Enter] to select, [Esc] to return immediately\033[K${NC}\n"
+    else
+        cached_header_block+="  ${DIM}${BLUE}Use [↑/↓] Arrow Keys to navigate, [Enter] to select, 'q' to exit\033[K${NC}\n"
+    fi
+
+    local overhead=4 # prompt, bottom divider, selection status, blank
+    [ -n "$menu_title" ] && overhead=$((overhead + 4))
+    overhead=$((overhead + header_count))
     
     # Clear screen once on entry and hide cursor
     clear
@@ -335,22 +453,12 @@ run_interactive_submenu() {
     local view_top=0
 
     while true; do
-        local term_lines term_cols
-        term_lines=$(tput lines 2>/dev/null || echo 40)
-        term_cols=$(tput cols 2>/dev/null || echo 100)
+        local term_lines="${LINES:-}"
+        local term_cols="${COLUMNS:-}"
+        [ -z "$term_lines" ] && term_lines=$(tput lines 2>/dev/null || echo 40)
+        [ -z "$term_cols" ] && term_cols=$(tput cols 2>/dev/null || echo 100)
         [ -z "$term_lines" ] || [ "$term_lines" -lt 15 ] && term_lines=40
         [ -z "$term_cols" ] || [ "$term_cols" -lt 40 ] && term_cols=100
-
-        # Calculate fixed overhead lines
-        local overhead=4 # prompt, bottom divider, selection status, blank
-        if [ -n "$menu_title" ]; then
-            overhead=$((overhead + 4)) # box title is 3 lines + margin
-        fi
-        if [ -n "$menu_header" ]; then
-            local header_count
-            header_count=$(printf "%b\n" "$menu_header" | wc -l)
-            overhead=$((overhead + header_count))
-        fi
 
         # Compute maximum visible options
         local max_visible=$(( term_lines - overhead ))
@@ -380,88 +488,76 @@ run_interactive_submenu() {
         local view_end=$(( view_top + max_visible - 1 ))
         [ "$view_end" -ge "$total_opts" ] && view_end=$(( total_opts - 1 ))
 
-        # Move cursor to home position without resetting scrollback (prevents scrollbar flick)
-        printf '\033[H'
-
-        if [ -n "$menu_title" ]; then
-            echo -e "${BOLD}${MAGENTA}╭──────────────────────────────────────────────────────────────────────────╮\033[K${NC}"
-            printf "${BOLD}${MAGENTA}│ %-72s │\033[K${NC}\n" "  ${menu_title}"
-            echo -e "${BOLD}${MAGENTA}╰──────────────────────────────────────────────────────────────────────────╯\033[K${NC}"
-            if [ -n "$menu_header" ]; then
-                while IFS= read -r h_line; do
-                    echo -e "${h_line}\033[K"
-                done <<< "$menu_header"
-            fi
-            echo -e "  ${DIM}${BLUE}Use [↑/↓] Arrow Keys to navigate, [Enter] to select, [Esc] to return immediately\033[K${NC}"
-        else
-            if [ -n "$menu_header" ]; then
-                while IFS= read -r h_line; do
-                    echo -e "${h_line}\033[K"
-                done <<< "$menu_header"
-            fi
-            echo -e "  ${DIM}${BLUE}Use [↑/↓] Arrow Keys to navigate, [Enter] to select, 'q' to exit\033[K${NC}"
-        fi
+        # Build entire frame in memory to eliminate intermediate screen redraws
+        local frame_buf="$cached_header_block"
 
         # Scroll indicator top
         if [ "$view_top" -gt 0 ]; then
-            echo -e "  ${BOLD}${YELLOW}▲  (${view_top} more option$([ "$view_top" -gt 1 ] && echo "s") above - press ↑ to scroll)\033[K${NC}"
+            frame_buf+="  ${BOLD}${YELLOW}▲  (${view_top} more option$([ "$view_top" -gt 1 ] && echo "s") above - press ↑ to scroll)\033[K${NC}\n"
         else
-            echo -e "\033[K"
+            frame_buf+="\033[K\n"
         fi
 
         # Render visible items
+        local idx
         for (( idx=view_top; idx<=view_end; idx++ )); do
             IFS='|' read -r o_key o_label o_extra <<< "${_opts_ref[$idx]}"
             if [ "$o_key" = "SECTION" ]; then
-                echo -e "  ${BOLD}${BLUE}─── [ ${o_label} ] ─────────\033[K${NC}"
+                frame_buf+="  ${BOLD}${BLUE}─── [ ${o_label} ] ─────────\033[K${NC}\n"
                 continue
             elif [ "$o_key" = "SEP" ]; then
-                echo -e "  ${BOLD}${BLUE}──────────────────────────────────────────────────────────────────────────\033[K${NC}"
+                frame_buf+="  ${BOLD}${BLUE}──────────────────────────────────────────────────────────────────────────\033[K${NC}\n"
                 continue
             fi
-            local prefix="    "
-            local key_display="${BOLD}${CYAN}[$(printf "%2s" "$o_key")]${NC}"
-            local label_display="${o_label}"
-            local extra_display=""
-            [ -n "$o_extra" ] && extra_display="${DIM}${o_extra}${NC}"
             
             if [ "$idx" -eq "$cur_idx" ]; then
-                prefix="${BOLD}${MAGENTA} ▶ ❯${NC}"
-                echo -e "${prefix} ${BOLD}${YELLOW}[$(printf "%2s" "$o_key")]${NC} ${BOLD}${GREEN}${label_display}${NC} ${extra_display}\033[K"
+                local sel_color_idx="${selectable_map[$cur_idx]:-0}"
+                local h_line=""
+                highlight_menu_line "$o_key" "$o_label" "$o_extra" "$sel_color_idx" h_line
+                frame_buf+="${h_line}\n"
             else
-                echo -e "${prefix} ${key_display} ${label_display} ${extra_display}\033[K"
+                local key_formatted
+                printf -v key_formatted "[%2s]" "$o_key"
+                local key_display="${BOLD}${CYAN}${key_formatted}${NC}"
+                local label_display="${o_label}"
+                local extra_display=""
+                [ -n "$o_extra" ] && extra_display="  ${DIM}${o_extra}${NC}"
+                frame_buf+="     ${key_display} ${label_display}${extra_display}\033[K\n"
             fi
         done
 
         # Scroll indicator bottom
         local remaining_below=$(( total_opts - 1 - view_end ))
         if [ "$remaining_below" -gt 0 ]; then
-            echo -e "  ${BOLD}${YELLOW}▼  (${remaining_below} more option$([ "$remaining_below" -gt 1 ] && echo "s") below - press ↓ to scroll)\033[K${NC}"
+            frame_buf+="  ${BOLD}${YELLOW}▼  (${remaining_below} more option$([ "$remaining_below" -gt 1 ] && echo "s") below - press ↓ to scroll)\033[K${NC}\n"
         else
-            echo -e "\033[K"
+            frame_buf+="\033[K\n"
         fi
 
-        echo -e "  ${BOLD}${BLUE}──────────────────────────────────────────────────────────────────────────\033[K${NC}"
+        frame_buf+="  ${BOLD}${BLUE}──────────────────────────────────────────────────────────────────────────\033[K${NC}\n"
         IFS='|' read -r cur_key cur_lbl cur_ext <<< "${_opts_ref[$cur_idx]}"
         if [ -n "$typed_buffer" ]; then
             if [ -n "$menu_title" ]; then
-                echo -e "  ${BOLD}${CYAN}Selection:${NC} ${BOLD}${YELLOW}${typed_buffer}${NC} ▏ ${DIM}(Press Enter to confirm, Esc to return)\033[K${NC}"
+                frame_buf+="  ${BOLD}${CYAN}Selection:${NC} ${BOLD}${YELLOW}${typed_buffer}${NC} ▏ ${DIM}(Press Enter to confirm, Esc to return)\033[K${NC}\n"
             else
-                echo -e "  ${BOLD}${CYAN}Selection:${NC} ${BOLD}${YELLOW}${typed_buffer}${NC} ▏ ${DIM}(Press Enter to confirm, 'q' to exit)\033[K${NC}"
+                frame_buf+="  ${BOLD}${CYAN}Selection:${NC} ${BOLD}${YELLOW}${typed_buffer}${NC} ▏ ${DIM}(Press Enter to confirm, 'q' to exit)\033[K${NC}\n"
             fi
         else
             if [ -n "$menu_title" ]; then
-                echo -e "  ${BOLD}${CYAN}Selection:${NC} ${DIM}[Option ${cur_key}: ${cur_lbl}]${NC} ▏ ${DIM}[↑/↓ to Navigate, Enter to Select, Esc to Return]\033[K${NC}"
+                frame_buf+="  ${BOLD}${CYAN}Selection:${NC} ${DIM}[Option ${cur_key}: ${cur_lbl}]${NC} ▏ ${DIM}[↑/↓ to Navigate, Enter to Select, Esc to Return]\033[K${NC}\n"
             else
-                echo -e "  ${BOLD}${CYAN}Selection:${NC} ${DIM}[Option ${cur_key}: ${cur_lbl}]${NC} ▏ ${DIM}[↑/↓ to Navigate, Enter to Select, 'q' to Exit]\033[K${NC}"
+                frame_buf+="  ${BOLD}${CYAN}Selection:${NC} ${DIM}[Option ${cur_key}: ${cur_lbl}]${NC} ▏ ${DIM}[↑/↓ to Navigate, Enter to Select, 'q' to Exit]\033[K${NC}\n"
             fi
         fi
         
-        # Clear any lines below our output in case window size changed
-        printf '\033[J'
+        # Clear lines below output
+        frame_buf+="\033[J"
         
-        local key_action
-        key_action=$(read_nav_key)
+        # Atomically draw complete frame with Synchronized Output (DEC Mode 2026) to eliminate flicker
+        printf '\033[?2026h\033[H%b\033[?2026l' "$frame_buf"
+        
+        local key_action=""
+        read_nav_key key_action
         
         case "$key_action" in
             UP)
@@ -527,7 +623,7 @@ run_interactive_submenu() {
                 typed_buffer=""
                 ;;
             ENTER)
-                printf '\033[?25h'
+                printf '\033[?25h\033[?2026l'
                 clear
                 if [ -n "$typed_buffer" ]; then
                     REPLY="$typed_buffer"
@@ -538,7 +634,7 @@ run_interactive_submenu() {
                 return 0
                 ;;
             ESC)
-                printf '\033[?25h'
+                printf '\033[?25h\033[?2026l'
                 clear
                 REPLY="ESC"
                 return 0
@@ -559,7 +655,7 @@ run_interactive_submenu() {
                     ((m_idx++))
                 done
                 if [ "$typed_buffer" = "q" ] || [ "$typed_buffer" = "Q" ] || [ "$typed_buffer" = "b" ] || [ "$typed_buffer" = "B" ]; then
-                    printf '\033[?25h'
+                    printf '\033[?25h\033[?2026l'
                     clear
                     REPLY="$typed_buffer"
                     return 0
@@ -568,6 +664,7 @@ run_interactive_submenu() {
         esac
     done
 }
+
 
 load_theme() {
     local theme_file="$HOME/.config/mix-manager/theme"
@@ -1977,18 +2074,18 @@ run_sub_script() {
     local script_name="$1"
     shift
     local bash_bin="${BASH:-bash}"
-    if [ -x "./$script_name" ]; then
-        "./$script_name" "$@"
-    elif [ -f "./$script_name" ]; then
-        "$bash_bin" "./$script_name" "$@"
+    if [ -x "$SCRIPT_DIR/scripts/$script_name" ]; then
+        "$SCRIPT_DIR/scripts/$script_name" "$@"
+    elif [ -f "$SCRIPT_DIR/scripts/$script_name" ]; then
+        "$bash_bin" "$SCRIPT_DIR/scripts/$script_name" "$@"
     elif [ -x "$SCRIPT_DIR/$script_name" ]; then
         "$SCRIPT_DIR/$script_name" "$@"
     elif [ -f "$SCRIPT_DIR/$script_name" ]; then
         "$bash_bin" "$SCRIPT_DIR/$script_name" "$@"
-    elif [ -x "$SCRIPT_DIR/scripts/$script_name" ]; then
-        "$SCRIPT_DIR/scripts/$script_name" "$@"
-    elif [ -f "$SCRIPT_DIR/scripts/$script_name" ]; then
-        "$bash_bin" "$SCRIPT_DIR/scripts/$script_name" "$@"
+    elif [ -x "./$script_name" ]; then
+        "./$script_name" "$@"
+    elif [ -f "./$script_name" ]; then
+        "$bash_bin" "./$script_name" "$@"
     elif command -v "$script_name" >/dev/null 2>&1; then
         "$script_name" "$@"
     else
@@ -11177,7 +11274,7 @@ get_cloud_backup_badge() {
 
     if [ -z "$backup_date" ]; then
         local latest_log
-        latest_log=$(ls -t "$SCRIPT_DIR/BACKUP_LOGS"/backup_*.log 2>/dev/null | head -1)
+        latest_log=$(ls -t "$SCRIPT_DIR/BACKUP_LOGS"/backup_*.log "${MIX_ARCHIVE_DIR:-}/BACKUP_LOGS"/backup_*.log 2>/dev/null | head -1)
         if [ -n "$latest_log" ] && [ -f "$latest_log" ]; then
             backup_time=$(stat -c %Y "$latest_log" 2>/dev/null || stat -f %m "$latest_log" 2>/dev/null || echo 0)
             backup_date=$(date -d "@$backup_time" "+%Y-%m-%d %H:%M" 2>/dev/null || date -r "$backup_time" "+%Y-%m-%d %H:%M" 2>/dev/null || echo "Recently")
@@ -12505,7 +12602,7 @@ while true; do
 
     main_header=""
     if [ "$CURRENT_THEME" = "dreamworlds" ] || [ "$CURRENT_THEME" = "dreamworlds_ultra" ]; then
-        local ultra_flag=""
+        ultra_flag=""
         [ "$CURRENT_THEME" = "dreamworlds_ultra" ] && ultra_flag="--ultra"
         local_anim_script="$SCRIPT_DIR/scripts/render_ascii_animation.py"
         [ ! -f "$local_anim_script" ] && local_anim_script="$SCRIPT_DIR/render_ascii_animation.py"
