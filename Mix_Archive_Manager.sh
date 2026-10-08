@@ -11768,7 +11768,7 @@ manage_storage_and_archive_config() {
             "1|Show Mix Storage Drive Space Remaining|(All Configured Mix Drives)"
             "2|Show All Attached Drives Space Remaining|(Get_All_Drive_Space.sh)"
             "3|Refresh Archive Status & File Counts|(Rescan WAVs, FLACs & Tracklists)"
-            "4|Configure Mix Archive Storage Locations|(Option 13: Primary & Multiple Folders)"
+            "4|Configure Mix Archive Storage Locations|(Option 14: Primary & Multiple Folders)"
             "0|Return to Main Menu|(or Esc / q)"
         )
         run_interactive_submenu "STORAGE MANAGEMENT & ARCHIVE CONFIGURATION" "$stg_hdr" opts 0
@@ -12852,7 +12852,7 @@ while true; do
         [ -n "$alarm_clock_status" ] && main_header+="${alarm_clock_status}\n"
         main_header+="${BOLD}${MAGENTA}-----------------------------------------------------------------------------------${NC}\n"
         if ! is_mix_archive_configured; then
-            main_header+="\n  ${BOLD}${RED}⚠️  Please be advised you have not configured your Mix Archive Folder, Please use Option 13 or 10 to Configure this now.${NC}\n"
+            main_header+="\n  ${BOLD}${RED}⚠️  Please be advised you have not configured your Mix Archive Folder, Please use Option 14 or 10 to Configure this now.${NC}\n"
             main_header+="  ${DIM}${YELLOW}(Currently using application root folder: ${SCRIPT_DIR}/MIX_ARCHIVE)${NC}\n"
         fi
         main_header+="\n"
@@ -12877,33 +12877,33 @@ while true; do
         "9|Cloud & Remote Backup Suite|(Google Drive, iCloud, Dropbox, Custom Folder)"
         "10|Storage Management & Multiple Mix Archives Setup|(Drive Space, Rescan, Configure Archives)"
         "SECTION|SECTION 2: STUDIO AUDIO, PLAYBACK, METADATA & VIDEO|"
-        "p|Play Mix/Audio File (MP Audio Player)|(Built-in Player, Custom Animated EQ, FLAC/WAV/MP3)"
-        "11|Tracklist Management, Scanning & Metadata Suite|(Browse, Search, Picard, HTML Index)"
-        "12|Audio Players & Retro Playback Suite|(cliamp, Strawberry, VLC, Audacity, Haruna, Winamp...)"
-        "13|Configure Mix Archive Storage Locations|(Option 13: Primary & Multiple Archives)"
-        "14|Custom Mix Playlists & Traktor History Suite|(.m3u, .m3u8, .xspf, Traktor 3 Playlists)"
-        "15|Digital Audio Workstations (DAWs) & Mix Dispatch|(Reaper, Logic, FL Studio, Ardour, Traktor)"
-        "16|Studio Hardware, Audio Interfaces & Master Volume Control|(PipeWire, ALSA, MIDI, Mute)"
-        "17|Spectrogram Generation & Audio Frequency Analysis|(Single & Multiple Spek, SoX, Praat)"
-        "18|Morning Alarm Clock & DJ Mix Playback Suite|(Steam Games, Wake-Up Mixes, Scheduler)"
-        "19|YouTube Video Suite|(Generate 4K/1080p Videos, Download Videos & Shorts)"
-        "20|Visual Media, Cover Art & Companion Video Suite|(Cut/Split Video, Converters, PPM, Launchers)"
-        "21|Record Video of DJ Mix using GPU Screen Recorder (Linux)|(New Desktop Window)"
-        "22|Listen to Your Top 5 Tracks Right Now (Pre-Selected - Special Option)|$(get_top_5_status_badge)"
+        "11|Play Mix/Audio File (MP Audio Player)|(Built-in Player, Custom Animated EQ, FLAC/WAV/MP3)"
+        "12|Tracklist Management, Scanning & Metadata Suite|(Browse, Search, Picard, HTML Index)"
+        "13|Audio Players & Retro Playback Suite|(cliamp, Strawberry, VLC, Audacity, Haruna, Winamp...)"
+        "14|Configure Mix Archive Storage Locations|(Option 14: Primary & Multiple Archives)"
+        "15|Custom Mix Playlists & Traktor History Suite|(.m3u, .m3u8, .xspf, Traktor 3 Playlists)"
+        "16|Digital Audio Workstations (DAWs) & Mix Dispatch|(Reaper, Logic, FL Studio, Ardour, Traktor)"
+        "17|Studio Hardware, Audio Interfaces & Master Volume Control|(PipeWire, ALSA, MIDI, Mute)"
+        "18|Spectrogram Generation & Audio Frequency Analysis|(Single & Multiple Spek, SoX, Praat)"
+        "19|Morning Alarm Clock & DJ Mix Playback Suite|(Steam Games, Wake-Up Mixes, Scheduler)"
+        "20|YouTube Video Suite|(Generate 4K/1080p Videos, Download Videos & Shorts)"
+        "21|Visual Media, Cover Art & Companion Video Suite|(Cut/Split Video, Converters, PPM, Launchers)"
+        "22|Record Video of DJ Mix using GPU Screen Recorder (Linux)|(New Desktop Window)"
+        "23|Listen to Your Top 5 Tracks Right Now (Pre-Selected - Special Option)|$(get_top_5_status_badge)"
         "SECTION|SECTION 3: SYSTEM, NETWORK, AI & SETTINGS|"
-        "23|Live Session, Stream & Transfer Monitors Suite|(Tracklist, Traktor, Transfers, Uploads, Tasks)"
-        "24|System & Hardware Process Monitors Suite|(btop, nvtop, top)"
-        "25|View Advanced Archive Statistics|(SOF_Archive_Stats.sh)"
-        "26|Promotional Outreach, Syndication & Music Shopping|(Emails, RSS/Podcasts, Beatport/Bandcamp)"
-        "27|Network Services, Congen & Internet Control|(SSH, Samba, FTP, Congen KDE Connect, Block Internet)"
-        "28|Desktop Display Settings, Audio Routing & App Control|(Wayland/X11/macOS/Windows, Close Apps)"
-        "29|Universal System Maintenance & Cleanup|(Drive space, OS Updates, Package Clean, Logs)"
-        "30|Monitor System Processes and Bash Commands with System Info|(MP_Monitor_Bash.sh, new Terminal tab)"
-        "31|AI Assistant & Local LLM Servers Suite|(Claude, GPT, Ollama, DeepSeek, WAN2GP, Beszel)"
-        "32|Dynamic MOTD Banner Manager & Drive Burner|(Last 3 Mixes, Netpbm, ISO USB Burner)"
-        "33|Manager Settings, Themes, Shell CLI & Reboot|(Themes, Migration, Bash CLI, Reboot)"
+        "24|Live Session, Stream & Transfer Monitors Suite|(Tracklist, Traktor, Transfers, Uploads, Tasks)"
+        "25|System & Hardware Process Monitors Suite|(btop, nvtop, top)"
+        "26|View Advanced Archive Statistics|(SOF_Archive_Stats.sh)"
+        "27|Promotional Outreach, Syndication & Music Shopping|(Emails, RSS/Podcasts, Beatport/Bandcamp)"
+        "28|Network Services, Congen & Internet Control|(SSH, Samba, FTP, Congen KDE Connect, Block Internet)"
+        "29|Desktop Display Settings, Audio Routing & App Control|(Wayland/X11/macOS/Windows, Close Apps)"
+        "30|Universal System Maintenance & Cleanup|(Drive space, OS Updates, Package Clean, Logs)"
+        "31|Monitor System Processes and Bash Commands with System Info|(MP_Monitor_Bash.sh, new Terminal tab)"
+        "32|AI Assistant & Local LLM Servers Suite|(Claude, GPT, Ollama, DeepSeek, WAN2GP, Beszel)"
+        "33|Dynamic MOTD Banner Manager & Drive Burner|(Last 3 Mixes, Netpbm, ISO USB Burner)"
+        "34|Manager Settings, Themes, Shell CLI & Reboot|(Themes, Migration, Bash CLI, Reboot)"
         "SEP|SEP|"
-        "34|Exit Manager|(or q / exit)"
+        "35|Exit Manager|(or q / exit)"
     )
 
     if [ -n "$CLI_INITIAL_ACTION" ]; then
@@ -12960,94 +12960,91 @@ while true; do
             play_sound_effect "storage"
             manage_storage_and_archive_config
             ;;
-        11)
+        11|p|P|play|Play|player|mp_player|mp-player|mpplayer|mp|"Play Mix/Audio File (MP Audio Player)")
+            manage_mp_audio_player
+            ;;
+        12)
             manage_tracklist_suite
             ;;
-        12|manage-audio-players|players)
+        13|manage-audio-players|players)
             manage_audio_players
             ;;
-        13|config-archive|archive-dir|archive-folder)
+        14|config-archive|archive-dir|archive-folder)
             play_sound_effect "storage"
             configure_mix_archive_folder
             ;;
         specs|metadata|inspect)
             inspect_playing_audio_file
             ;;
-        14)
+        15)
             manage_playlists_and_history
             ;;
-        15)
+        16)
             manage_daws_suite
             ;;
-        16)
+        17)
             manage_studio_hardware_and_volume
             ;;
-        17)
+        18)
             manage_spek_generation
             ;;
-        18)
+        19)
             manage_mix_scheduler
             ;;
-        19)
+        20)
             generate_youtube_video
             ;;
-        20|manage-visual-media|visual-launchers|video-launchers)
+        21|manage-visual-media|visual-launchers|video-launchers)
             manage_visual_media_suite
             ;;
-        21|gpu-screen-recorder|record-mix)
+        22|gpu-screen-recorder|record-mix)
             launch_gpu_screen_recorder
             press_enter
             ;;
-        22|top5|top-5|top_5|top|mystery|special)
+        23|top5|top-5|top_5|top|mystery|special)
             manage_top_5_tracks
             ;;
-        23|manage-live-monitors|live-monitors)
+        24|manage-live-monitors|live-monitors)
             manage_live_monitors
             ;;
-        24|manage-process-monitors|process-monitors)
+        25|manage-process-monitors|process-monitors)
             manage_system_process_monitors
             ;;
-        25)
+        26)
             echo -e "\n${BOLD}${YELLOW}Loading Advanced Archive Statistics...${NC}\n"
             sleep 0.5
             run_sub_script "SOF_Archive_Stats.sh"
             press_enter
             ;;
-        26)
+        27)
             manage_promo_and_syndication
             ;;
-        27)
+        28)
             manage_network_and_internet
             ;;
-        28)
+        29)
             manage_desktop_and_display
             ;;
-        29)
+        30)
             manage_system_maintenance
             ;;
-        30|m|monitor|mp-monitor|bash-monitor)
+        31|m|monitor|mp-monitor|bash-monitor)
             manage_process_and_bash_monitor
             ;;
-        31)
+        32)
             manage_ai_and_servers
             ;;
-        32)
+        33)
             manage_motd_and_tools
             ;;
-        33)
+        34)
             manage_settings_and_system
             ;;
         ESC)
             # On the main menu, Esc does not exit to terminal (prevents accidental exit on rapid key navigation)
             ;;
-        34|77|[qQ]|[eE][xX][iI][tT])
+        35|77|[qQ]|[eE][xX][iI][tT])
             exit_mix_manager
-            ;;
-        # ----------------------------------------------------------------------
-        # MP Audio Player & Shortcut Aliases
-        # ----------------------------------------------------------------------
-        p|P|play|Play|player|mp_player|mp-player|mpplayer|mp|"Play Mix/Audio File (MP Audio Player)")
-            manage_mp_audio_player
             ;;
         audacious|audacious-launch)
             launch_audacious
@@ -13141,7 +13138,7 @@ while true; do
             manage_desktop_shortcuts
             ;;
         *)
-            echo -e "\n${RED}Invalid option! Please enter a number between 0 and 34, or q to exit.${NC}"
+            echo -e "\n${RED}Invalid option! Please enter a number between 0 and 35, or q to exit.${NC}"
             sleep 2
             ;;
     esac
