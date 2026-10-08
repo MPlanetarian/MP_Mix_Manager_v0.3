@@ -134,8 +134,8 @@ def format_seconds(seconds: float) -> str:
 class MixArchiveScanner:
     """Discovers and catalogs all available mixes across configured archive folders."""
 
-    def __init__(self, base_dir: Path):
-        self.base_dir = base_dir
+    def __init__(self, base_dir: Union[Path, str]):
+        self.base_dir = Path(base_dir)
         self.mixes: List[Dict[str, Any]] = []
         self._load_and_scan()
 
