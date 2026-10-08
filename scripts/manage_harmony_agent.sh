@@ -68,12 +68,15 @@ is_ollama_running() {
 }
 
 get_active_model() {
-    # Check running process command line
+    # Check running python process directly (excluding bash/konsole wrapper)
     local cmdline
-    cmdline=$(pgrep -a -f "MP_Harmony_Agent\.py" 2>/dev/null | grep -oE '(gpt-oss[^ ]*|qwen[^ ]*)' | head -1)
+    cmdline=$(pgrep -a -f "python.*MP_Harmony_Agent\.py" 2>/dev/null | grep -oE '(gpt-oss[a-zA-Z0-9:._-]*|qwen[a-zA-Z0-9:._-]*)' | head -1)
     if [ -n "$cmdline" ]; then
-        echo "$cmdline"
-        return 0
+        cmdline="${cmdline//[\'\";]/}"
+        if [ -n "$cmdline" ]; then
+            echo "$cmdline"
+            return 0
+        fi
     fi
 
     # Fallback to querying Ollama tags
@@ -81,6 +84,7 @@ get_active_model() {
         local found_model
         found_model=$(curl -s "${OLLAMA_API_URL}/api/tags" 2>/dev/null | grep -o '"name":"[^"]*"' | grep -i "gpt-oss" | head -1 | cut -d'"' -f4)
         if [ -n "$found_model" ]; then
+            found_model="${found_model//[\'\";]/}"
             echo "$found_model"
             return 0
         fi
@@ -113,6 +117,8 @@ start_harmony_bg() {
 
     local target_model
     target_model=$(get_active_model)
+    target_model="${target_model//[\'\";]/}"
+    [ -z "$target_model" ] && target_model="gpt-oss-pinned:latest"
 
     echo -e "Launching MP Harmony Voice Bridge server [Model: ${CYAN}${target_model}${NC}, Port: ${CYAN}${HARMONY_PORT}${NC}]..."
     nohup "$PYTHON_BIN" "$HARMONY_SCRIPT" --server "$target_model" >"$LOG_FILE" 2>&1 &
@@ -191,6 +197,8 @@ start_harmony_window() {
 
     local target_model
     target_model=$(get_active_model)
+    target_model="${target_model//[\'\";]/}"
+    [ -z "$target_model" ] && target_model="gpt-oss-pinned:latest"
     local TITLE="MP Harmony AI Agent Server (Port ${HARMONY_PORT})"
     local CMD="cd '${HARMONY_DIR}' && python3 '${HARMONY_SCRIPT}' --server '${target_model}'; echo ''; echo 'Agent exited. Press [Enter] to close...'; read -r"
 
@@ -230,6 +238,8 @@ launch_chat_cli() {
 
     local target_model
     target_model=$(get_active_model)
+    target_model="${target_model//[\'\";]/}"
+    [ -z "$target_model" ] && target_model="gpt-oss-pinned:latest"
 
     echo -e "\n${BOLD}${MAGENTA}======================================================================${NC}"
     echo -e "${BOLD}${MAGENTA}         LAUNCHING MP HARMONY AI AGENT INTERACTIVE CHAT               ${NC}"
