@@ -122,16 +122,14 @@ start_harmony_bg() {
     [ -z "$target_model" ] && target_model="gpt-oss-pinned:latest"
 
     echo -e "Launching MP Harmony Voice Bridge server [Model: ${CYAN}${target_model}${NC}, Port: ${CYAN}${HARMONY_PORT}${NC}]..."
-    nohup "$PYTHON_BIN" "$HARMONY_SCRIPT" --server "$target_model" >"$LOG_FILE" 2>&1 &
+    setsid "$PYTHON_BIN" -u "$HARMONY_SCRIPT" --server "$target_model" </dev/null >"$LOG_FILE" 2>&1 &
     local launch_pid=$!
+    disown "$launch_pid" 2>/dev/null || true
 
     echo -e "Waiting for MP Harmony API endpoint to initialize..."
     local ready=false
-    for _ in {1..20}; do
+    for _ in {1..30}; do
         if ss -tuln 2>/dev/null | grep -q ":${HARMONY_PORT} "; then
-            ready=true
-            break
-        elif is_harmony_running; then
             ready=true
             break
         fi

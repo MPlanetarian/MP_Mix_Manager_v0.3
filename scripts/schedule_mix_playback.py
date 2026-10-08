@@ -78,6 +78,8 @@ def get_default_player():
                             val = line.split("=", 1)[1].strip().strip('"').strip("'")
                             if val:
                                 return val.lower()
+            except Exception:
+                pass
     return "audacious"
 
 
