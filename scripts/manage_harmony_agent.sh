@@ -35,18 +35,27 @@ LOG_FILE="/tmp/mp-harmony-agent.log"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 
 is_harmony_running() {
-    if pgrep -f "MP_Harmony_Agent\.py" >/dev/null 2>&1; then
-        return 0
-    elif pgrep -f "HA\.py.*--server" >/dev/null 2>&1; then
+    if command -v lsof >/dev/null 2>&1 && lsof -i ":${HARMONY_PORT}" >/dev/null 2>&1; then
         return 0
     elif ss -tuln 2>/dev/null | grep -q ":${HARMONY_PORT} "; then
+        return 0
+    elif pgrep -f "MP_Harmony_Agent\.py" >/dev/null 2>&1; then
+        return 0
+    elif pgrep -f "HA\.py.*--server" >/dev/null 2>&1; then
         return 0
     fi
     return 1
 }
 
 get_harmony_pids() {
-    pgrep -f "MP_Harmony_Agent\.py" 2>/dev/null | tr '\n' ' '
+    local pids=""
+    if command -v lsof >/dev/null 2>&1; then
+        pids=$(lsof -t -i ":${HARMONY_PORT}" 2>/dev/null | tr '\n' ' ')
+    fi
+    if [ -z "$pids" ]; then
+        pids=$(pgrep -f "MP_Harmony_Agent\.py" 2>/dev/null | tr '\n' ' ')
+    fi
+    echo "$pids"
 }
 
 is_ollama_running() {
@@ -145,6 +154,27 @@ start_harmony_bg() {
 
 start_harmony_window() {
     echo -e "\n${BOLD}${BLUE}=== STARTING MP HARMONY AI AGENT (TERMINAL WINDOW) ===${NC}"
+    if is_harmony_running; then
+        local pids
+        pids=$(get_harmony_pids)
+        echo -e "${BOLD}${YELLOW}Notice: MP Harmony Agent server is ALREADY RUNNING!${NC}"
+        echo -e "  • PID(s):        ${CYAN}${pids% }${NC}"
+        echo -e "  • Voice Bridge:  ${CYAN}${HARMONY_API_URL}/v1/chat/completions${NC}"
+        echo -e "  • Status:        ${GREEN}● ACTIVE${NC}\n"
+        local restart_choice=""
+        read -r -p "Do you want to stop the existing instance and restart in a new window? [y/N]: " restart_choice </dev/tty || true
+        case "$restart_choice" in
+            [yY]|[yY][eE][sS])
+                stop_harmony
+                sleep 1
+                ;;
+            *)
+                echo -e "${GREEN}Keeping existing MP Harmony Agent server running.${NC}"
+                return 0
+                ;;
+        esac
+    fi
+
     if [ ! -f "$HARMONY_SCRIPT" ]; then
         echo -e "${RED}Error: MP_Harmony_Agent.py not found in ${HARMONY_DIR}!${NC}"
         return 1
@@ -225,6 +255,7 @@ stop_harmony() {
     local pids
     pids=$(get_harmony_pids)
     if [ -n "$pids" ]; then
+        echo -e "Terminating MP Harmony process(es): ${pids% }..."
         # shellcheck disable=SC2086
         kill $pids 2>/dev/null || true
         sleep 1
@@ -235,6 +266,11 @@ stop_harmony() {
         fi
     fi
 
+    if command -v fuser >/dev/null 2>&1; then
+        fuser -k -9 "${HARMONY_PORT}/tcp" >/dev/null 2>&1 || true
+    fi
+
+    sleep 0.5
     if ! is_harmony_running; then
         echo -e "${GREEN}✓ MP Harmony AI Agent successfully stopped.${NC}"
     else
