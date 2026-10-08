@@ -2943,44 +2943,59 @@ fi
 
 CLI_INITIAL_ACTION="${1:-}"
 
+_LAST_STATS_CHECK=0
+_CACHED_STATS_CORE=""
+
+invalidate_archive_stats_cache() {
+    _LAST_STATS_CHECK=0
+    _CACHED_STATS_CORE=""
+}
+
 show_stats() {
-    echo -e "${BOLD}${BLUE}=== CURRENT STATUS & STATISTICS ===${NC}"
-    if ! is_internet_connected; then
-        echo -e "  ${DIM}${YELLOW}⚡ Offline Mode: Cloud storage excluded from scan${NC}"
-    fi
-    
-    local wav_dirs=()
-    while IFS= read -r wdir; do
-        [ -n "$wdir" ] && [ -d "$wdir" ] && wav_dirs+=("$wdir")
-    done < <(get_all_wav_archive_dirs)
+    local now
+    now=$(date +%s 2>/dev/null || echo 0)
+    if [ $((now - _LAST_STATS_CHECK)) -lt 30 ] && [ -n "$_CACHED_STATS_CORE" ]; then
+        echo -e "$_CACHED_STATS_CORE"
+    else
+        _LAST_STATS_CHECK="$now"
+        local stats_buff=""
+        stats_buff+="${BOLD}${BLUE}=== CURRENT STATUS & STATISTICS ===${NC}\n"
+        if ! is_internet_connected; then
+            stats_buff+="  ${DIM}${YELLOW}⚡ Offline Mode: Cloud storage excluded from scan${NC}\n"
+        fi
+        
+        local wav_dirs=()
+        while IFS= read -r wdir; do
+            [ -n "$wdir" ] && [ -d "$wdir" ] && wav_dirs+=("$wdir")
+        done < <(get_all_wav_archive_dirs)
 
-    local all_flac_dirs=()
-    while IFS= read -r fdir; do
-        [ -n "$fdir" ] && [ -d "$fdir" ] && all_flac_dirs+=("$fdir")
-    done < <(get_all_flac_output_dirs)
+        local all_flac_dirs=()
+        while IFS= read -r fdir; do
+            [ -n "$fdir" ] && [ -d "$fdir" ] && all_flac_dirs+=("$fdir")
+        done < <(get_all_flac_output_dirs)
 
-    local all_parent_dirs=()
-    while IFS= read -r pdir; do
-        [ -n "$pdir" ] && [ -d "$pdir" ] && all_parent_dirs+=("$pdir")
-    done < <(get_all_mix_archive_dirs)
+        local all_parent_dirs=()
+        while IFS= read -r pdir; do
+            [ -n "$pdir" ] && [ -d "$pdir" ] && all_parent_dirs+=("$pdir")
+        done < <(get_all_mix_archive_dirs)
 
-    local root_wav_count=0
-    local root_wav_size_mb=0
-    local archive_wav_count=0
-    local archive_wav_size_gb="0.00"
-    local total_flac_count=0
-    local missing_tl_count=0
-    local mp3_count=0
-    local wav_out_count=0
-    local mp4_count=0
+        local root_wav_count=0
+        local root_wav_size_mb=0
+        local archive_wav_count=0
+        local archive_wav_size_gb="0.00"
+        local total_flac_count=0
+        local missing_tl_count=0
+        local mp3_count=0
+        local wav_out_count=0
+        local mp4_count=0
 
-    # High-Performance Single-Pass Python Scanner (1,000x faster on Cloud/FUSE mounts like GoogleDrive)
-    local w_str f_str p_str stats_out
-    w_str="$(printf '%s\n' "${wav_dirs[@]}")"
-    f_str="$(printf '%s\n' "${all_flac_dirs[@]}")"
-    p_str="$(printf '%s\n' "${all_parent_dirs[@]}")"
+        # High-Performance Single-Pass Python Scanner (1,000x faster on Cloud/FUSE mounts like GoogleDrive)
+        local w_str f_str p_str stats_out
+        w_str="$(printf '%s\n' "${wav_dirs[@]}")"
+        f_str="$(printf '%s\n' "${all_flac_dirs[@]}")"
+        p_str="$(printf '%s\n' "${all_parent_dirs[@]}")"
 
-    stats_out=$(python3 - "$PWD" "$w_str" "$f_str" "$p_str" << 'PY' 2>/dev/null || true
+        stats_out=$(python3 - "$PWD" "$w_str" "$f_str" "$p_str" << 'PY' 2>/dev/null || true
 import os, sys
 
 root_dir = sys.argv[1]
@@ -3051,50 +3066,53 @@ print(f"{root_wav_count}|{root_wav_size_mb}|{archive_wav_count}|{archive_wav_siz
 PY
 )
 
-    if [ -n "$stats_out" ]; then
-        IFS='|' read -r root_wav_count root_wav_size_mb archive_wav_count archive_wav_size_gb total_flac_count missing_tl_count mp3_count wav_out_count mp4_count <<< "$stats_out"
-    else
-        # Fallback to shell-native scan if python failed
-        shopt -s nullglob nocaseglob
-        local root_wavs=(./*.wav)
-        root_wav_count=${#root_wavs[@]}
-        local root_wav_size=0
-        for w in "${root_wavs[@]}"; do
-            [ -f "$w" ] && root_wav_size=$((root_wav_size + $(stat -c %s "$w" 2>/dev/null || wc -c < "$w")))
-        done
-        root_wav_size_mb=$((root_wav_size / 1024 / 1024))
+        if [ -n "$stats_out" ]; then
+            IFS='|' read -r root_wav_count root_wav_size_mb archive_wav_count archive_wav_size_gb total_flac_count missing_tl_count mp3_count wav_out_count mp4_count <<< "$stats_out"
+        else
+            shopt -s nullglob nocaseglob
+            local root_wavs=(./*.wav)
+            root_wav_count=${#root_wavs[@]}
+            local root_wav_size=0
+            for w in "${root_wavs[@]}"; do
+                [ -f "$w" ] && root_wav_size=$((root_wav_size + $(stat -c %s "$w" 2>/dev/null || wc -c < "$w")))
+            done
+            root_wav_size_mb=$((root_wav_size / 1024 / 1024))
 
-        for wdir in "${wav_dirs[@]}"; do
-            local cur_wavs=("$wdir"/*.wav)
-            archive_wav_count=$((archive_wav_count + ${#cur_wavs[@]}))
-        done
-        for fdir in "${all_flac_dirs[@]}"; do
-            local cur_flacs=("$fdir"/*.flac)
-            total_flac_count=$((total_flac_count + ${#cur_flacs[@]}))
-        done
-        shopt -u nullglob nocaseglob
-    fi
+            for wdir in "${wav_dirs[@]}"; do
+                local cur_wavs=("$wdir"/*.wav)
+                archive_wav_count=$((archive_wav_count + ${#cur_wavs[@]}))
+            done
+            for fdir in "${all_flac_dirs[@]}"; do
+                local cur_flacs=("$fdir"/*.flac)
+                total_flac_count=$((total_flac_count + ${#cur_flacs[@]}))
+            done
+            shopt -u nullglob nocaseglob
+        fi
 
-    local loc_count=${#all_flac_dirs[@]}
-    local loc_note=""
-    if [ "$loc_count" -gt 1 ]; then
-        loc_note=" across ${BOLD}${WHITE}${loc_count}${NC}${CYAN} storage archives${NC}"
-    fi
+        local loc_count=${#all_flac_dirs[@]}
+        local loc_note=""
+        if [ "$loc_count" -gt 1 ]; then
+            loc_note=" across ${BOLD}${WHITE}${loc_count}${NC}${CYAN} storage archives${NC}"
+        fi
 
-    echo -e "  Root Directory WAVs (Pending Conversion):  ${BOLD}${YELLOW}${root_wav_count}${NC} files (${root_wav_size_mb} MB)"
-    echo -e "  Archive Directory WAVs (Converted):       ${BOLD}${GREEN}${archive_wav_count}${NC} files (${archive_wav_size_gb} GB)"
-    echo -e "  Total FLAC Files Generated:               ${BOLD}${CYAN}${total_flac_count}${NC} files${loc_note}"
-    [ "$mp3_count" -gt 0 ] && echo -e "  Total MP3 Files Generated:                ${BOLD}${CYAN}${mp3_count}${NC} files"
-    [ "$wav_out_count" -gt 0 ] && echo -e "  Total WAV Converted Outputs:              ${BOLD}${CYAN}${wav_out_count}${NC} files"
-    [ "$mp4_count" -gt 0 ] && echo -e "  Total MP4 Videos Generated:               ${BOLD}${CYAN}${mp4_count}${NC} videos"
-    if [ "$missing_tl_count" -gt 0 ]; then
-        echo -e "  FLAC Files Missing Tracklists:            ${BOLD}${RED}${missing_tl_count}${NC} files"
-    else
-        echo -e "  FLAC Files Missing Tracklists:            ${BOLD}${GREEN}0${NC} files (All complete!)"
+        stats_buff+="  Root Directory WAVs (Pending Conversion):  ${BOLD}${YELLOW}${root_wav_count}${NC} files (${root_wav_size_mb} MB)\n"
+        stats_buff+="  Archive Directory WAVs (Converted):       ${BOLD}${GREEN}${archive_wav_count}${NC} files (${archive_wav_size_gb} GB)\n"
+        stats_buff+="  Total FLAC Files Generated:               ${BOLD}${CYAN}${total_flac_count}${NC} files${loc_note}\n"
+        [ "$mp3_count" -gt 0 ] && stats_buff+="  Total MP3 Files Generated:                ${BOLD}${CYAN}${mp3_count}${NC} files\n"
+        [ "$wav_out_count" -gt 0 ] && stats_buff+="  Total WAV Converted Outputs:              ${BOLD}${CYAN}${wav_out_count}${NC} files\n"
+        [ "$mp4_count" -gt 0 ] && stats_buff+="  Total MP4 Videos Generated:               ${BOLD}${CYAN}${mp4_count}${NC} videos\n"
+        if [ "$missing_tl_count" -gt 0 ]; then
+            stats_buff+="  FLAC Files Missing Tracklists:            ${BOLD}${RED}${missing_tl_count}${NC} files\n"
+        else
+            stats_buff+="  FLAC Files Missing Tracklists:            ${BOLD}${GREEN}0${NC} files (All complete!)\n"
+        fi
+        local cloud_stat
+        cloud_stat=$(get_cloud_backup_badge 2>/dev/null)
+        [ -n "$cloud_stat" ] && stats_buff+="  ${cloud_stat}\n"
+        
+        _CACHED_STATS_CORE="$(printf '%b' "$stats_buff")"
+        echo -e "$_CACHED_STATS_CORE"
     fi
-    local cloud_stat
-    cloud_stat=$(get_cloud_backup_badge 2>/dev/null)
-    [ -n "$cloud_stat" ] && echo -e "  ${cloud_stat}"
 
     # 5. Live Player Status & Audio Specifications
     if get_audacious_track_info 2>/dev/null; then
@@ -8437,7 +8455,18 @@ manage_themes() {
 # ADVANCED SYSTEM, AUDIO, TRACKLIST & ARCHIVE UTILITIES (OPTIONS 1-14, 32)
 # ==============================================================================
 
+_LAST_PERF_CHECK=0
+_CACHED_PERF_DISPLAY=""
+
 get_system_perf_stats() {
+    local now
+    now=$(date +%s 2>/dev/null || echo 0)
+    if [ $((now - _LAST_PERF_CHECK)) -lt 5 ] && [ -n "$_CACHED_PERF_DISPLAY" ]; then
+        echo -e "$_CACHED_PERF_DISPLAY"
+        return 0
+    fi
+    _LAST_PERF_CHECK="$now"
+
     local cpu_info="" ram_info="" disk_info=""
     
     # 1. CPU / Load Info
@@ -8490,10 +8519,22 @@ get_system_perf_stats() {
         disk_info="Mounted"
     fi
 
-    echo -e "  ${BOLD}${CYAN}⚡ CPU Load:${NC} ${cpu_info}  ${BOLD}${BLUE}│${NC}  ${BOLD}${CYAN}🧠 RAM:${NC} ${ram_info}  ${BOLD}${BLUE}│${NC}  ${BOLD}${CYAN}💾 Mix Drive Free:${NC} ${disk_info}"
+    _CACHED_PERF_DISPLAY="  ${BOLD}${CYAN}⚡ CPU Load:${NC} ${cpu_info}  ${BOLD}${BLUE}│${NC}  ${BOLD}${CYAN}🧠 RAM:${NC} ${ram_info}  ${BOLD}${BLUE}│${NC}  ${BOLD}${CYAN}💾 Mix Drive Free:${NC} ${disk_info}"
+    echo -e "$_CACHED_PERF_DISPLAY"
 }
 
+_LAST_AUDIO_IFACE_CHECK=0
+_CACHED_AUDIO_IFACE_DISPLAY=""
+
 get_active_audio_interface_display() {
+    local now
+    now=$(date +%s 2>/dev/null || echo 0)
+    if [ $((now - _LAST_AUDIO_IFACE_CHECK)) -lt 30 ] && [ -n "$_CACHED_AUDIO_IFACE_DISPLAY" ]; then
+        echo -e "$_CACHED_AUDIO_IFACE_DISPLAY"
+        return 0
+    fi
+    _LAST_AUDIO_IFACE_CHECK="$now"
+
     local script_py="$SCRIPT_DIR/scripts/get_audio_interface.py"
     [ ! -f "$script_py" ] && script_py="$PWD/scripts/get_audio_interface.py"
     if [ -f "$script_py" ]; then
@@ -8503,7 +8544,8 @@ get_active_audio_interface_display() {
             local iface latency sys_mode
             IFS='|' read -r iface latency sys_mode <<< "$raw"
             if [ -n "$iface" ]; then
-                echo -e "  ${BOLD}${CYAN}🎧 Audio Interface:${NC} ${WHITE}${iface}${NC}  ${BOLD}${BLUE}│${NC}  ${BOLD}${CYAN}⚡ Latency:${NC} ${GREEN}${latency:-Active}${NC}  ${BOLD}${BLUE}│${NC}  ${BOLD}${CYAN}🎛️ Engine:${NC} ${sys_mode:-Audio}"
+                _CACHED_AUDIO_IFACE_DISPLAY="  ${BOLD}${CYAN}🎧 Audio Interface:${NC} ${WHITE}${iface}${NC}  ${BOLD}${BLUE}│${NC}  ${BOLD}${CYAN}⚡ Latency:${NC} ${GREEN}${latency:-Active}${NC}  ${BOLD}${BLUE}│${NC}  ${BOLD}${CYAN}🎛️ Engine:${NC} ${sys_mode:-Audio}"
+                echo -e "$_CACHED_AUDIO_IFACE_DISPLAY"
                 return 0
             fi
         fi
@@ -8511,26 +8553,49 @@ get_active_audio_interface_display() {
     return 1
 }
 
+_LAST_ALARM_STATUS_CHECK=0
+_CACHED_ALARM_CLOCK_STATUS=""
+
 get_alarm_clock_status_display() {
+    local now
+    now=$(date +%s 2>/dev/null || echo 0)
+    if [ $((now - _LAST_ALARM_STATUS_CHECK)) -lt 30 ] && [ -n "$_CACHED_ALARM_CLOCK_STATUS" ]; then
+        echo -e "$_CACHED_ALARM_CLOCK_STATUS"
+        return 0
+    fi
+    _LAST_ALARM_STATUS_CHECK="$now"
+
     local script_py="$SCRIPT_DIR/scripts/get_alarm_clock_status.py"
     [ ! -f "$script_py" ] && script_py="$PWD/scripts/get_alarm_clock_status.py"
     if [ -f "$script_py" ] && command -v python3 >/dev/null 2>&1; then
-        python3 "$script_py" 2>/dev/null
+        _CACHED_ALARM_CLOCK_STATUS="$(python3 "$script_py" 2>/dev/null)"
     elif [ -x "$SCRIPT_DIR/scripts/get_alarm_clock_status.sh" ]; then
-        "$SCRIPT_DIR/scripts/get_alarm_clock_status.sh" 2>/dev/null
+        _CACHED_ALARM_CLOCK_STATUS="$("$SCRIPT_DIR/scripts/get_alarm_clock_status.sh" 2>/dev/null)"
     fi
+    [ -n "$_CACHED_ALARM_CLOCK_STATUS" ] && echo -e "$_CACHED_ALARM_CLOCK_STATUS"
 }
+
+_LAST_SPEC_TARGET=""
+_CACHED_SPEC_SUMMARY=""
 
 get_playing_audio_spec_summary() {
     local target_file="$1"
+    if [ -n "$target_file" ] && [ "$target_file" = "$_LAST_SPEC_TARGET" ] && [ -n "$_CACHED_SPEC_SUMMARY" ]; then
+        echo "$_CACHED_SPEC_SUMMARY"
+        return 0
+    fi
+
     local script_py="$SCRIPT_DIR/scripts/inspect_playing_audio.py"
     [ ! -f "$script_py" ] && script_py="$PWD/scripts/inspect_playing_audio.py"
     if [ -f "$script_py" ]; then
         if [ -n "$target_file" ] && [ -f "$target_file" ]; then
-            python3 "$script_py" "$target_file" --summary 2>/dev/null
+            _CACHED_SPEC_SUMMARY="$(python3 "$script_py" "$target_file" --summary 2>/dev/null)"
+            _LAST_SPEC_TARGET="$target_file"
         else
-            python3 "$script_py" --summary 2>/dev/null
+            _CACHED_SPEC_SUMMARY="$(python3 "$script_py" --summary 2>/dev/null)"
+            _LAST_SPEC_TARGET=""
         fi
+        [ -n "$_CACHED_SPEC_SUMMARY" ] && echo "$_CACHED_SPEC_SUMMARY"
     fi
 }
 
@@ -9354,6 +9419,8 @@ manage_audio_conversion() {
             "8|Master & Normalize Loudness|(-14 LUFS Streaming / -16 LUFS Podcast / -23 LUFS)"
             "9|Standard Red Book CUE Sheet Generator & Audio Splitter|(generate_cue_sheet.py)"
             "10|Launch Full Interactive Converter CLI|(convert_audio_format.sh)"
+            "11|Verify Audio Mastering Quality, True Peak & Mono Phase|(verify_audio_mastering.py)"
+            "12|Embed Cover Art, Vorbis Tags & ReplayGain into Mixes|(tag_audio_metadata.py)"
             "0|Return to Main Menu|(or Esc / q)"
         )
         local conv_hdr="  Supported Formats: ${BOLD}FLAC, MP3, Ogg Vorbis, Opus, Apple AAC, WAV${NC}\n  WAV Bit Depths:    ${BOLD}32-bit Float, 32-bit Int, 24-bit PCM, 16-bit 44.1kHz PCM${NC}\n"
@@ -9411,6 +9478,29 @@ manage_audio_conversion() {
                 ;;
             10)
                 bash "$script"
+                press_enter
+                ;;
+            11)
+                echo -e "\n${BOLD}${BLUE}=== VERIFY AUDIO MASTERING QUALITY & MONO COMPATIBILITY ===${NC}\n"
+                read -r -p "Enter path to audio file (or drag & drop): " v_target
+                v_target=$(echo "$v_target" | sed "s/^'//;s/'$//;s/^\"//;s/\"$//")
+                if [ -n "$v_target" ] && [ -f "$v_target" ]; then
+                    python3 "$SCRIPT_DIR/scripts/verify_audio_mastering.py" "$v_target"
+                else
+                    echo -e "${RED}Error: File not found.${NC}"
+                fi
+                press_enter
+                ;;
+            12)
+                echo -e "\n${BOLD}${BLUE}=== EMBED COVER ART, METADATA & REPLAYGAIN ===${NC}\n"
+                read -r -p "Enter path to audio file or directory: " t_target
+                t_target=$(echo "$t_target" | sed "s/^'//;s/'$//;s/^\"//;s/\"$//")
+                if [ -n "$t_target" ]; then
+                    python3 "$SCRIPT_DIR/scripts/tag_audio_metadata.py" "$t_target"
+                    invalidate_archive_stats_cache
+                else
+                    echo -e "${RED}Error: Target path cannot be empty.${NC}"
+                fi
                 press_enter
                 ;;
             0|[qQ]|[eE][xX][iI][tT]|ESC)
@@ -11088,14 +11178,26 @@ get_current_weather() {
     fi
 }
 
+_LAST_PLANETS_CHECK=0
+_CACHED_PLANETS_DISPLAY=""
+
 get_planets_above_horizon() {
     [ "${PLANETS_ENABLED:-true}" != "true" ] && return 0
+
+    local now
+    now=$(date +%s 2>/dev/null || echo 0)
+    if [ $((now - _LAST_PLANETS_CHECK)) -lt 120 ] && [ -n "$_CACHED_PLANETS_DISPLAY" ]; then
+        echo -e "$_CACHED_PLANETS_DISPLAY"
+        return 0
+    fi
+    _LAST_PLANETS_CHECK="$now"
 
     local planets_py="$SCRIPT_DIR/scripts/get_planets.py"
     [ ! -f "$planets_py" ] && planets_py="$PWD/scripts/get_planets.py"
     if [ -f "$planets_py" ] && command -v python3 >/dev/null 2>&1; then
         local loc="${WEATHER_LOCATION:-Swansea, UK}"
-        python3 "$planets_py" --location "$loc" 2>/dev/null
+        _CACHED_PLANETS_DISPLAY="$(python3 "$planets_py" --location "$loc" 2>/dev/null)"
+        [ -n "$_CACHED_PLANETS_DISPLAY" ] && echo -e "$_CACHED_PLANETS_DISPLAY"
     fi
 }
 
@@ -11827,6 +11929,8 @@ manage_tracklist_suite() {
             "3|Scan & Generate Missing Tracklists|(Check_Find_Tracklists.sh)"
             "4|Generate Master Tracklist HTML Index|(Generate_Master_Tracklist.sh)"
             "5|Launch MusicBrainz Picard Meta Tag Editor|(Auto-install if missing)"
+            "6|Export YouTube & SoundCloud Chapters|(export_chapters.py - Timestamps / CUE / MD)"
+            "7|Auto-Identify Unknown Tracks via Audio Fingerprinting|(identify_mix_tracks.py - AcoustID / Shazam)"
             "0|Return to Main Menu|(or Esc / q)"
         )
         run_interactive_submenu "TRACKLIST MANAGEMENT, SCANNING & METADATA SUITE" "" opts 0
@@ -11854,6 +11958,28 @@ manage_tracklist_suite() {
                 ;;
             5)
                 launch_or_install_picard
+                ;;
+            6)
+                echo -e "\n${BOLD}${BLUE}=== EXPORT YOUTUBE & SOUNDCLOUD CHAPTERS ===${NC}\n"
+                read -r -p "Enter path to tracklist .txt or .cue file: " ch_file
+                ch_file=$(echo "$ch_file" | sed "s/^'//;s/'$//;s/^\"//;s/\"$//")
+                if [ -n "$ch_file" ] && [ -f "$ch_file" ]; then
+                    python3 "$SCRIPT_DIR/scripts/export_chapters.py" "$ch_file" --format all --clipboard
+                else
+                    echo -e "${RED}Error: File not found.${NC}"
+                fi
+                press_enter
+                ;;
+            7)
+                echo -e "\n${BOLD}${BLUE}=== AUTO-IDENTIFY TRACKS VIA AUDIO FINGERPRINTING ===${NC}\n"
+                read -r -p "Enter path to mix audio file: " id_audio
+                id_audio=$(echo "$id_audio" | sed "s/^'//;s/'$//;s/^\"//;s/\"$//")
+                if [ -n "$id_audio" ] && [ -f "$id_audio" ]; then
+                    python3 "$SCRIPT_DIR/scripts/identify_mix_tracks.py" "$id_audio"
+                else
+                    echo -e "${RED}Error: File not found.${NC}"
+                fi
+                press_enter
                 ;;
             0|[qQ]|[eE][xX][iI][tT]|ESC)
                 return 0
@@ -11892,6 +12018,7 @@ manage_playlists_and_history() {
             "2|Generate Mix Archive Folder Playlists|(.m3u / .m3u8 / .xspf ➔ PLAYLISTS_GENERATED)"
             "3|${tr_lbl}|(Key Sorted / Decks Ready)"
             "4|Listen to Your Top 5 Tracks Right Now|$(get_top_5_status_badge)"
+            "5|Export Playlists / Traktor History to Pioneer Rekordbox XML|(export_rekordbox_playlist.py)"
             "0|Return to Main Menu|(or Esc / q)"
         )
         run_interactive_submenu "CUSTOM PLAYLISTS & TRAKTOR HISTORY SUITE" "" opts 0
@@ -11908,6 +12035,17 @@ manage_playlists_and_history() {
                 ;;
             4|top5|top-5|top|special)
                 manage_top_5_tracks
+                ;;
+            5)
+                echo -e "\n${BOLD}${BLUE}=== EXPORT TO PIONEER REKORDBOX XML ===${NC}\n"
+                read -r -p "Enter path to Traktor .nml, .m3u, or .m3u8 playlist: " rb_in
+                rb_in=$(echo "$rb_in" | sed "s/^'//;s/'$//;s/^\"//;s/\"$//")
+                if [ -n "$rb_in" ] && [ -f "$rb_in" ]; then
+                    python3 "$SCRIPT_DIR/scripts/export_rekordbox_playlist.py" "$rb_in"
+                else
+                    echo -e "${RED}Error: Playlist file not found.${NC}"
+                fi
+                press_enter
                 ;;
             0|[qQ]|[eE][xX][iI][tT]|ESC)
                 return 0
@@ -12592,6 +12730,7 @@ manage_network_and_internet() {
             "2|Congen - KDE Connect Commands Generator & Remote Control|(Mobile Phone Commands)"
             "3|Block Internet Access|(LAN Only - block-internet)"
             "4|Restore / Unblock Internet Access|(unblock-internet)"
+            "5|Studio & DJ Booth Mobile Web Companion Server|(Phone & Tablet browser remote on port 8888)"
             "0|Return to Main Menu|(or Esc / q)"
         )
         run_interactive_submenu "NETWORK SERVICES, CONGEN & INTERNET ACCESS CONTROL" "" opts 0
@@ -12608,6 +12747,12 @@ manage_network_and_internet() {
                 ;;
             4)
                 unblock_internet
+                ;;
+            5)
+                echo -e "\n${BOLD}${BLUE}=== LAUNCHING STUDIO & DJ BOOTH MOBILE WEB COMPANION ===${NC}\n"
+                local web_cmd="python3 '$SCRIPT_DIR/scripts/mix_web_companion.py'"
+                launch_in_terminal "DJ Booth Web Companion" "$web_cmd" "window"
+                press_enter
                 ;;
             0|[qQ]|[eE][xX][iI][tT]|ESC)
                 return 0
@@ -12827,17 +12972,20 @@ while true; do
     if [ "$CURRENT_THEME" = "dreamworlds" ] || [ "$CURRENT_THEME" = "dreamworlds_ultra" ]; then
         ultra_flag=""
         [ "$CURRENT_THEME" = "dreamworlds_ultra" ] && ultra_flag="--ultra"
-        local_anim_script="$SCRIPT_DIR/scripts/render_ascii_animation.py"
-        [ ! -f "$local_anim_script" ] && local_anim_script="$SCRIPT_DIR/render_ascii_animation.py"
-        if [ "$term_lines" -ge 55 ]; then
-            if [ -f "$local_anim_script" ]; then
-                main_header+="$(python3 "$local_anim_script" $ultra_flag 2>/dev/null)\n"
+        local b_mode="full"
+        [ "$term_lines" -lt 55 ] && b_mode="compact"
+        local b_key="${CURRENT_THEME}_${b_mode}"
+        if [ "${_CACHED_BANNER_KEY:-}" != "$b_key" ] || [ -z "${_CACHED_BANNER_OUTPUT:-}" ]; then
+            local_anim_script="$SCRIPT_DIR/scripts/render_ascii_animation.py"
+            [ ! -f "$local_anim_script" ] && local_anim_script="$SCRIPT_DIR/render_ascii_animation.py"
+            if [ "$b_mode" = "full" ]; then
+                _CACHED_BANNER_OUTPUT="$(python3 "$local_anim_script" $ultra_flag 2>/dev/null)"
+            else
+                _CACHED_BANNER_OUTPUT="$(python3 "$local_anim_script" $ultra_flag --compact 2>/dev/null)"
             fi
-        else
-            if [ -f "$local_anim_script" ]; then
-                main_header+="$(python3 "$local_anim_script" $ultra_flag --compact 2>/dev/null)\n"
-            fi
+            _CACHED_BANNER_KEY="$b_key"
         fi
+        [ -n "$_CACHED_BANNER_OUTPUT" ] && main_header+="${_CACHED_BANNER_OUTPUT}\n"
     else
         main_header+="${BOLD}${MAGENTA}===================================================================================${NC}\n"
         main_header+="${BOLD}${MAGENTA}                     Mix Archive Manager (MP_Mix_Manager_v0.3)                     ${NC}\n"

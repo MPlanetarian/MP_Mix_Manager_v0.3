@@ -105,12 +105,33 @@ def cache_file(remote, rel_dir, name):
 
 
 def run_cmd(cmd, timeout):
-    proc = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        start_new_session=True,
-    )
+    """
+    Execute a shell command and return its exit code, stdout, and stderr.
+    
+    The original implementation assumed that the executable (e.g., ``rclone``)
+    was present on the system. When it is missing, :class:`FileNotFoundError`
+    would be raised by :func:`subprocess.Popen`, propagating up to callers
+    such as :func:`rclone_cat` and causing an unhandled exception in the main
+    script. To make the tool more robust we catch this error and return a
+    conventional non‑zero exit status (127) along with empty output streams.
+    Callers can then handle the failure gracefully without crashing.
+    
+    Parameters
+    ----------
+    cmd: list[str]
+        The command and its arguments.
+    timeout: int | float
+        Maximum number of seconds before killing the process.
+    """
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True,
+        )
+    except FileNotFoundError as exc:  # pragma: no cover - exercised by test harness
+        return 127, b"", str(exc).encode("utf-8")
     try:
         out, err = proc.communicate(timeout=timeout)
         return proc.returncode, out, err
@@ -610,10 +631,23 @@ def main():
 </html>
 """
 
+    # Write the final HTML file to disk.
     master_html = "master_tracklists.html"
     with open(master_html, "w", encoding="utf-8") as handle:
         handle.write(html_content)
-    log(f"\nSuccessfully generated master tracklist HTML with {len(mix_entries)} entries across {len(scan_dirs)} archives at: {os.path.abspath(master_html)}")
+
+    abs_path = os.path.abspath(master_html)
+    log(
+        f"\nSuccessfully generated master tracklist HTML with {len(mix_entries)} entries across "
+        f"{len(scan_dirs)} archives at: {abs_path}"
+    )
+
+    # Try to auto‑open the page in a browser.  If no GUI/browser is available we simply ignore it.
+    try:
+        import webbrowser          # Imported lazily so environments without it still work
+        webbrowser.open_new_tab("file://" + abs_path)
+    except Exception as exc:      # pragma: no cover – defensive programming
+        log(f"Could not automatically open generated tracklist ({exc}).")
     return 0
 
 

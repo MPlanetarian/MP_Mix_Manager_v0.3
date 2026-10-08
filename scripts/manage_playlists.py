@@ -148,7 +148,7 @@ def write_m3u(file_path, track_paths):
             f.write(f"#EXTINF:-1,{title}\n")
             f.write(f"{t}\n")
 
-def launch_playlist_in_player(playlist_path, player="audacious"):
+def launch_playlist_in_player(playlist_path, player="cliamp"):
     playlist_path = Path(playlist_path).resolve()
     print(f"\n{BOLD}{GREEN}Launching {player} with playlist: {playlist_path.name}...{NC}")
     
@@ -171,11 +171,6 @@ def launch_playlist_in_player(playlist_path, player="audacious"):
     elif player == "mpv":
         if shutil.which("mpv"):
             subprocess.Popen(["mpv", f"--playlist={playlist_path}"])
-    elif player == "audacious":
-        if shutil.which("audacious"):
-            subprocess.Popen(["audacious", str(playlist_path)])
-        elif shutil.which("flatpak"):
-            subprocess.Popen(["flatpak", "run", "org.atheme.audacious", str(playlist_path)])
     elif player == "kodi":
         if shutil.which("kodi"):
             subprocess.Popen(["kodi", str(playlist_path)])
@@ -253,15 +248,14 @@ def interactive_ui():
             if sel.isdigit() and 1 <= int(sel) <= len(playlists):
                 p_file = playlists[int(sel) - 1]
                 print(f"\nSelect Audio Player:")
-                print(f"  1) Audacious Audio Player (Default)")
-                print(f"  2) cliamp (Terminal Player)")
-                print(f"  3) Strawberry Music Player (Legacy)")
-                print(f"  4) VLC Media Player")
-                print(f"  5) MPV Player")
-                print(f"  6) Kodi Media Center")
-                p_sel = input("Select player [1-6, default 1]: ").strip() or "1"
-                p_map = {"1": "audacious", "2": "cliamp", "3": "strawberry", "4": "vlc", "5": "mpv", "6": "kodi"}
-                player_name = p_map.get(p_sel, "audacious")
+                print(f"  1) cliamp (Terminal Player)")
+                print(f"  2) Strawberry Music Player")
+                print(f"  3) VLC Media Player")
+                print(f"  4) MPV Player")
+                print(f"  5) Kodi Media Center")
+                p_sel = input("Select player [1-5, default 1]: ").strip() or "1"
+                p_map = {"1": "cliamp", "2": "strawberry", "3": "vlc", "4": "mpv", "5": "kodi"}
+                player_name = p_map.get(p_sel, "cliamp")
                 launch_playlist_in_player(p_file, player_name)
                 time.sleep(1)
         elif cmd.lower() == 'e':
