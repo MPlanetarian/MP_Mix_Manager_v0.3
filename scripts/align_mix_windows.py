@@ -3,13 +3,13 @@
 scripts/align_mix_windows.py - Cross-Platform Window Alignment for Mix Manager
 Positions windows according to active monitor configuration:
 - Multi-Display (> 1 displays active):
-  * Mix Archive Manager window is displayed in FULL SCREEN on the PRIMARY display (Main Screen).
+  * Mix Archive Manager window is placed on the PRIMARY display (Main Screen) in windowed mode (not full screen).
   * Strawberry Audio Player and Cover Art Viewer are placed ONLY on the SECONDARY display
     side-by-side with zero overlap: Cover Art (square on left) and Strawberry (player on right).
   * Any tracklist console window is minimized on multi-display so the primary display
-    remains exclusively dedicated to the Mix Archive Manager.
+    remains dedicated to the Mix Archive Manager.
 - Single-Display (<= 1 display active):
-  * Mix Archive Manager window is displayed in FULL SCREEN.
+  * Mix Archive Manager window is displayed in windowed mode (not full screen).
 """
 
 import sys
@@ -65,10 +65,39 @@ def get_ancestor_pids(pid):
     return ancestors
 
 def get_display_priorities():
-    """Detect primary and secondary display names using kscreen-doctor."""
+    """Detect primary and secondary display names dynamically using kscreen-doctor."""
     prim_name = None
     sec_name = None
     try:
+        # Prefer JSON mode for accurate priority, position, and enabled status
+        try:
+            raw_json = subprocess.check_output(['kscreen-doctor', '-j'], stderr=subprocess.DEVNULL)
+            data = json.loads(raw_json)
+            enabled_outputs = []
+            for o in data.get('outputs', []):
+                if o.get('connected', True) and o.get('enabled', True):
+                    name = o.get('name', '')
+                    if name.lower().startswith('unknown'):
+                        continue
+                    priority = o.get('priority', 999)
+                    pos = o.get('pos', {})
+                    enabled_outputs.append({
+                        'name': name,
+                        'priority': priority,
+                        'x': pos.get('x', 0),
+                        'y': pos.get('y', 0)
+                    })
+            if enabled_outputs:
+                # Priority 1 is the primary display in KDE Plasma. Sort by priority, then X position.
+                enabled_outputs.sort(key=lambda x: (x['priority'], x['x']))
+                prim_name = enabled_outputs[0]['name']
+                if len(enabled_outputs) >= 2:
+                    sec_name = enabled_outputs[1]['name']
+                return prim_name, sec_name
+        except Exception:
+            pass
+
+        # Text fallback if -j is not supported
         out = subprocess.check_output(['kscreen-doctor', '-o'], stderr=subprocess.DEVNULL, text=True)
         clean = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', out)
         outputs = []
@@ -87,29 +116,15 @@ def get_display_priorities():
                 if len(p_parts) >= 2 and p_parts[1].isdigit():
                     curr['priority'] = int(p_parts[1])
 
-        enabled_outputs = [o for o in outputs if o.get('enabled')]
+        enabled_outputs = [o for o in outputs if o.get('enabled') and not o.get('name', '').lower().startswith('unknown')]
         if not enabled_outputs:
             enabled_outputs = outputs
 
-        # Priority rule:
-        # DP-3 is the primary workstation monitor at (0,0)
-        # DP-2 is the secondary extended monitor at (1920,0)
-        dp3 = next((o for o in enabled_outputs if o['name'] == 'DP-3'), None)
-        dp2 = next((o for o in enabled_outputs if o['name'] == 'DP-2'), None)
-        if dp3:
-            prim_name = 'DP-3'
-            if dp2:
-                sec_name = 'DP-2'
-            else:
-                others = [o for o in enabled_outputs if o['name'] != 'DP-3']
-                others.sort(key=lambda x: x['priority'])
-                sec_name = others[0]['name'] if others else None
-        else:
-            enabled_outputs.sort(key=lambda x: x['priority'])
-            if len(enabled_outputs) >= 1:
-                prim_name = enabled_outputs[0]['name']
-            if len(enabled_outputs) >= 2:
-                sec_name = enabled_outputs[1]['name']
+        enabled_outputs.sort(key=lambda x: x['priority'])
+        if len(enabled_outputs) >= 1:
+            prim_name = enabled_outputs[0]['name']
+        if len(enabled_outputs) >= 2:
+            sec_name = enabled_outputs[1]['name']
     except Exception:
         pass
     return prim_name, sec_name
@@ -268,10 +283,10 @@ def align_kwin(timeout_seconds=8.0, mgr_pid=0, parent_pid=0, expect_strawberry=F
         var pArea = workspace.clientArea(0, primScreen, workspace.currentDesktop);
         var sArea = workspace.clientArea(0, secScreen, workspace.currentDesktop);
 
-        // A. Display ONLY the Manager on the PRIMARY display (Main Screen) in Fullscreen
+        // A. Display the Manager on the PRIMARY display (Main Screen) in windowed mode (not in full screen)
         if (mgrWin) {{
             workspace.sendClientToScreen(mgrWin, primScreen);
-            mgrWin.fullScreen = true;
+            mgrWin.fullScreen = false;
             workspace.raiseWindow(mgrWin);
             workspace.activeWindow = mgrWin;
         }}
@@ -372,10 +387,10 @@ def align_kwin(timeout_seconds=8.0, mgr_pid=0, parent_pid=0, expect_strawberry=F
     var sW = Math.floor(sArea.width);
     var sH = Math.floor(sArea.height);
 
-    // Manager on single display in Fullscreen
+    // Manager on single display in windowed mode (not in full screen)
     if (mgrWin) {{
         workspace.sendClientToScreen(mgrWin, screen);
-        mgrWin.fullScreen = true;
+        mgrWin.fullScreen = false;
         workspace.raiseWindow(mgrWin);
         workspace.activeWindow = mgrWin;
     }}
@@ -530,18 +545,12 @@ def align_x11(mgr_pid=0):
                 cover_win = wid
 
         if num_screens > 1:
-            dp3 = next((s for s in screens if s['name'] == 'DP-3'), None)
-            dp2 = next((s for s in screens if s['name'] == 'DP-2'), None)
-            if dp3:
-                prim = dp3
-                sec = dp2 if dp2 else next((s for s in screens if s['name'] != 'DP-3'), screens[1])
-            else:
-                prim = screens[0]
-                sec = screens[1]
+            prim = screens[0]
+            sec = screens[1] if len(screens) > 1 else screens[0]
 
-            # Manager -> Primary display in Fullscreen
+            # Manager -> Primary display in windowed mode (not in full screen)
             if mgr_win:
-                subprocess.run(['wmctrl', '-i', '-r', mgr_win, '-b', 'add,fullscreen'], check=False)
+                subprocess.run(['wmctrl', '-i', '-r', mgr_win, '-b', 'remove,fullscreen'], check=False)
                 subprocess.run(['wmctrl', '-i', '-a', mgr_win], check=False)
 
             # Minimize tracklist window on multi-display
@@ -583,9 +592,9 @@ def align_x11(mgr_pid=0):
 
             return True
 
-        # Single-display fallback: Manager in Fullscreen
+        # Single-display fallback: Manager in windowed mode (not in full screen)
         if mgr_win:
-            subprocess.run(['wmctrl', '-i', '-r', mgr_win, '-b', 'add,fullscreen'], check=False)
+            subprocess.run(['wmctrl', '-i', '-r', mgr_win, '-b', 'remove,fullscreen'], check=False)
             subprocess.run(['wmctrl', '-i', '-a', mgr_win], check=False)
 
         if cover_win or tl_win:
