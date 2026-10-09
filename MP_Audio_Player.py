@@ -60,23 +60,33 @@ UNDERLINE = "\033[4m"
 REVERSE = "\033[7m"
 NC = "\033[0m"
 
-# Standard Palette
+# --- Dreamworlds Ultra TrueColor & ANSI Theme Palette ---
+# Hot Purple & Traffic Light Edition (from BTOP HotPurpleTrafficLight theme)
+COLOR_HOT_PURPLE = "\033[38;2;166;77;255m"       # #a64dff (Signature Hot Purple Box Border & Primary Accent)
+COLOR_INDIGO_BLUE = "\033[38;2;102;102;255m"     # #6666ff (Electric Lavender Indigo Dividers & Sub-boxes)
+COLOR_LILAC = "\033[38;2;153;153;255m"           # #9999ff (Soft Lilac / Inactive Text / Technical Info)
+COLOR_TRAFFIC_GREEN = "\033[38;2;0;255;0m"       # #00ff00 (Traffic Light Go Green / Normal Levels / 0% Detent)
+COLOR_TRAFFIC_AMBER = "\033[38;2;255;153;51m"   # #ff9933 (Traffic Light Warning Amber / Mid Levels / Pitch Up)
+COLOR_TRAFFIC_RED = "\033[38;2;255;0;0m"         # #ff0000 (Traffic Light Danger Red / Peak Clip / Pitch Limit)
+COLOR_MAIN_FG = "\033[38;2;209;209;224m"         # #d1d1e0 (Main Text Foreground)
+
+# Standard Palette Aliases (Aligned with Dreamworlds Ultra)
 BLACK = "\033[0;30m"
-RED = "\033[0;31m"
-GREEN = "\033[0;32m"
-YELLOW = "\033[0;33m"
-BLUE = "\033[0;34m"
-MAGENTA = "\033[0;35m"
-CYAN = "\033[0;36m"
-WHITE = "\033[0;37m"
+RED = COLOR_TRAFFIC_RED
+GREEN = COLOR_TRAFFIC_GREEN
+YELLOW = COLOR_TRAFFIC_AMBER
+BLUE = COLOR_INDIGO_BLUE
+MAGENTA = COLOR_HOT_PURPLE
+CYAN = COLOR_LILAC
+WHITE = COLOR_MAIN_FG
 BRIGHT_WHITE = "\033[1;37m"
 
-# 24-bit Truecolor Palettes
+# Supporting 24-bit Truecolor Accents
 COLOR_NEON_PINK = "\033[38;2;247;37;133m"
 COLOR_ELECTRIC_CYAN = "\033[38;2;0;229;255m"
-COLOR_AMBER_ORANGE = "\033[38;2;255;140;0m"
+COLOR_AMBER_ORANGE = COLOR_TRAFFIC_AMBER
 COLOR_DEEP_PURPLE = "\033[38;2;114;9;183m"
-COLOR_NEON_GREEN = "\033[38;2;57;255;20m"
+COLOR_NEON_GREEN = COLOR_TRAFFIC_GREEN
 COLOR_SLATE_GREY = "\033[38;2;88;98;118m"
 
 CONFIG_DIR = Path.home() / ".config" / "mix-manager"
@@ -234,8 +244,66 @@ class MixArchiveScanner:
 # AUDIO PLAYBACK ENGINE & REAL-TIME SPECTRUM ANALYZER
 # ==============================================================================
 
+class AudioResampler:
+    """High-fidelity real-time audio resampler for DJ turntable pitch and speed control."""
+
+    def __init__(self):
+        self.buffer = np.zeros((0, 2), dtype=np.float32)
+        self.in_pos = 0.0
+
+    def reset(self):
+        self.buffer = np.zeros((0, 2), dtype=np.float32)
+        self.in_pos = 0.0
+
+    def process(self, read_func, out_frames: int, speed_ratio: float) -> np.ndarray:
+        if speed_ratio == 1.0 and self.in_pos == 0.0 and len(self.buffer) == 0:
+            raw = read_func(out_frames)
+            if len(raw) == 0:
+                return np.zeros((0, 2), dtype=np.float32)
+            if raw.ndim == 1:
+                return np.column_stack((raw, raw)).astype(np.float32)
+            elif raw.shape[1] == 1:
+                return np.column_stack((raw[:, 0], raw[:, 0])).astype(np.float32)
+            return raw[:, :2].astype(np.float32)
+
+        t_out = self.in_pos + np.arange(out_frames, dtype=np.float64) * speed_ratio
+        self.in_pos = t_out[-1] + speed_ratio
+
+        needed_input = int(np.ceil(t_out[-1])) + 4
+        while len(self.buffer) < needed_input:
+            more = read_func(max(1024, needed_input - len(self.buffer)))
+            if len(more) == 0:
+                break
+            if more.ndim == 1:
+                more = np.column_stack((more, more))
+            elif more.shape[1] == 1:
+                more = np.column_stack((more[:, 0], more[:, 0]))
+            else:
+                more = more[:, :2]
+            self.buffer = np.vstack((self.buffer, more)) if len(self.buffer) else more.astype(np.float32)
+
+        if len(self.buffer) == 0:
+            return np.zeros((0, 2), dtype=np.float32)
+
+        if len(self.buffer) <= int(np.ceil(t_out[-1])):
+            pad_len = int(np.ceil(t_out[-1])) + 4 - len(self.buffer)
+            self.buffer = np.vstack((self.buffer, np.zeros((pad_len, 2), dtype=np.float32)))
+
+        t_in = np.arange(len(self.buffer), dtype=np.float64)
+        out_l = np.interp(t_out, t_in, self.buffer[:, 0])
+        out_r = np.interp(t_out, t_in, self.buffer[:, 1])
+        out = np.column_stack((out_l, out_r)).astype(np.float32)
+
+        discard = int(np.floor(self.in_pos))
+        if discard > 0:
+            self.buffer = self.buffer[discard:]
+            self.in_pos -= discard
+
+        return out
+
+
 class AudioEngine:
-    """High-performance audio streaming engine with FFT spectrum extraction."""
+    """High-performance audio streaming engine with FFT spectrum extraction and DJ pitch control."""
 
     def __init__(self, playlist: List[Dict[str, Any]]):
         self.playlist = playlist
@@ -252,6 +320,11 @@ class AudioEngine:
         self.duration_sec = 0.0
         self.sample_rate = 44100
         self.channels = 2
+
+        # DJ Turntable Pitch Control (-20% to +20%, clamped in 1% steps)
+        self.pitch_percent = 0
+        self.pitch_factor = 1.0
+        self.resampler = AudioResampler()
 
         self.sf_file: Optional[sf.SoundFile] = None
         self.stream: Optional[sd.OutputStream] = None
@@ -276,6 +349,19 @@ class AudioEngine:
 
         # Initialize continuous audio stream
         self._init_stream()
+
+    def set_pitch(self, pitch_pct: int):
+        """Set DJ pitch with hard limit of ±20% (-20 to +20)."""
+        self.pitch_percent = max(-20, min(20, int(pitch_pct)))
+        self.pitch_factor = 1.0 + (self.pitch_percent / 100.0)
+
+    def change_pitch(self, delta_pct: int = 1):
+        """Incrementally adjust DJ pitch by ±1% within ±20% boundary."""
+        self.set_pitch(self.pitch_percent + delta_pct)
+
+    def reset_pitch(self):
+        """Instantly reset DJ pitch to 0.0% center position."""
+        self.set_pitch(0)
 
     def _init_stream(self):
         try:
@@ -303,6 +389,7 @@ class AudioEngine:
             self.channels = new_sf.channels
             self.duration_sec = float(new_sf.frames) / float(self.sample_rate)
             self.position_sec = 0.0
+            self.resampler.reset()
 
             # Recompute band frequency indices for current sample rate
             freqs = np.fft.rfftfreq(1024, 1.0 / self.sample_rate)
@@ -348,21 +435,30 @@ class AudioEngine:
                 target_frame = int(seek_val * self.sample_rate)
                 sf_ref.seek(target_frame)
                 self.position_sec = seek_val
+                self.resampler.reset()
             except Exception:
                 pass
 
-        try:
-            data = sf_ref.read(frames, dtype='float32')
-        except Exception:
-            data = np.zeros((0, self.channels), dtype=np.float32)
+        speed_ratio = (float(self.sample_rate) / 44100.0) * self.pitch_factor
 
+        def reader(n):
+            try:
+                return sf_ref.read(n, dtype='float32')
+            except Exception:
+                return np.zeros((0, self.channels), dtype=np.float32)
+
+        data = self.resampler.process(reader, frames, speed_ratio)
         read_frames = len(data)
-        if read_frames == 0:
+        if read_frames == 0 or (np.all(data == 0) and hasattr(sf_ref, "tell") and sf_ref.tell() >= sf_ref.frames):
             outdata.fill(0)
             self.track_ended = True
             return
 
-        self.position_sec += float(read_frames) / float(self.sample_rate)
+        try:
+            self.position_sec = min(self.duration_sec, float(sf_ref.tell()) / float(self.sample_rate))
+        except Exception:
+            self.position_sec += float(read_frames * self.pitch_factor) / 44100.0
+
         effective_vol = 0.0 if self.muted else self.volume
 
         if data.ndim == 1:
@@ -557,6 +653,8 @@ class AudioEngine:
             "duration_fmt": str(dur_fmt),
             "progress_pct": float(pct),
             "volume": int(self.volume * 100),
+            "pitch_percent": int(self.pitch_percent),
+            "pitch_factor": round(float(self.pitch_factor), 3),
             "muted": bool(self.muted),
             "shuffle": bool(self.shuffle),
             "repeat": str(self.repeat_mode),
@@ -684,6 +782,22 @@ class PlayerIPCServer:
                 self.engine.change_volume(int(req.get("step", 5)))
             elif cmd == "vol_down":
                 self.engine.change_volume(-int(req.get("step", 5)))
+            elif cmd == "pitch_up":
+                self.engine.change_pitch(int(req.get("step", 1)))
+                res["pitch_percent"] = self.engine.pitch_percent
+                res["pitch_factor"] = self.engine.pitch_factor
+            elif cmd == "pitch_down":
+                self.engine.change_pitch(-int(req.get("step", 1)))
+                res["pitch_percent"] = self.engine.pitch_percent
+                res["pitch_factor"] = self.engine.pitch_factor
+            elif cmd == "set_pitch":
+                self.engine.set_pitch(int(req.get("percent", 0)))
+                res["pitch_percent"] = self.engine.pitch_percent
+                res["pitch_factor"] = self.engine.pitch_factor
+            elif cmd == "reset_pitch":
+                self.engine.reset_pitch()
+                res["pitch_percent"] = self.engine.pitch_percent
+                res["pitch_factor"] = self.engine.pitch_factor
             elif cmd == "mute":
                 self.engine.toggle_mute()
             elif cmd == "shuffle":
@@ -796,11 +910,12 @@ class EqualizerVisualizer:
     ]
 
     THEMES = [
-        "dreamworlds",    # Neon Magenta, Aqua Cyan, Amber (Dreamworlds Ultra)
-        "retro_studio",   # Classic Green -> Yellow -> Red Studio VU
-        "cyber_neon",     # Violet, Blue, Pink
-        "phosphor",       # Monochrome Phosphor Green
-        "ice_cold"        # Arctic Blue, Mint, White
+        "dreamworlds_ultra", # Hot Purple, Indigo & Traffic Light RGB (Dreamworlds Ultra Edition)
+        "dreamworlds_neon",  # Neon Magenta, Aqua Cyan, Amber (Dreamworlds Classic)
+        "retro_studio",      # Classic Green -> Yellow -> Red Studio VU
+        "cyber_neon",        # Violet, Blue, Pink
+        "phosphor",          # Monochrome Phosphor Green
+        "ice_cold"           # Arctic Blue, Mint, White
     ]
 
     def __init__(self):
@@ -822,7 +937,14 @@ class EqualizerVisualizer:
         self.theme_idx = (self.theme_idx + 1) % len(self.THEMES)
 
     def _get_bar_color(self, fraction: float) -> str:
-        if self.theme == "dreamworlds":
+        if self.theme in ("dreamworlds_ultra", "dreamworlds"):
+            if fraction < 0.60:
+                return "\033[38;2;0;255;0m"       # Traffic Light Go Green (#00ff00)
+            elif fraction < 0.85:
+                return "\033[38;2;255;153;51m"   # Traffic Light Warning Amber (#ff9933)
+            else:
+                return "\033[38;2;255;0;0m"       # Traffic Light Danger Red (#ff0000)
+        elif self.theme == "dreamworlds_neon":
             if fraction < 0.4:
                 return "\033[38;2;0;229;255m"     # Electric Aqua
             elif fraction < 0.75:
@@ -1034,23 +1156,110 @@ class EqualizerVisualizer:
         lines.append(f"  {BOLD}{MAGENTA}╰──────────────────────────────────────────────────────────────────────────╯{NC}")
         return lines
 
+    def render_vertical_pitch_fader(self, pitch_pct: int, total_lines: int = 10) -> List[str]:
+        """Renders vertical DJ turntable pitch fader with up/down moving knob and center detent."""
+        p = max(-20, min(20, int(pitch_pct)))
+        fader_rows = max(3, total_lines - 2)
+        norm = (p - (-20)) / 40.0
+        knob_row = int(round((1.0 - norm) * (fader_rows - 1)))
+        center_row = fader_rows // 2
+
+        border_col = COLOR_HOT_PURPLE
+        div_col = COLOR_INDIGO_BLUE
+        lines = []
+        lines.append(f"{border_col}╭── DJ PITCH ──╮{NC}")
+
+        for r in range(fader_rows):
+            is_knob = (r == knob_row)
+            is_center = (r == center_row)
+
+            if is_knob and is_center:
+                knob_cell = f"{COLOR_TRAFFIC_GREEN}[▓█0█▓]{NC}"
+                tag = f" {BOLD}{COLOR_TRAFFIC_GREEN}◄  0.0% [CENTER]{NC}"
+                lines.append(f"{border_col}│{NC} {knob_cell} {border_col}│{NC}{tag}")
+            elif is_knob:
+                knob_col = COLOR_TRAFFIC_AMBER if p > 0 else COLOR_INDIGO_BLUE
+                knob_cell = f"{knob_col}[▓███▓]{NC}"
+                factor = 1.0 + (p / 100.0)
+                tag = f" {BOLD}{knob_col}◄ {p:+d}% ({factor:.2f}x){NC}"
+                lines.append(f"{border_col}│{NC} {knob_cell} {border_col}│{NC}{tag}")
+            elif is_center:
+                lines.append(f"{div_col}├─── 0 ───┤{NC} {DIM}{COLOR_LILAC}  CENTER (0%){NC}")
+            elif r == 0:
+                lines.append(f"{border_col}│{NC}   {COLOR_TRAFFIC_AMBER}▲{NC}   {border_col}│{NC} {DIM}+20% MAX{NC}")
+            elif r == fader_rows - 1:
+                lines.append(f"{border_col}│{NC}   {COLOR_INDIGO_BLUE}▼{NC}   {border_col}│{NC} {DIM}-20% MIN{NC}")
+            else:
+                lines.append(f"{border_col}│{NC}   {div_col}│{NC}   {border_col}│{NC}")
+
+        lines.append(f"{border_col}╰───────────╯{NC}")
+        return lines
+
+    def render_horizontal_pitch_bar(self, pitch_pct: int, width: int = 36) -> str:
+        """Renders responsive horizontal DJ pitch bar with slider knob and center mark."""
+        p = max(-20, min(20, int(pitch_pct)))
+        w = max(18, width)
+        norm = (p - (-20)) / 40.0
+        knob_pos = int(round(norm * (w - 1)))
+        center_pos = w // 2
+
+        chars = []
+        for i in range(w):
+            if i == knob_pos:
+                if p == 0:
+                    chars.append(f"{BOLD}{COLOR_TRAFFIC_GREEN}●{NC}")
+                elif p > 0:
+                    chars.append(f"{BOLD}{COLOR_TRAFFIC_AMBER}●{NC}")
+                else:
+                    chars.append(f"{BOLD}{COLOR_INDIGO_BLUE}●{NC}")
+            elif i == center_pos:
+                chars.append(f"{COLOR_TRAFFIC_GREEN}┼{NC}")
+            elif i < center_pos:
+                if i < knob_pos and p < 0:
+                    chars.append(f"{DIM}━{NC}")
+                elif knob_pos <= i < center_pos:
+                    chars.append(f"{COLOR_INDIGO_BLUE}━{NC}")
+                else:
+                    chars.append(f"{DIM}─{NC}")
+            else:
+                if center_pos < i <= knob_pos:
+                    chars.append(f"{COLOR_TRAFFIC_AMBER}━{NC}")
+                else:
+                    chars.append(f"{DIM}─{NC}")
+
+        fader_track = "".join(chars)
+        speed = 1.0 + (p / 100.0)
+        status_tag = f"{BOLD}{COLOR_TRAFFIC_GREEN}0.0% [CENTER DETENT]{NC}" if p == 0 else f"{BOLD}{COLOR_TRAFFIC_AMBER if p > 0 else COLOR_INDIGO_BLUE}{p:+d}% ({speed:.2f}x){NC}"
+
+        return f"  {BOLD}{COLOR_HOT_PURPLE}🎚 DJ PITCH:{NC} {DIM}-20%{NC} [{fader_track}] {DIM}+20%{NC}  {status_tag}  {DIM}[+/-: 1% • 0: Reset]{NC}"
+
     def render(self, status: Dict[str, Any], width: int = 80, height: int = 7) -> List[str]:
         levels = np.array(status.get("levels", [0.0]*16))
         peaks = np.array(status.get("peaks", [0.0]*16))
         levels_l = np.array(status.get("levels_left", levels))
         levels_r = np.array(status.get("levels_right", levels))
         peak_db = status.get("peak_db", -60.0)
+        pitch_pct = int(status.get("pitch_percent", 0))
 
         if self.style == "stereo_eq":
-            return self.render_stereo_eq(levels_l, levels_r, peaks, width=width, height=height)
+            eq_lines = self.render_stereo_eq(levels_l, levels_r, peaks, width=width, height=height)
         elif self.style == "master_spectrum":
-            return self.render_master_spectrum(levels, peaks, height=height)
+            eq_lines = self.render_master_spectrum(levels, peaks, height=height)
         elif self.style == "analog_vu":
-            return self.render_analog_vu(peak_db, levels_l, levels_r)
+            eq_lines = self.render_analog_vu(peak_db, levels_l, levels_r)
         elif self.style == "oscilloscope":
-            return self.render_oscilloscope(levels, height=min(5, height))
+            eq_lines = self.render_oscilloscope(levels, height=min(5, height))
         else:
-            return self.render_stereo_eq(levels_l, levels_r, peaks, width=width, height=height)
+            eq_lines = self.render_stereo_eq(levels_l, levels_r, peaks, width=width, height=height)
+
+        if width >= 98:
+            fader_lines = self.render_vertical_pitch_fader(pitch_pct, total_lines=len(eq_lines))
+            combined = []
+            for eq_l, fd_l in zip(eq_lines, fader_lines):
+                combined.append(f"{eq_l}  {fd_l}")
+            return combined
+
+        return eq_lines
 
 
 # ==============================================================================
@@ -1155,6 +1364,14 @@ class TerminalPlayerUI:
                 self.engine.change_volume(kwargs.get("step", 5))
             elif cmd == "vol_down":
                 self.engine.change_volume(-kwargs.get("step", 5))
+            elif cmd == "pitch_up":
+                self.engine.change_pitch(kwargs.get("step", 1))
+            elif cmd == "pitch_down":
+                self.engine.change_pitch(-kwargs.get("step", 1))
+            elif cmd == "reset_pitch":
+                self.engine.reset_pitch()
+            elif cmd == "set_pitch":
+                self.engine.set_pitch(kwargs.get("percent", 0))
             elif cmd == "mute":
                 self.engine.toggle_mute()
             elif cmd == "shuffle":
@@ -1298,16 +1515,22 @@ class TerminalPlayerUI:
                     else:
                         self._send_cmd("play", file=chosen["path"])
 
-        # 5. Playback Controls
+        # 5. Playback & DJ Pitch Controls
         elif data == b" ":
             self._send_cmd("toggle")
-        elif data in (b"n", b"N", b">", b"]"):
+        elif data in (b"n", b"N", b">"):
             self._send_cmd("next")
-        elif data in (b"p", b"P", b"<", b"["):
+        elif data in (b"p", b"P", b"<"):
             self._send_cmd("prev")
         elif data in (b"+", b"="):
-            self._send_cmd("vol_up", step=5)
+            self._send_cmd("pitch_up", step=1)
         elif data in (b"-", b"_"):
+            self._send_cmd("pitch_down", step=1)
+        elif data == b"0":
+            self._send_cmd("reset_pitch")
+        elif data in (b"]", b"}", b"v"):
+            self._send_cmd("vol_up", step=5)
+        elif data in (b"[", b"{", b"V"):
             self._send_cmd("vol_down", step=5)
         elif data in (b"m", b"M"):
             self._send_cmd("mute")
@@ -1317,7 +1540,7 @@ class TerminalPlayerUI:
             self._send_cmd("repeat")
 
         # 6. EQ & Themes
-        elif data in (b"e", b"E", b"v", b"V"):
+        elif data in (b"e", b"E"):
             self.visualizer.cycle_style()
         elif data in (b"c", b"C", b"t", b"T"):
             self.visualizer.cycle_theme()
@@ -1349,11 +1572,11 @@ class TerminalPlayerUI:
         self._sync_initial_selection(status)
         lines = []
 
-        # 1. Header Banner
-        lines.append(f"  {BOLD}{MAGENTA}╭──────────────────────────────────────────────────────────────────────────╮{NC}")
-        lines.append(f"  {BOLD}{MAGENTA}│           ✦ MP AUDIO PLAYER — HIGH-RESOLUTION ARCHIVE SUITE ✦            │{NC}")
-        lines.append(f"  {BOLD}{MAGENTA}│           Dreamworlds Productions  •  Studio Audio Playback         │{NC}")
-        lines.append(f"  {BOLD}{MAGENTA}╰──────────────────────────────────────────────────────────────────────────╯{NC}")
+        # 1. Header Banner (Dreamworlds Ultra Edition)
+        lines.append(f"  {BOLD}{COLOR_HOT_PURPLE}╭──────────────────────────────────────────────────────────────────────────╮{NC}")
+        lines.append(f"  {BOLD}{COLOR_HOT_PURPLE}│      ✦ MP AUDIO PLAYER — DREAMWORLDS ULTRA AUDIO SUITE ✦                 │{NC}")
+        lines.append(f"  {BOLD}{COLOR_LILAC}│      Dreamworlds Productions  •  Hot Purple & Traffic Light Edition      │{NC}")
+        lines.append(f"  {BOLD}{COLOR_HOT_PURPLE}╰──────────────────────────────────────────────────────────────────────────╯{NC}")
 
         # 2. Track & Format Details Card
         track_name = status.get("title", "Unknown Mix")
@@ -1382,7 +1605,11 @@ class TerminalPlayerUI:
         bar_width = max(20, min(42, term_width - 34))
         filled_w = int((pct / 100.0) * bar_width)
         bar_str = "━" * filled_w + "●" + "─" * max(0, bar_width - filled_w - 1)
-        lines.append(f"  {COLOR_ELECTRIC_CYAN}{pos_s}{NC}  {COLOR_AMBER_ORANGE}{bar_str}{NC}  {COLOR_ELECTRIC_CYAN}{dur_s}{NC}  ({pct:.1f}%)")
+        lines.append(f"  {COLOR_ELECTRIC_CYAN}{pos_s}{NC}  {COLOR_HOT_PURPLE}{bar_str}{NC}  {COLOR_ELECTRIC_CYAN}{dur_s}{NC}  ({pct:.1f}%)")
+
+        # 3b. DJ Turntable Pitch Slider Bar (moves knob visually with +/- keys)
+        pitch_pct = int(status.get("pitch_percent", 0))
+        lines.append(self.visualizer.render_horizontal_pitch_bar(pitch_pct, width=bar_width))
         lines.append("")
 
         # Dynamic visualizer height based on terminal height
@@ -1443,15 +1670,19 @@ class TerminalPlayerUI:
         lines.append(f"  {BOLD}{MAGENTA}└{foot_txt}{'─'*dashes_foot}┘{NC}")
 
         # 6. Status and Hotkey Footer
-        shuf_badge = f"{GREEN}ON{NC}" if status.get("shuffle") else f"{DIM}OFF{NC}"
-        rep_badge = f"{GREEN}{status.get('repeat', 'all').upper()}{NC}"
-        vol_str = f"{status.get('volume', 85)}%" if not status.get("muted") else f"{RED}MUTED{NC}"
+        shuf_badge = f"{COLOR_TRAFFIC_GREEN}ON{NC}" if status.get("shuffle") else f"{DIM}OFF{NC}"
+        rep_badge = f"{COLOR_TRAFFIC_GREEN}{status.get('repeat', 'all').upper()}{NC}"
+        vol_str = f"{status.get('volume', 85)}%" if not status.get("muted") else f"{COLOR_TRAFFIC_RED}MUTED{NC}"
+        p_val = int(status.get("pitch_percent", 0))
+        p_spd = 1.0 + (p_val / 100.0)
+        p_col = COLOR_TRAFFIC_GREEN if p_val == 0 else (COLOR_TRAFFIC_AMBER if p_val > 0 else COLOR_INDIGO_BLUE)
+        p_badge = f"{p_col}{p_val:+d}% ({p_spd:.2f}x){NC}"
 
-        lines.append(f"  🔊 Volume: {BOLD}{COLOR_ELECTRIC_CYAN}{vol_str}{NC}  │  🔀 Shuffle: {shuf_badge}  │  🔁 Repeat: {rep_badge}  │  🎨 EQ: {BOLD}{CYAN}{self.visualizer.style}{NC}")
+        lines.append(f"  🔊 Vol: {BOLD}{COLOR_ELECTRIC_CYAN}{vol_str}{NC}  │  🎚 DJ Pitch: {BOLD}{p_badge}  │  🔀 Shuffle: {shuf_badge}  │  🔁 Repeat: {rep_badge}  │  🎨 Theme: {BOLD}{COLOR_HOT_PURPLE}Dreamworlds Ultra{NC}")
         if term_width >= 96:
-            lines.append(f"  {DIM}[Space] Play/Pause  [n/p] Next/Prev  [←/→] Seek  [+/-] Vol  [e] EQ Style  [b/q] Exit  [x] Stop{NC}")
+            lines.append(f"  {DIM}[Space] Play/Pause  [+/-] Pitch ±1% (±20% max)  [0] Pitch Reset  [v/V] Vol  [n/p] Next/Prev  [←/→] Seek  [e] EQ  [b/q] Exit{NC}")
         else:
-            lines.append(f"  {DIM}[Space] Play  [n/p] Skip  [←/→] Seek  [+/-] Vol  [e] EQ  [b/q] Exit  [x] Stop{NC}")
+            lines.append(f"  {DIM}[Space] Play  [+/-] Pitch ±1%  [0] Reset  [v/V] Vol  [n/p] Skip  [←/→] Seek  [e] EQ  [b/q] Exit{NC}")
 
         frame_str = "\r\n".join(f"{line}\033[K" for line in lines)
         sys.stdout.write(f"\033[H{frame_str}\r\n\033[J")
@@ -1473,6 +1704,10 @@ def main():
     parser.add_argument("--stop", action="store_true", help="Stop playback")
     parser.add_argument("--next", action="store_true", help="Skip to next track")
     parser.add_argument("--prev", action="store_true", help="Skip to previous track")
+    parser.add_argument("--pitch", type=int, help="Set DJ pitch percentage (-20 to +20)")
+    parser.add_argument("--pitch-up", type=int, nargs="?", const=1, help="Increase DJ pitch percentage (default: +1%%)")
+    parser.add_argument("--pitch-down", type=int, nargs="?", const=1, help="Decrease DJ pitch percentage (default: -1%%)")
+    parser.add_argument("--pitch-reset", action="store_true", help="Reset DJ pitch percentage to 0%%")
     parser.add_argument("--vol", type=str, help="Set volume (e.g. 85, +5, -5)")
     parser.add_argument("--seek", type=float, help="Seek relative seconds (e.g. 10 or -10)")
     parser.add_argument("--status", action="store_true", help="Output JSON playback status")
@@ -1570,6 +1805,26 @@ def main():
             sys.exit(0)
         sys.exit(0)
 
+    elif args.pitch is not None:
+        if daemon_running:
+            send_ipc_command("set_pitch", percent=args.pitch)
+        sys.exit(0)
+
+    elif args.pitch_up is not None:
+        if daemon_running:
+            send_ipc_command("pitch_up", step=args.pitch_up)
+        sys.exit(0)
+
+    elif args.pitch_down is not None:
+        if daemon_running:
+            send_ipc_command("pitch_down", step=args.pitch_down)
+        sys.exit(0)
+
+    elif args.pitch_reset:
+        if daemon_running:
+            send_ipc_command("reset_pitch")
+        sys.exit(0)
+
     elif args.vol:
         if daemon_running:
             v = args.vol
@@ -1603,7 +1858,9 @@ def main():
             if st and "data" in st:
                 d = st["data"]
                 st_icon = "▶" if d["state"] == "playing" else "⏸"
-                print(f"{st_icon} {d['title']} [{d['position_fmt']}/{d['duration_fmt']}] ({d['mini_eq']}) Vol: {d['volume']}%")
+                pitch_val = d.get("pitch_percent", 0)
+                pitch_str = f"Pitch: {pitch_val:+d}%" if pitch_val != 0 else "Pitch: 0%"
+                print(f"{st_icon} {d['title']} [{d['position_fmt']}/{d['duration_fmt']}] ({d['mini_eq']}) {pitch_str} Vol: {d['volume']}%")
                 sys.exit(0)
         print("○ MP Audio Player: Stopped")
         sys.exit(0)

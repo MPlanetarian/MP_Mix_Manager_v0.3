@@ -233,12 +233,68 @@ hr() {
     local char="${1:-─}"
     local cols
     cols=$(tput cols 2>/dev/null || echo 72)
-    printf '%*s\n' "${cols}" '' | tr ' ' "${char}"
+    [[ -z "${cols}" || "${cols}" -lt 10 ]] && cols=72
+    printf '%*s\n' "${cols}" '' | sed "s/ /${char}/g"
 }
 
 press_enter() {
     echo ""
     read -rp "$(echo -e "${DIM}  Press [Enter] to continue…${RESET}")" _
+}
+
+# ---------------------------------------------------------------------------
+# Global Telemetry TTL Cache & Invalidation (Sub-20ms Menu Redraw)
+# ---------------------------------------------------------------------------
+_BANNER_CACHE_TIME=0
+_BANNER_CACHE_TTL=6
+_CACHED_STATUS=""
+_CACHED_TOTAL=""
+_CACHED_NET=""
+_CACHED_STATS=""
+_CACHED_RUNNING=""
+_CACHED_DEV_SUMMARY=""
+
+invalidate_telemetry_cache() {
+    _BANNER_CACHE_TIME=0
+}
+
+# ---------------------------------------------------------------------------
+# Query paired & reachable devices summary
+# ---------------------------------------------------------------------------
+get_paired_devices_summary() {
+    local active_names=()
+    if command -v kdeconnect-cli &>/dev/null; then
+        local raw_active
+        raw_active=$(kdeconnect-cli -a --name-only 2>/dev/null | sed '/^\s*$/d' || true)
+        while IFS= read -r line; do
+            [[ -n "${line}" ]] && active_names+=("${line}")
+        done <<< "${raw_active}"
+    fi
+
+    if [[ ${#active_names[@]} -gt 0 ]]; then
+        local display_str
+        display_str=$(IFS=', '; echo "${active_names[*]}")
+        echo -e "${GREEN}● ${display_str} (Connected)${RESET}"
+        return
+    fi
+
+    # Fallback to configured devices in ~/.config/kdeconnect
+    local configured_devs=()
+    for dcfg in "${KDECONNECT_CFG_DIR}"/*/config; do
+        if [[ -f "${dcfg}" ]]; then
+            local dname=""
+            dname=$(grep "^name=" "${dcfg}" 2>/dev/null | cut -d= -f2- | tr -d '\r\n')
+            [[ -n "${dname}" ]] && configured_devs+=("${dname}")
+        fi
+    done
+
+    if [[ ${#configured_devs[@]} -gt 0 ]]; then
+        local display_str
+        display_str=$(IFS=', '; echo "${configured_devs[*]}")
+        echo -e "${DIM}○ ${display_str} (Offline / Standby)${RESET}"
+    else
+        echo -e "${DIM}○ No Paired Devices${RESET}"
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -535,18 +591,23 @@ PYEOF
 # Banner
 # ---------------------------------------------------------------------------
 show_banner() {
-    local status
-    status=$(check_kdeconnect_status)
-
-    local total
-    total=$(count_kdeconnect_commands)
-
-    local net_raw
-    net_raw=$(check_network_status)
-
-    # --- Gather live monitoring data ---
-    local stats_raw
-    stats_raw=$(parse_run_stats)
+    local now
+    now=$(date +%s)
+    if (( now - _BANNER_CACHE_TIME >= _BANNER_CACHE_TTL )); then
+        _CACHED_STATUS=$(check_kdeconnect_status)
+        _CACHED_TOTAL=$(count_kdeconnect_commands)
+        _CACHED_NET=$(check_network_status)
+        _CACHED_STATS=$(parse_run_stats)
+        _CACHED_RUNNING=$(get_running_commands)
+        _CACHED_DEV_SUMMARY=$(get_paired_devices_summary)
+        _BANNER_CACHE_TIME=${now}
+    fi
+    local status="${_CACHED_STATUS}"
+    local total="${_CACHED_TOTAL}"
+    local net_raw="${_CACHED_NET}"
+    local stats_raw="${_CACHED_STATS}"
+    local running_raw="${_CACHED_RUNNING}"
+    local dev_summary="${_CACHED_DEV_SUMMARY}"
 
     # Eval the KEY=VALUE pairs into local variables safely
     local STAT_TOTAL_RUNS STAT_SUCCESS STAT_FAILED
@@ -555,9 +616,6 @@ show_banner() {
     eval "${stats_raw}"
 
     # Detect currently running commands
-    local running_raw
-    running_raw=$(get_running_commands)
-
     local run_count=0
     local run_display=""
     if [[ -n "${running_raw}" ]]; then
@@ -649,6 +707,7 @@ show_banner() {
     # ── System status block ────────────────────────────────────────────────
     echo -e "${CYAN}║${RESET}   ${BOLD}Service Status    :${RESET} ${status_color}${BOLD}${status_label}${RESET}"
     echo -e "${CYAN}║${RESET}   ${BOLD}Network Status    :${RESET} ${net_color}${BOLD}${net_label}${RESET}"
+    echo -e "${CYAN}║${RESET}   ${BOLD}Device Status     :${RESET} ${dev_summary}"
     echo -e "${CYAN}║${RESET}   ${BOLD}Commands Installed:${RESET} ${YELLOW}${BOLD}${total}${RESET}"
     echo -e "${CYAN}║${RESET}"
 
@@ -941,9 +1000,19 @@ if not name_written or not cmd_written:
     if not cmd_written:
         lines.insert(insert_pos, f"{key}\\command={clean_script}\n")
 
-with open(cfg_path, "w", encoding="utf-8") as f:
+if os.path.isfile(cfg_path) and os.path.getsize(cfg_path) > 0:
+    try:
+        import shutil
+        shutil.copy2(cfg_path, f"{cfg_path}.bak")
+    except Exception:
+        pass
+
+tmp_cfg = f"{cfg_path}.tmp.{os.getpid()}"
+with open(tmp_cfg, "w", encoding="utf-8") as f:
     f.writelines(lines)
+os.replace(tmp_cfg, cfg_path)
 PYEOF
+    invalidate_telemetry_cache
 }
 
 # ---------------------------------------------------------------------------
@@ -1193,7 +1262,7 @@ create_command() {
 
 # ---------------------------------------------------------------------------
 # Collect all installed commands into indexed arrays (across all devices)
-# Populates globals: CMD_KEYS CMD_NAMES CMD_SCRIPTS CMD_DEVICES CMD_CFGS
+# Populates globals: CMD_KEYS CMD_NAMES CMD_SCRIPTS CMD_DEVICES CMD_CFGS CMD_SUMMARIES CMD_ADDEDS
 # ---------------------------------------------------------------------------
 collect_all_commands() {
     CMD_KEYS=()
@@ -1201,17 +1270,42 @@ collect_all_commands() {
     CMD_SCRIPTS=()
     CMD_DEVICES=()
     CMD_CFGS=()
+    CMD_SUMMARIES=()
+    CMD_ADDEDS=()
 
-    while IFS=$'\t' read -r _k _n _s _d _c; do
+    while IFS=$'\t' read -r _k _n _s _d _c _sum _add; do
         [[ -z "${_n}" ]] && continue
         CMD_KEYS+=("${_k}")
         CMD_NAMES+=("${_n}")
         CMD_SCRIPTS+=("${_s}")
         CMD_DEVICES+=("${_d}")
         CMD_CFGS+=("${_c}")
-    done < <(python3 - "${KDECONNECT_CFG_DIR}" <<'PYEOF'
+        CMD_SUMMARIES+=("${_sum:-—}")
+        CMD_ADDEDS+=("${_add:-—}")
+    done < <(python3 - "${KDECONNECT_CFG_DIR}" "${MANUAL_FILE}" <<'PYEOF'
 import sys, os, glob, re, json
 kdir = sys.argv[1]
+manual_file = sys.argv[2] if len(sys.argv) > 2 else ""
+
+manual_map = {}
+if manual_file and os.path.isfile(manual_file):
+    try:
+        with open(manual_file, "r", encoding="utf-8", errors="replace") as mf:
+            mcontent = mf.read()
+        blocks = re.split(r'─{10,}', mcontent)
+        for block in blocks:
+            nm = re.search(r'Command Name\s*:\s*(.+)', block)
+            su = re.search(r'Summary\s*:\s*(.+)', block)
+            ad = re.search(r'Added\s*:\s*(.+)', block)
+            if nm:
+                cname = nm.group(1).strip()
+                manual_map[cname] = (
+                    su.group(1).strip() if su else "—",
+                    ad.group(1).strip() if ad else "—"
+                )
+    except Exception:
+        pass
+
 rows = []
 for cfg in sorted(glob.glob(f"{kdir}/*/kdeconnect_runcommand/config")):
     pdir = os.path.dirname(cfg)
@@ -1276,7 +1370,8 @@ for cfg in sorted(glob.glob(f"{kdir}/*/kdeconnect_runcommand/config")):
                 dev_cmds[c_name] = (k, ini_cmds[k])
 
         for c_name, (c_key, c_script) in sorted(dev_cmds.items()):
-            rows.append((c_key, c_name, c_script, dname, cfg))
+            s_info, a_info = manual_map.get(c_name, ("—", "—"))
+            rows.append((c_key, c_name, c_script, dname, cfg, s_info, a_info))
     except Exception:
         pass
 
@@ -1421,9 +1516,19 @@ for line in lines:
             continue
     new_lines.append(line)
 
-with open(cfg_path, 'w', encoding='utf-8') as f:
+if os.path.isfile(cfg_path) and os.path.getsize(cfg_path) > 0:
+    try:
+        import shutil
+        shutil.copy2(cfg_path, f"{cfg_path}.bak")
+    except Exception:
+        pass
+
+tmp_cfg = f"{cfg_path}.tmp.{os.getpid()}"
+with open(tmp_cfg, 'w', encoding='utf-8') as f:
     f.writelines(new_lines)
+os.replace(tmp_cfg, cfg_path)
 PYEOF
+    invalidate_telemetry_cache
 }
 
 # ---------------------------------------------------------------------------
@@ -1461,6 +1566,7 @@ PYEOF
 # View Installed KDE Connect Commands — submenu
 # ---------------------------------------------------------------------------
 view_installed_commands() {
+    local filter_query=""
     while true; do
         clear
         echo ""
@@ -1470,7 +1576,7 @@ view_installed_commands() {
         echo ""
 
         # ── Collect live data ──────────────────────────────────────────────
-        declare -a CMD_KEYS CMD_NAMES CMD_SCRIPTS CMD_DEVICES CMD_CFGS
+        declare -a CMD_KEYS CMD_NAMES CMD_SCRIPTS CMD_DEVICES CMD_CFGS CMD_SUMMARIES CMD_ADDEDS
         collect_all_commands
 
         local total="${#CMD_KEYS[@]}"
@@ -1484,11 +1590,15 @@ view_installed_commands() {
         fi
 
         # ── Display numbered table ─────────────────────────────────────────
-        echo -e "  ${BOLD}Total Installed: ${YELLOW}${total}${RESET}${BOLD} command(s)${RESET}"
+        if [[ -n "${filter_query}" ]]; then
+            echo -e "  ${BOLD}Total Installed: ${YELLOW}${total}${RESET}${BOLD} command(s) | Filter: ${GREEN}\"${filter_query}\"${RESET}${BOLD} (showing matches)${RESET}"
+        else
+            echo -e "  ${BOLD}Total Installed: ${YELLOW}${total}${RESET}${BOLD} command(s)${RESET}"
+        fi
         echo ""
         echo -e "  ${DIM}$(hr '─')${RESET}"
 
-        local i
+        local i matches_shown=0
         for (( i=0; i<total; i++ )); do
             local idx=$(( i + 1 ))
             local name="${CMD_NAMES[$i]}"
@@ -1496,10 +1606,18 @@ view_installed_commands() {
             local device="${CMD_DEVICES[$i]}"
             local key="${CMD_KEYS[$i]}"
 
-            # Pull enriched info from manual
-            local summary added
-            summary=$(lookup_summary_from_manual "${name}")
-            added=$(lookup_added_from_manual     "${name}")
+            # Pull enriched info from pre-collected arrays (O(1) memory lookup)
+            local summary="${CMD_SUMMARIES[$i]:-—}"
+            local added="${CMD_ADDEDS[$i]:-—}"
+
+            # Filter check
+            if [[ -n "${filter_query}" ]]; then
+                local search_haystack="${name} ${script} ${device} ${summary}"
+                if [[ "${search_haystack,,}" != *"${filter_query,,}"* ]]; then
+                    continue
+                fi
+            fi
+            (( matches_shown++ ))
 
             # Check if script file still exists on disk
             local script_status
@@ -1521,6 +1639,12 @@ view_installed_commands() {
             echo -e "  ${DIM}$(hr '─')${RESET}"
         done
 
+        if [[ -n "${filter_query}" && ${matches_shown} -eq 0 ]]; then
+            echo -e "  ${YELLOW}No commands matched filter '${filter_query}'.${RESET}"
+            echo ""
+            echo -e "  ${DIM}$(hr '─')${RESET}"
+        fi
+
         # ── Manual file note ───────────────────────────────────────────────
         echo ""
         if [[ -f "${MANUAL_FILE}" ]]; then
@@ -1534,6 +1658,10 @@ view_installed_commands() {
         echo -e "  ${BOLD}Options:${RESET}"
         echo ""
         echo -e "    ${YELLOW}[1-${total}]${RESET}  Enter a command number to ${RED}remove${RESET} it"
+        echo -e "    ${YELLOW}[s]${RESET} or ${YELLOW}[/]${RESET} Filter / Search commands"
+        if [[ -n "${filter_query}" ]]; then
+            echo -e "    ${YELLOW}[c]${RESET}      Clear search filter"
+        fi
         echo -e "    ${YELLOW}[b]${RESET}      Back to Main Menu"
         echo ""
 
@@ -1543,6 +1671,16 @@ view_installed_commands() {
         # ── Back ───────────────────────────────────────────────────────────
         if [[ "${choice,,}" == "b" ]]; then
             return
+        fi
+
+        # ── Filter / Clear actions ─────────────────────────────────────────
+        if [[ "${choice,,}" == "s" || "${choice}" == "/" ]]; then
+            echo ""
+            read -rp "  $(echo -e "${BOLD}Search query (name, device, summary, or script): ${RESET}")" filter_query
+            continue
+        elif [[ "${choice,,}" == "c" ]]; then
+            filter_query=""
+            continue
         fi
 
         # ── Numeric → Remove flow ──────────────────────────────────────────
@@ -1663,7 +1801,7 @@ export_commands() {
     echo ""
 
     # Collect live commands
-    declare -a CMD_KEYS CMD_NAMES CMD_SCRIPTS CMD_DEVICES CMD_CFGS
+    declare -a CMD_KEYS CMD_NAMES CMD_SCRIPTS CMD_DEVICES CMD_CFGS CMD_SUMMARIES CMD_ADDEDS
     collect_all_commands
 
     local total="${#CMD_KEYS[@]}"
@@ -1672,7 +1810,7 @@ export_commands() {
         echo -e "  ${YELLOW}No commands to export. Create some commands first.${RESET}"
         echo ""
         press_enter
-        unset CMD_KEYS CMD_NAMES CMD_SCRIPTS CMD_DEVICES CMD_CFGS
+        unset CMD_KEYS CMD_NAMES CMD_SCRIPTS CMD_DEVICES CMD_CFGS CMD_SUMMARIES CMD_ADDEDS
         return
     fi
 
@@ -1711,9 +1849,8 @@ export_commands() {
         local device="${CMD_DEVICES[$i]}"
         local key="${CMD_KEYS[$i]}"
 
-        local summary added
-        summary=$(lookup_summary_from_manual "${name}")
-        added=$(lookup_added_from_manual     "${name}")
+        local summary="${CMD_SUMMARIES[$i]:-—}"
+        local added="${CMD_ADDEDS[$i]:-—}"
 
         # Sanitise name for filename (replace spaces/slashes)
         local safe_name
@@ -2304,6 +2441,7 @@ EOF
 # Run a KDE Connect Command
 # ---------------------------------------------------------------------------
 run_command_menu() {
+    local filter_query=""
     while true; do
         clear
         echo ""
@@ -2313,7 +2451,7 @@ run_command_menu() {
         echo ""
 
         # ── Collect installed commands ─────────────────────────────────────
-        declare -a CMD_KEYS CMD_NAMES CMD_SCRIPTS CMD_DEVICES CMD_CFGS
+        declare -a CMD_KEYS CMD_NAMES CMD_SCRIPTS CMD_DEVICES CMD_CFGS CMD_SUMMARIES CMD_ADDEDS
         collect_all_commands
 
         local total="${#CMD_KEYS[@]}"
@@ -2323,24 +2461,35 @@ run_command_menu() {
             echo -e "  ${DIM}Use option 1 from the main menu to create your first command.${RESET}"
             echo ""
             press_enter
-            unset CMD_KEYS CMD_NAMES CMD_SCRIPTS CMD_DEVICES CMD_CFGS
+            unset CMD_KEYS CMD_NAMES CMD_SCRIPTS CMD_DEVICES CMD_CFGS CMD_SUMMARIES CMD_ADDEDS
             return
         fi
 
         # ── Display numbered list ──────────────────────────────────────────
-        echo -e "  ${BOLD}Installed Commands  —  select one to run:${RESET}"
+        if [[ -n "${filter_query}" ]]; then
+            echo -e "  ${BOLD}Installed Commands | Filter: ${GREEN}\"${filter_query}\"${RESET}${BOLD} (showing matches) — select one to run:${RESET}"
+        else
+            echo -e "  ${BOLD}Installed Commands  —  select one to run:${RESET}"
+        fi
         echo ""
         echo -e "  ${DIM}$(hr '─')${RESET}"
 
-        local i
+        local i matches_shown=0
         for (( i=0; i<total; i++ )); do
             local idx=$(( i + 1 ))
             local name="${CMD_NAMES[$i]}"
             local script="${CMD_SCRIPTS[$i]}"
             local device="${CMD_DEVICES[$i]}"
+            local summary="${CMD_SUMMARIES[$i]:-—}"
 
-            local summary
-            summary=$(lookup_summary_from_manual "${name}")
+            # Filter check
+            if [[ -n "${filter_query}" ]]; then
+                local search_haystack="${name} ${script} ${device} ${summary}"
+                if [[ "${search_haystack,,}" != *"${filter_query,,}"* ]]; then
+                    continue
+                fi
+            fi
+            (( matches_shown++ ))
 
             # Script-on-disk indicator
             local script_indicator
@@ -2360,9 +2509,18 @@ run_command_menu() {
             echo ""
         done
 
+        if [[ -n "${filter_query}" && ${matches_shown} -eq 0 ]]; then
+            echo -e "  ${YELLOW}No commands matched filter '${filter_query}'.${RESET}"
+            echo ""
+        fi
+
         echo -e "  ${DIM}$(hr '─')${RESET}"
         echo ""
         echo -e "    ${YELLOW}[1-${total}]${RESET}  Select a command number to run it"
+        echo -e "    ${YELLOW}[s]${RESET} or ${YELLOW}[/]${RESET} Filter / Search commands"
+        if [[ -n "${filter_query}" ]]; then
+            echo -e "    ${YELLOW}[c]${RESET}      Clear search filter"
+        fi
         echo -e "    ${YELLOW}[b]${RESET}      Back to Main Menu"
         echo ""
 
@@ -2371,8 +2529,18 @@ run_command_menu() {
 
         # ── Back ───────────────────────────────────────────────────────────
         if [[ "${choice,,}" == "b" ]]; then
-            unset CMD_KEYS CMD_NAMES CMD_SCRIPTS CMD_DEVICES CMD_CFGS
+            unset CMD_KEYS CMD_NAMES CMD_SCRIPTS CMD_DEVICES CMD_CFGS CMD_SUMMARIES CMD_ADDEDS
             return
+        fi
+
+        # ── Filter / Clear actions ─────────────────────────────────────────
+        if [[ "${choice,,}" == "s" || "${choice}" == "/" ]]; then
+            echo ""
+            read -rp "  $(echo -e "${BOLD}Search query (name, device, summary, or script): ${RESET}")" filter_query
+            continue
+        elif [[ "${choice,,}" == "c" ]]; then
+            filter_query=""
+            continue
         fi
 
         # ── Validate numeric choice ────────────────────────────────────────
@@ -2380,7 +2548,7 @@ run_command_menu() {
            || (( choice < 1 || choice > total )); then
             echo -e "\n  ${RED}Invalid selection.${RESET} Enter a number 1–${total} or [b]."
             sleep 1
-            unset CMD_KEYS CMD_NAMES CMD_SCRIPTS CMD_DEVICES CMD_CFGS
+            unset CMD_KEYS CMD_NAMES CMD_SCRIPTS CMD_DEVICES CMD_CFGS CMD_SUMMARIES CMD_ADDEDS
             continue
         fi
 
@@ -2389,7 +2557,7 @@ run_command_menu() {
         local r_script="${CMD_SCRIPTS[$ridx]}"
         local r_device="${CMD_DEVICES[$ridx]}"
 
-        unset CMD_KEYS CMD_NAMES CMD_SCRIPTS CMD_DEVICES CMD_CFGS
+        unset CMD_KEYS CMD_NAMES CMD_SCRIPTS CMD_DEVICES CMD_CFGS CMD_SUMMARIES CMD_ADDEDS
 
         # ── Pre-flight checks ──────────────────────────────────────────────
         clear
@@ -2593,7 +2761,7 @@ schedule_create() {
     echo ""
 
     # Guard: need ≥1 command installed
-    declare -a CMD_KEYS CMD_NAMES CMD_SCRIPTS CMD_DEVICES CMD_CFGS
+    declare -a CMD_KEYS CMD_NAMES CMD_SCRIPTS CMD_DEVICES CMD_CFGS CMD_SUMMARIES CMD_ADDEDS
     collect_all_commands
     local total="${#CMD_KEYS[@]}"
 
@@ -2601,7 +2769,7 @@ schedule_create() {
         echo -e "  ${YELLOW}No KDE Connect commands installed.${RESET}"
         echo -e "  ${DIM}Create at least one command via the main menu first.${RESET}"
         echo ""
-        unset CMD_KEYS CMD_NAMES CMD_SCRIPTS CMD_DEVICES CMD_CFGS
+        unset CMD_KEYS CMD_NAMES CMD_SCRIPTS CMD_DEVICES CMD_CFGS CMD_SUMMARIES CMD_ADDEDS
         press_enter
         return
     fi
@@ -2613,7 +2781,7 @@ schedule_create() {
         echo -e "  ${RED}${BOLD}✘  No scheduling backend found.${RESET}"
         echo -e "  ${DIM}  Install 'at' (sudo dnf/apt install at) or ensure systemd-run is available.${RESET}"
         echo ""
-        unset CMD_KEYS CMD_NAMES CMD_SCRIPTS CMD_DEVICES CMD_CFGS
+        unset CMD_KEYS CMD_NAMES CMD_SCRIPTS CMD_DEVICES CMD_CFGS CMD_SUMMARIES CMD_ADDEDS
         press_enter
         return
     fi
@@ -2626,8 +2794,7 @@ schedule_create() {
     echo ""
     local i
     for (( i=0; i<total; i++ )); do
-        local summary
-        summary=$(lookup_summary_from_manual "${CMD_NAMES[$i]}")
+        local summary="${CMD_SUMMARIES[$i]:-—}"
         printf "    ${YELLOW}[%d]${RESET}  ${BOLD}%-28s${RESET}  ${DIM}%s${RESET}\n" \
                "$(( i+1 ))" "${CMD_NAMES[$i]}" "${summary}"
     done
@@ -5085,19 +5252,615 @@ main_menu() {
 }
 
 # ---------------------------------------------------------------------------
+# Headless CLI Suite & Scripting API
+# ---------------------------------------------------------------------------
+
+cli_show_help() {
+    echo -e "${CYAN}${BOLD}Congen v1.0.0${RESET} — KDE Connect Command Generator & Suite"
+    echo -e "by Dreamworlds Productions (MPlanetarian)"
+    echo ""
+    echo -e "${BOLD}Usage:${RESET} congen [command] [options]"
+    echo ""
+    echo -e "${BOLD}Commands:${RESET}"
+    echo -e "  ${YELLOW}list${RESET} [--json]                        List all installed KDE Connect commands"
+    echo -e "  ${YELLOW}run${RESET} <name | #index>                  Execute a command directly by name or index"
+    echo -e "  ${YELLOW}add${RESET} <name> <cmd|script> [sum] [dev]  Create & register a command atomically"
+    echo -e "  ${YELLOW}remove${RESET} <name | #index>               Safely remove a command from config & manual"
+    echo -e "  ${YELLOW}status${RESET}                               Show daemon, paired devices, and telemetry status"
+    echo -e "  ${YELLOW}ping${RESET}                                 Test reachability of KDE Connect devices"
+    echo -e "  ${YELLOW}theme${RESET} [name]                         List available themes or switch active theme"
+    echo -e "  ${YELLOW}alert${RESET} <status|enable|disable|test>   Inspect or control audio alerts daemon"
+    echo -e "  ${YELLOW}--version${RESET}, ${YELLOW}-v${RESET}                        Display Congen version information"
+    echo -e "  ${YELLOW}--help${RESET}, ${YELLOW}-h${RESET}                           Display this help manual"
+    echo ""
+    echo -e "${BOLD}Examples:${RESET}"
+    echo -e "  congen list"
+    echo -e "  congen list --json"
+    echo -e "  congen run 1"
+    echo -e "  congen run \"Lock Screen\""
+    echo -e "  congen add \"Lock Workstation\" \"loginctl lock-session\" \"Locks active session\""
+    echo -e "  congen remove \"Lock Workstation\""
+    echo -e "  congen status"
+    echo -e "  congen theme dreamworlds_ultra"
+    echo -e "  congen alert test"
+    echo ""
+}
+
+cli_list_commands() {
+    local json_mode=0
+    [[ "${1:-}" == "--json" || "${2:-}" == "--json" ]] && json_mode=1
+
+    declare -a CMD_KEYS CMD_NAMES CMD_SCRIPTS CMD_DEVICES CMD_CFGS CMD_SUMMARIES CMD_ADDEDS
+    collect_all_commands
+    local total="${#CMD_KEYS[@]}"
+
+    if (( json_mode == 1 )); then
+        local i
+        {
+            for (( i=0; i<total; i++ )); do
+                local status="exists"
+                [[ ! -f "${CMD_SCRIPTS[$i]}" ]] && status="missing"
+                printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+                    "$(( i + 1 ))" "${CMD_NAMES[$i]}" "${CMD_SCRIPTS[$i]}" "${CMD_DEVICES[$i]}" "${CMD_KEYS[$i]}" "${CMD_SUMMARIES[$i]}" "${CMD_ADDEDS[$i]}" "${status}"
+            done
+        } | python3 -c '
+import sys, json
+items = []
+for line in sys.stdin:
+    line = line.rstrip("\r\n")
+    if not line: continue
+    parts = line.split("\t")
+    if len(parts) >= 8:
+        items.append({
+            "index": int(parts[0]),
+            "name": parts[1],
+            "script": parts[2],
+            "device": parts[3],
+            "key": parts[4],
+            "summary": parts[5],
+            "added": parts[6],
+            "status": parts[7]
+        })
+print(json.dumps(items, indent=2))
+'
+        return 0
+    fi
+
+    if [[ ${total} -eq 0 ]]; then
+        echo -e "${YELLOW}No KDE Connect commands installed.${RESET}"
+        return 0
+    fi
+
+    echo -e "${CYAN}${BOLD}Installed KDE Connect Commands (${total}):${RESET}"
+    echo ""
+    printf "  ${BOLD}%-5s %-26s %-20s %-12s %s${RESET}\n" "#" "NAME" "DEVICE" "STATUS" "SCRIPT"
+    echo -e "  ${DIM}$(hr '─')${RESET}"
+    local i
+    for (( i=0; i<total; i++ )); do
+        local idx=$(( i + 1 ))
+        local name="${CMD_NAMES[$i]}"
+        local script="${CMD_SCRIPTS[$i]}"
+        local device="${CMD_DEVICES[$i]}"
+        local st_str="${GREEN}ready${RESET}"
+        if [[ ! -f "${script}" ]]; then
+            st_str="${RED}missing${RESET}"
+        elif [[ ! -x "${script}" ]]; then
+            st_str="${YELLOW}noexec${RESET}"
+        fi
+        printf "  %-5s %-26s %-20s %-12b %s\n" "[${idx}]" "${name:0:25}" "${device:0:19}" "${st_str}" "${script}"
+    done
+    echo ""
+}
+
+cli_run_command() {
+    local target="${1:-}"
+    if [[ -z "${target}" ]]; then
+        echo -e "${RED}Error:${RESET} Missing command argument. Specify command name or index." >&2
+        echo "Usage: congen run <name|#index>" >&2
+        return 1
+    fi
+
+    declare -a CMD_KEYS CMD_NAMES CMD_SCRIPTS CMD_DEVICES CMD_CFGS CMD_SUMMARIES CMD_ADDEDS
+    collect_all_commands
+    local total="${#CMD_KEYS[@]}"
+    local selected_idx=-1
+
+    if [[ "${target}" =~ ^[0-9]+$ ]]; then
+        local num=$(( target ))
+        if (( num >= 1 && num <= total )); then
+            selected_idx=$(( num - 1 ))
+        fi
+    fi
+
+    if (( selected_idx < 0 )); then
+        local i
+        for (( i=0; i<total; i++ )); do
+            if [[ "${CMD_NAMES[$i],,}" == "${target,,}" ]]; then
+                selected_idx=${i}
+                break
+            fi
+        done
+    fi
+
+    if (( selected_idx < 0 )); then
+        echo -e "${RED}Error:${RESET} Command '${target}' not found." >&2
+        echo "Run 'congen list' to see available commands." >&2
+        return 1
+    fi
+
+    local c_name="${CMD_NAMES[$selected_idx]}"
+    local c_script="${CMD_SCRIPTS[$selected_idx]}"
+    local c_device="${CMD_DEVICES[$selected_idx]}"
+
+    local target_bin="${c_script%% *}"
+    if [[ ! -f "${c_script}" && ! -f "${target_bin}" && ! -x "$(command -v "${target_bin}" 2>/dev/null)" ]]; then
+        echo -e "${RED}Error:${RESET} Script '${c_script}' not found or not executable." >&2
+        log_entry "CLI RUN FAILED (not found) | command='${c_name}' | script='${c_script}'"
+        return 1
+    fi
+
+    echo -e "${CYAN}▶ Running:${RESET} ${BOLD}${c_name}${RESET} (${c_device})"
+    log_entry "CLI RUN STARTED | command='${c_name}' | script='${c_script}'"
+
+    local start_epoch end_epoch elapsed elapsed_str ec
+    start_epoch="$(date +%s%N 2>/dev/null || date +%s)"
+
+    # Execute
+    if [[ -x "${c_script}" ]]; then
+        "${c_script}"
+        ec=$?
+    else
+        bash -c "${c_script}"
+        ec=$?
+    fi
+
+    end_epoch="$(date +%s%N 2>/dev/null || date +%s)"
+    if [[ ${#start_epoch} -gt 10 && ${#end_epoch} -gt 10 ]]; then
+        elapsed=$(( (end_epoch - start_epoch) / 1000000 ))
+        elapsed_str="${elapsed}ms"
+    else
+        elapsed=$(( end_epoch - start_epoch ))
+        elapsed_str="${elapsed}s"
+    fi
+
+    if [[ ${ec} -eq 0 ]]; then
+        echo -e "${GREEN}✔ Completed successfully${RESET} (${elapsed_str})"
+        log_entry "CLI RUN SUCCESS | command='${c_name}' | duration=${elapsed_str}"
+    else
+        echo -e "${RED}✘ Exited with status ${ec}${RESET} (${elapsed_str})"
+        log_entry "CLI RUN FAILED | command='${c_name}' | exit_code=${ec} | duration=${elapsed_str}"
+    fi
+    return ${ec}
+}
+
+cli_add_command() {
+    local name="${1:-}"
+    local script_or_cmd="${2:-}"
+    local summary="${3:-Created via Congen CLI}"
+    local target_device="${4:-ALL}"
+
+    if [[ -z "${name}" || -z "${script_or_cmd}" ]]; then
+        echo -e "${RED}Error:${RESET} Missing required arguments." >&2
+        echo "Usage: congen add <name> <script_path_or_command> [summary] [device]" >&2
+        return 1
+    fi
+
+    # Determine script path or generate wrapper if raw command
+    local script_path="${script_or_cmd}"
+    if [[ ! -f "${script_path}" && ! -x "${script_path}" ]]; then
+        mkdir -p "${GENERATED_DIR}"
+        local safe_fname
+        safe_fname="$(echo "${name}" | tr ' ' '_' | tr -cd '[:alnum:]_-')"
+        [[ -z "${safe_fname}" ]] && safe_fname="cmd_$(date +%s)"
+        script_path="${GENERATED_DIR}/${safe_fname}.sh"
+        cat > "${script_path}" <<SHEOF
+#!/usr/bin/env bash
+# Generated by Congen CLI v1.0.0
+# Command: ${name}
+# Created: $(date '+%Y-%m-%d %H:%M:%S')
+
+set -euo pipefail
+
+${script_or_cmd}
+SHEOF
+        chmod +x "${script_path}"
+        echo -e "  ${DIM}Generated script: ${script_path}${RESET}"
+    fi
+
+    chmod +x "${script_path}" 2>/dev/null || true
+
+    declare -a target_plugin_dirs=()
+    declare -a target_dev_names=()
+    declare -a target_dev_ids=()
+
+    while IFS= read -r pdir; do
+        [[ -n "${pdir}" ]] || continue
+        local did="$(basename "$(dirname "${pdir}")")"
+        local dname="${did}"
+        local dcfg="$(dirname "${pdir}")/config"
+        if [[ -f "${dcfg}" ]]; then
+            dname=$(grep -i '^name=' "${dcfg}" 2>/dev/null | head -1 | cut -d'=' -f2- || echo "${did}")
+        fi
+        if [[ "${target_device}" == "ALL" || "${dname,,}" == "${target_device,,}" || "${did}" == "${target_device}" ]]; then
+            target_plugin_dirs+=("${pdir}")
+            target_dev_names+=("${dname}")
+            target_dev_ids+=("${did}")
+        fi
+    done < <(get_all_paired_device_plugin_dirs)
+
+    if [[ ${#target_plugin_dirs[@]} -eq 0 ]]; then
+        echo -e "${RED}Error:${RESET} No matching KDE Connect device configuration directories found." >&2
+        return 1
+    fi
+
+    local qdbus_bin=""
+    if command -v qdbus6 &>/dev/null; then
+        qdbus_bin="qdbus6"
+    elif command -v qdbus &>/dev/null; then
+        qdbus_bin="qdbus"
+    fi
+
+    local i
+    for (( i=0; i<${#target_plugin_dirs[@]}; i++ )); do
+        local t_pdir="${target_plugin_dirs[$i]}"
+        local t_dname="${target_dev_names[$i]}"
+        local t_did="${target_dev_ids[$i]}"
+        mkdir -p "${t_pdir}"
+        local t_cfg="${t_pdir}/config"
+        local t_key
+        t_key="$(next_command_key "${t_cfg}")" || true
+        [[ -z "${t_key}" ]] && t_key="cmd0"
+
+        write_command_to_config "${t_cfg}" "${t_key}" "${name}" "${script_path}"
+        log_entry "CLI CREATED command '${name}' | script='${script_path}' | device='${t_dname}' | key='${t_key}'"
+
+        if [[ -n "${qdbus_bin}" && -n "${t_did}" ]]; then
+            "${qdbus_bin}" org.kde.kdeconnect "/modules/kdeconnect/devices/${t_did}/runcommand" \
+                org.kde.kdeconnect.device.runcommand.reload &>/dev/null || true
+            "${qdbus_bin}" org.kde.kdeconnect "/modules/kdeconnect/devices/${t_did}" \
+                org.kde.kdeconnect.device.reloadPlugins &>/dev/null || true
+        fi
+    done
+
+    # Update manual
+    if declare -F update_manual &>/dev/null; then
+        update_manual "${name}" "${script_path}" "${summary}" || true
+    fi
+
+    if [[ -n "${qdbus_bin}" ]]; then
+        "${qdbus_bin}" org.kde.kdeconnect /modules/kdeconnect \
+            org.kde.kdeconnect.daemon.forceOnNetworkChange &>/dev/null || true
+    fi
+
+    invalidate_telemetry_cache
+    echo -e "${GREEN}✔ Successfully installed command '${name}' across ${#target_plugin_dirs[@]} device(s)!${RESET}"
+}
+
+cli_remove_command() {
+    local target="${1:-}"
+    if [[ -z "${target}" ]]; then
+        echo -e "${RED}Error:${RESET} Missing command argument. Specify command name or index." >&2
+        echo "Usage: congen remove <name|#index>" >&2
+        return 1
+    fi
+
+    declare -a CMD_KEYS CMD_NAMES CMD_SCRIPTS CMD_DEVICES CMD_CFGS CMD_SUMMARIES CMD_ADDEDS
+    collect_all_commands
+    local total="${#CMD_KEYS[@]}"
+    local selected_idx=-1
+
+    if [[ "${target}" =~ ^[0-9]+$ ]]; then
+        local num=$(( target ))
+        if (( num >= 1 && num <= total )); then
+            selected_idx=$(( num - 1 ))
+        fi
+    fi
+
+    if (( selected_idx < 0 )); then
+        local i
+        for (( i=0; i<total; i++ )); do
+            if [[ "${CMD_NAMES[$i],,}" == "${target,,}" ]]; then
+                selected_idx=${i}
+                break
+            fi
+        done
+    fi
+
+    if (( selected_idx < 0 )); then
+        echo -e "${RED}Error:${RESET} Command '${target}' not found." >&2
+        return 1
+    fi
+
+    local r_name="${CMD_NAMES[$selected_idx]}"
+    local r_key="${CMD_KEYS[$selected_idx]}"
+    local r_cfg="${CMD_CFGS[$selected_idx]}"
+    local r_device="${CMD_DEVICES[$selected_idx]}"
+    local r_script="${CMD_SCRIPTS[$selected_idx]}"
+
+    # Atomic remove from config
+    remove_command_from_config "${r_cfg}" "${r_key}" "${r_name}" "${r_script}"
+    # Remove from manual
+    remove_from_manual "${r_name}"
+    # Invalidate cache
+    invalidate_telemetry_cache
+
+    log_entry "CLI REMOVED command '${r_name}' | key='${r_key}' | device='${r_device}' | cfg='${r_cfg}'"
+
+    local qdbus_bin=""
+    if command -v qdbus6 &>/dev/null; then
+        qdbus_bin="qdbus6"
+    elif command -v qdbus &>/dev/null; then
+        qdbus_bin="qdbus"
+    fi
+    if [[ -n "${qdbus_bin}" ]]; then
+        "${qdbus_bin}" org.kde.kdeconnect /modules/kdeconnect \
+            org.kde.kdeconnect.daemon.refreshDiscovery &>/dev/null || true
+    fi
+
+    echo -e "${GREEN}✔ Successfully removed command '${r_name}' (${r_device})!${RESET}"
+}
+
+cli_status() {
+    echo -e "${CYAN}${BOLD}Congen Telemetry & Status Report${RESET}"
+    echo -e "${DIM}$(hr '─')${RESET}"
+    echo -e "  ${BOLD}Version       :${RESET} v1.0.0"
+    echo -e "  ${BOLD}Active Theme  :${RESET} ${YELLOW}${CURRENT_THEME}${RESET}"
+
+    # Alerts status
+    local alert_status="${RED}Disabled${RESET}"
+    if congen_alerts_is_enabled; then
+        if congen_alerts_is_running; then
+            alert_status="${GREEN}Enabled & Running (PID $(cat "${ALERTS_PID_FILE}" 2>/dev/null))${RESET}"
+        else
+            alert_status="${YELLOW}Enabled (Daemon Stopped)${RESET}"
+        fi
+    fi
+    echo -e "  ${BOLD}Audio Alerts  :${RESET} ${alert_status}"
+
+    # KDE Connect directory
+    if [[ -d "${KDECONNECT_CFG_DIR}" ]]; then
+        echo -e "  ${BOLD}KDE Config    :${RESET} ${GREEN}${KDECONNECT_CFG_DIR}${RESET}"
+    else
+        echo -e "  ${BOLD}KDE Config    :${RESET} ${RED}Not found (${KDECONNECT_CFG_DIR})${RESET}"
+    fi
+
+    # Paired & Reachable Devices
+    local dev_summary
+    dev_summary="$(get_paired_devices_summary)"
+    echo -e "  ${BOLD}Paired Devices:${RESET} ${dev_summary}"
+
+    # Commands count
+    declare -a CMD_KEYS CMD_NAMES CMD_SCRIPTS CMD_DEVICES CMD_CFGS CMD_SUMMARIES CMD_ADDEDS
+    collect_all_commands
+    echo -e "  ${BOLD}Commands Total:${RESET} ${GREEN}${#CMD_KEYS[@]} installed${RESET}"
+
+    # Backend
+    local sched_be
+    sched_be="$(schedule_detect_backend 2>/dev/null || echo 'none')"
+    echo -e "  ${BOLD}Scheduler     :${RESET} ${sched_be}"
+    echo -e "${DIM}$(hr '─')${RESET}"
+}
+
+cli_ping() {
+    echo -e "${CYAN}Testing KDE Connect reachability…${RESET}"
+    local qdbus_bin=""
+    if command -v qdbus6 &>/dev/null; then
+        qdbus_bin="qdbus6"
+    elif command -v qdbus &>/dev/null; then
+        qdbus_bin="qdbus"
+    fi
+
+    local daemon_running=0
+    if [[ -n "${qdbus_bin}" ]]; then
+        if "${qdbus_bin}" org.kde.kdeconnect /modules/kdeconnect org.kde.kdeconnect.daemon.devices &>/dev/null; then
+            daemon_running=1
+        fi
+    fi
+
+    if command -v kdeconnect-cli &>/dev/null; then
+        local reachable
+        reachable="$(kdeconnect-cli -a --name-only 2>/dev/null)"
+        if [[ -n "${reachable}" ]]; then
+            echo -e "${GREEN}✔ KDE Connect is active! Reachable devices:${RESET}"
+            while IFS= read -r dev; do
+                [[ -n "${dev}" ]] && echo -e "  • ${dev}"
+            done <<< "${reachable}"
+            return 0
+        else
+            if [[ ${daemon_running} -eq 1 ]]; then
+                echo -e "${YELLOW}ℹ KDE Connect daemon is running, but no remote devices are currently reachable.${RESET}"
+                return 0
+            else
+                echo -e "${RED}✘ No reachable devices found and daemon unresponsive.${RESET}"
+                return 1
+            fi
+        fi
+    elif [[ ${daemon_running} -eq 1 ]]; then
+        echo -e "${GREEN}✔ KDE Connect daemon is responsive via D-Bus.${RESET}"
+        return 0
+    else
+        echo -e "${RED}✘ KDE Connect daemon or kdeconnect-cli not responding.${RESET}"
+        return 1
+    fi
+}
+
+cli_theme() {
+    local target_theme="${1:-}"
+    if [[ -z "${target_theme}" ]]; then
+        echo -e "${CYAN}${BOLD}Available Congen Themes:${RESET} (Current: ${YELLOW}${CURRENT_THEME}${RESET})"
+        local -a all_themes=(
+            "dreamworlds" "dreamworlds_ultra" "cyberpunk" "dracula"
+            "nord" "matrix" "solarized" "tokyo" "monokai" "gruvbox"
+            "emerald" "classic"
+        )
+        for t in "${all_themes[@]}"; do
+            if [[ "$t" == "${CURRENT_THEME}" ]]; then
+                echo -e "  • ${BOLD}${GREEN}${t}${RESET}  ${DIM}(active)${RESET}"
+            else
+                echo -e "  • ${t}"
+            fi
+        done
+        echo ""
+        echo "To switch theme, run: congen theme <name>"
+        return 0
+    fi
+
+    case "${target_theme,,}" in
+        1|dreamworlds|default)
+            save_theme "dreamworlds"
+            ;;
+        2|ultra|dreamworlds_ultra|hotpurple)
+            save_theme "dreamworlds_ultra"
+            ;;
+        3|cyberpunk)
+            save_theme "cyberpunk"
+            ;;
+        4|dracula)
+            save_theme "dracula"
+            ;;
+        5|nord)
+            save_theme "nord"
+            ;;
+        6|matrix)
+            save_theme "matrix"
+            ;;
+        7|solarized)
+            save_theme "solarized"
+            ;;
+        8|tokyo|tokyonight)
+            save_theme "tokyo"
+            ;;
+        9|monokai)
+            save_theme "monokai"
+            ;;
+        10|gruvbox)
+            save_theme "gruvbox"
+            ;;
+        11|emerald)
+            save_theme "emerald"
+            ;;
+        12|classic)
+            save_theme "classic"
+            ;;
+        *)
+            echo -e "${RED}Error:${RESET} Unknown theme '${target_theme}'." >&2
+            echo "Run 'congen theme' to see valid themes." >&2
+            return 1
+            ;;
+    esac
+    echo -e "${GREEN}✔ Theme switched to ${CURRENT_THEME}!${RESET}"
+}
+
+cli_alert() {
+    local action="${1:-status}"
+    case "${action,,}" in
+        status)
+            if congen_alerts_is_enabled; then
+                if congen_alerts_is_running; then
+                    echo -e "${GREEN}Congen Audio Alerts: ENABLED and RUNNING${RESET} (PID $(cat "${ALERTS_PID_FILE}" 2>/dev/null))"
+                else
+                    echo -e "${YELLOW}Congen Audio Alerts: ENABLED (Daemon stopped)${RESET}"
+                fi
+            else
+                echo -e "${RED}Congen Audio Alerts: DISABLED${RESET}"
+            fi
+            ;;
+        enable)
+            congen_alerts_enable
+            congen_alerts_stop 2>/dev/null || true
+            congen_alerts_start
+            echo -e "${GREEN}✔ Audio alerts enabled and daemon started.${RESET}"
+            ;;
+        disable)
+            congen_alerts_disable
+            congen_alerts_stop
+            echo -e "${YELLOW}✔ Audio alerts disabled and daemon stopped.${RESET}"
+            ;;
+        test)
+            echo -e "${CYAN}Playing test alert sound…${RESET}"
+            if congen_alerts_play_sound; then
+                echo -e "${GREEN}✔ Test alert played successfully.${RESET}"
+            else
+                echo -e "${RED}✘ Failed to play test alert. Ensure sound player (paplay/pw-play/aplay/mpv) is installed.${RESET}"
+            fi
+            ;;
+        start)
+            congen_alerts_start
+            echo -e "${GREEN}✔ Alert daemon started.${RESET}"
+            ;;
+        stop)
+            congen_alerts_stop
+            echo -e "${YELLOW}✔ Alert daemon stopped.${RESET}"
+            ;;
+        *)
+            echo -e "${RED}Error:${RESET} Unknown alert action '${action}'." >&2
+            echo "Usage: congen alert <status|enable|disable|test|start|stop>" >&2
+            return 1
+            ;;
+    esac
+}
+
+handle_cli_args() {
+    local cmd="${1:-}"
+    shift || true
+
+    case "${cmd}" in
+        --help|-h|help)
+            cli_show_help
+            exit 0
+            ;;
+        --version|-v|version)
+            echo "Congen v1.0.0 by Dreamworlds Productions (MPlanetarian)"
+            exit 0
+            ;;
+        list|ls)
+            cli_list_commands "$@"
+            ;;
+        run|exec)
+            cli_run_command "$@"
+            ;;
+        add|create)
+            cli_add_command "$@"
+            ;;
+        remove|rm|delete)
+            cli_remove_command "$@"
+            ;;
+        status|info)
+            cli_status
+            ;;
+        ping)
+            cli_ping
+            ;;
+        theme|themes)
+            cli_theme "$@"
+            ;;
+        alert|alerts)
+            cli_alert "$@"
+            ;;
+        *)
+            echo -e "${RED}Error:${RESET} Unknown command '${cmd}'." >&2
+            echo "Run 'congen --help' for usage." >&2
+            exit 1
+            ;;
+    esac
+}
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
-log_entry "Session started. Script: ${BASH_SOURCE[0]}"
-
-# ── Auto-start alert daemon on launch if alerts are enabled ──────────────────
-if congen_alerts_is_enabled && ! congen_alerts_is_running; then
-    _boot_player=$(congen_alerts_detect_player)
-    if [[ "${_boot_player}" != "none" ]]; then
-        congen_alerts_start 2>/dev/null || true
-    fi
-    unset _boot_player
-fi
-
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    main_menu
+    if [[ $# -gt 0 ]]; then
+        handle_cli_args "$@"
+    else
+        log_entry "Session started (interactive). Script: ${BASH_SOURCE[0]}"
+        # ── Auto-start alert daemon on launch if alerts are enabled ──────────────────
+        if congen_alerts_is_enabled && ! congen_alerts_is_running; then
+            _boot_player=$(congen_alerts_detect_player)
+            if [[ "${_boot_player}" != "none" ]]; then
+                congen_alerts_start 2>/dev/null || true
+            fi
+            unset _boot_player
+        fi
+        main_menu
+    fi
 fi

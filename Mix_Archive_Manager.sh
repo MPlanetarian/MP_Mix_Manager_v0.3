@@ -615,12 +615,12 @@ run_interactive_submenu() {
             CHAR:+|CHAR:=)
                 local mp_py="$SCRIPT_DIR/MP_Audio_Player.py"
                 [ ! -f "$mp_py" ] && mp_py="$SCRIPT_DIR/scripts/MP_Audio_Player.py"
-                [ -f "$mp_py" ] && python3 "$mp_py" --vol +5 >/dev/null 2>&1
+                [ -f "$mp_py" ] && python3 "$mp_py" --pitch-up >/dev/null 2>&1
                 ;;
             CHAR:-|CHAR:_)
                 local mp_py="$SCRIPT_DIR/MP_Audio_Player.py"
                 [ ! -f "$mp_py" ] && mp_py="$SCRIPT_DIR/scripts/MP_Audio_Player.py"
-                [ -f "$mp_py" ] && python3 "$mp_py" --vol -5 >/dev/null 2>&1
+                [ -f "$mp_py" ] && python3 "$mp_py" --pitch-down >/dev/null 2>&1
                 ;;
             UP)
                 local hops=0
