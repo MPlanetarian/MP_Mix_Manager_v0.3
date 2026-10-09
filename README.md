@@ -23,18 +23,21 @@ An enterprise-grade workstation orchestration console and media management suite
 
 ## 📑 Table of Contents
 
-- [🌌 Spotlight: MPlanetarian Dreamworlds & TUI Navigation](#-spotlight-mplanetarian-dreamworlds--tui-navigation)
-- [🎧 Spotlight: MP Audio Player (Terminal Audiophile Suite)](#-spotlight-mp-audio-player-terminal-audiophile-suite)
-- [📱 Spotlight: DJ Booth & Studio Mobile Web Companion](#-spotlight-dj-booth--studio-mobile-web-companion)
-- [🎬 Spotlight: YouTube Shorts 1080x1920 Promotional Video Generator](#-spotlight-youtube-shorts-1080x1920-promotional-video-generator)
-- [🤖 Spotlight: Next-Gen AI Orchestration Suite](#-spotlight-next-gen-ai-orchestration-suite)
-- [✂️ Spotlight: Auto-Split DJ Mixes & Multi-Part Spek Spectrograms](#️-spotlight-auto-split-dj-mixes--multi-part-spek-spectrograms)
-- [⏰ Spotlight: MPlanetarians Alarm Clock (Wake Up Edition)](#-spotlight-mplanetarians-alarm-clock-wake-up-edition)
-- [⚡ Spotlight: Traktor History Harmonic Playlist & Stage Setup](#-spotlight-traktor-history-harmonic-playlist--stage-setup)
-- [🎛️ Spotlight: EBU R128 Loudness Mastering, Audio Audit & CUE Engine](#️-spotlight-ebu-r128-loudness-mastering-audio-audit--cue-engine)
-- [🔍 Spotlight: Audio Fingerprinting, Chapters & Rekordbox Export](#-spotlight-audio-fingerprinting-chapters--rekordbox-export)
-- [🖥️ Spotlight: KDE Plasma Desktop Shortcuts & Global Keyboard Binder](#️-spotlight-kde-plasma-desktop-shortcuts--global-keyboard-binder)
-- [📢 Spotlight: Unified Multi-Channel Notification Dispatcher](#-spotlight-unified-multi-channel-notification-dispatcher)
+- [🔥 What's New & Highlighted Features in v0.3.5](#-whats-new--highlighted-features-in-v035)
+- [🌌 MPlanetarian Dreamworlds & TUI Navigation](#-spotlight-mplanetarian-dreamworlds--tui-navigation)
+- [🎧 MP Audio Player (Terminal Audiophile Suite)](#-spotlight-mp-audio-player-terminal-audiophile-suite)
+- [📱 DJ Booth & Studio Mobile Web Companion](#-spotlight-dj-booth--studio-mobile-web-companion)
+- [🎬 YouTube Shorts 1080x1920 Promotional Video Generator](#-spotlight-youtube-shorts-1080x1920-promotional-video-generator)
+- [🎥 Screencast YouTube Video Generator with NVENC & Image Transitions](#-spotlight-screencast-youtube-video-generator-with-nvenc--image-transitions)
+- [🤖 Next-Gen AI Orchestration Suite](#-spotlight-next-gen-ai-orchestration-suite)
+- [📱 Congen v1.0.0 (KDE Connect Mobile Remote Suite)](#-spotlight-congen-v100-kde-connect-mobile-remote-suite)
+- [✂️ Auto-Split DJ Mixes & Multi-Part Spek Spectrograms](#️-spotlight-auto-split-dj-mixes--multi-part-spek-spectrograms)
+- [⏰ MPlanetarians Alarm Clock (Wake Up Edition)](#-spotlight-mplanetarians-alarm-clock-wake-up-edition)
+- [⚡ Traktor History Harmonic Playlist & Stage Setup](#-spotlight-traktor-history-harmonic-playlist--stage-setup)
+- [🎛️ EBU R128 Loudness Mastering, Audio Audit & CUE Engine](#️-spotlight-ebu-r128-loudness-mastering-audio-audit--cue-engine)
+- [🔍 Audio Fingerprinting, Chapters & Rekordbox Export](#-spotlight-audio-fingerprinting-chapters--rekordbox-export)
+- [🖥️ KDE Plasma Desktop Shortcuts & Global Keyboard Binder](#️-spotlight-kde-plasma-desktop-shortcuts--global-keyboard-binder)
+- [📢 Unified Multi-Channel Notification Dispatcher](#-spotlight-unified-multi-channel-notification-dispatcher)
 - [🚀 Quick Start by Operating System](#-quick-start-by-operating-system)
 - [🎛️ Master Feature Matrix (3 Sections, Options 0–35)](#️-master-feature-matrix-3-sections-options-035)
 - [💻 Command Line Interface & Direct Shortcuts](#-command-line-interface--direct-shortcuts)
@@ -42,6 +45,24 @@ An enterprise-grade workstation orchestration console and media management suite
 - [⚙️ Configuration Guide (`config.env`)](#️-configuration-guide-configenv)
 - [🧪 Automated Test Suite & Quality Assurance](#-automated-test-suite--quality-assurance)
 - [📜 License](#-license)
+
+---
+
+## 🔥 What's New & Highlighted Features in v0.3.5
+
+> [!IMPORTANT]
+> **Release Highlights (`v0.3.5 Stable`):** This milestone release unifies mobile device remote orchestration, hardware-accelerated screencast video rendering, voice-driven AI autonomy, multi-archive origin-aware audio mastering, and terminal audio player rendering polish.
+
+| Feature Area | Component | Highlights & Capability Summary |
+| :--- | :--- | :--- |
+| **📱 Mobile Remote Suite** | **[Congen v1.0.0](Congen/README.md)** | Full-featured KDE Connect interactive CLI manager with **11 menus**, **12 TrueColor palettes**, desktop shortcut runner/binder (`kioclient` & `kwriteconfig6`), algorithmic 2-tone synthetic chime sound daemon (`.congen_alert.wav`), multi-format manual generator (Plain Text, dark HTML5, PDF fallback cascade), mobile keyboard simulation (Wayland/X11), and 30+ bundled `.congen` profiles with multi-device deduplication. |
+| **🎥 YouTube Video Suite** | **[Screencast NVENC Generator](scripts/generate_screencast_youtube_video.py)** | Generates 1080p/4K YouTube videos with NVIDIA NVENC hardware acceleration (`h264_nvenc`), 5-second intro/outro fade effects, periodic 5-second image transition cycles every 5 minutes (cycling artwork), 320kbps looped studio AAC audio, and uniform 90000 timescale stream architecture. |
+| **🗣️ AI Video & Audio** | **[WAN2GP TTS Batch Suite](scripts/wan2gp_tts_batch.py)** | Integrated Text-to-Speech batch converter transforming `.txt` scripts into uncompressed `.wav` audio using British/international Neural (Edge-TTS) and offline (eSpeak-NG) voices, accompanying Flux Klein 9B and LTX Video 2B/13B video generators. |
+| **🎙️ AI Voice Autonomy** | **[MP Harmony AI Voice Agent](scripts/manage_harmony_agent.sh)** | Autonomous engineering agent running on port 11435 with background setsid detachment, zero-lag port readiness wait, model tag sanitization, and an interactive **Voice Chat CLI** (`local-voice-talk` via `mix-archive-manager --harmony-voice` or Option 32.4). |
+| **🎛️ Audio Mastering & Storage** | **Multi-Archive Routing** | Ingest and batch-convert across multiple physical drives (`MIX_ARCHIVE_DIR` & `EXTRA_MIX_ARCHIVE_DIRS`), with origin-aware output routing that deposits converted FLACs and spectrograms back to their respective origin drives. |
+| **🎧 Terminal Audiophile Player** | **[MP Audio Player](MP_Audio_Player.py)** | "Dreamworlds Productions • Studio Audio Playback" branding, resolved TUI stair-stepping rendering artifacts, pixel-aligned visualizer frames, unbuffered zero-latency controls (`Space`, seek, volume, `t`), and flexible string path handling. |
+| **📱 Social Media Outreach** | **[YouTube Shorts Generator](generate_youtube_short_promo.py)** | 1080x1920 60fps vertical promo videos with animated waveform overlays for TikTok, Instagram Reels, and YouTube Shorts. |
+| **📑 Master Tracklists** | **HTML Auto-Open & Paths** | Generates master tracklists with rich file path metadata and auto-opens in default web browser. |
 
 ---
 
@@ -84,6 +105,8 @@ flowchart LR
 ```
 
 ### 🎛️ Audio Player Highlights:
+- ✨ **Dreamworlds Productions • Studio Audio Playback**: Dedicated studio branding banner, real-time playback clocks, volume level gauges, and technical audio stream properties.
+- 📐 **Pixel-Aligned Box Frame Architecture**: Fully resolved TUI stair-stepping rendering artifacts with clean vertical borders and synchronized multi-box terminal layout.
 - 📊 **Animated TrueColor Spectrum Visualizer**: Dynamic multi-band frequency visualizer and stereo level meters rendered live inside your terminal using Dreamworlds gradients.
 - ⌨️ **Unbuffered Zero-Lag Keyboard Controls**:
   - `Space`: Instant pause / play toggle.
@@ -93,7 +116,7 @@ flowchart LR
   - `t`: Open live synchronized tracklist in dedicated console.
   - `s` / `r`: Shuffle / Repeat mode toggles.
   - `q` / `Esc`: Return cleanly to master manager menu.
-- 🔍 **Integrated Archive Catalog Browser**: Search and filter by mix episode, artist, title, or date with instant enter-to-play dispatch.
+- 🔍 **Integrated Archive Catalog Browser & Flexible Path Ingestion**: Pass specific mix audio paths directly via CLI or browse the entire catalog by mix episode, artist, title, or date with instant enter-to-play dispatch.
 - 🎧 **Audiophile Bit-Perfect Output**: Direct integration with PipeWire, ALSA, PulseAudio, macOS CoreAudio, and WASAPI.
 
 ---
@@ -145,6 +168,30 @@ flowchart LR
 
 ---
 
+## 🎥 Spotlight: Screencast YouTube Video Generator with NVENC & Image Transitions
+
+> [!TIP]
+> **Need full-length 1080p/4K YouTube videos with seamless image transitions for live streams and studio sessions?** Located in `scripts/generate_screencast_youtube_video.py`, this tool automates full episode screencast rendering with hardware-accelerated NVIDIA NVENC encoding, cyclic artwork transitions, and broadcast-grade audio mastering.
+
+```mermaid
+flowchart LR
+    A["🎬 Screencast Video (.mp4)"] & B["🎵 Studio Mix (.wav / .flac)"] --> C["🎥 generate_screencast_youtube_video.py"]
+    C --> D["⚡ NVIDIA NVENC (h264_nvenc 1080p 60/30fps)"]
+    C --> E["🖼️ 5s Intro & Outro Studio Fades to Black"]
+    C --> F["🔄 Cyclic 5-Min Image Transitions (Artwork Carousel)"]
+    C --> G["🎚️ 320kbps High-Fidelity AAC Audio Loop"]
+    D & E & F & G --> H["🚀 Ready-to-Publish YouTube Video (.mp4)"]
+```
+
+### 🎬 Screencast Video Generator Highlights:
+- ⚡ **Hardware-Accelerated NVIDIA NVENC**: Leverages dedicated NVENC silicon (`h264_nvenc`) for blazing-fast 1080p / 4K video rendering without pegging CPU cores.
+- 🖼️ **Seamless 5-Minute Image Transitions**: Automatically cycles through high-resolution episode artwork and interface graphics every 5 minutes with smooth 1-second crossfades.
+- 🌑 **Studio Intro & Outro Fades**: Elegant 5-second fade-in from black at video start and 5-second fade-out to black at video conclusion.
+- 🎶 **Broadcast-Grade Looped Audio**: Synchronizes pristine 320kbps AAC studio audio, looping seamlessly to match video length with smooth 5-second audio intro/outro envelopes.
+- ⏱️ **Uniform Timescale Architecture**: Single-stream segment concatenation enforcing a standardized 90,000 timescale to eliminate audio/video desync and YouTube processing errors.
+
+---
+
 ## 🤖 Spotlight: Next-Gen AI Orchestration Suite
 
 > [!IMPORTANT]
@@ -165,14 +212,60 @@ flowchart TD
 ```
 
 ### 🧠 AI Suite Capabilities:
-- 🎙️ **MP Harmony AI Agent** (`manage_harmony_agent.sh` / Option 32.4): Autonomous engineering agent and voice bridge running on port 11435. Includes dedicated **Voice Chat CLI** (`local-voice-talk`) for voice-driven workstation operation.
+- 🎙️ **MP Harmony AI Agent** (`manage_harmony_agent.sh` / Option 32.4): Autonomous engineering agent and voice bridge running on port 11435. Includes background daemon with setsid detachment, zero-lag port readiness wait, and an interactive **Voice Chat CLI** (`local-voice-talk` via `mix-archive-manager --harmony-voice` or Option 32.4).
 - 🌐 **Open WebUI Web Chat** (`manage_open_webui.sh` / Option 32.3): Browser-based chat interface connected to local models on port 42004 / 8080.
 - 🦙 **Ollama Server & Models** (`manage_ollama.sh` / Option 32.2): Distrobox container / host controller on port 11434 with GPU CUDA monitoring, background daemon modes, model puller (`qwen2.5`, `llama3.1`, `nemotron`), and CLI interactive chat.
 - 📱 **DeepSeek Harness (`dsh-mobile`)** (`scripts/dsh_mobile.sh` / Option 32.5): Web chat harness on port 3080 optimized for mobile devices with trusted host flags.
 - 🎥 **WAN2GP AI Video & TTS Suite** (`wan2gp.sh`, `wan2gp_tts_batch.py`, `wan2gp_flux_batch.py`, `wan2gp_ltx_batch.py`):
-  - **Text-to-Speech (TTS) Batch Suite**: Converts `.txt` scripts into pristine `.wav` speech with interactive playback.
+  - **Text-to-Speech (TTS) Batch Suite**: Converts `.txt` scripts into uncompressed `.wav` speech audio with British and international voices (Edge-TTS Neural & eSpeak-NG offline) and interactive playback.
   - **Video Batch Generators**: Flux Klein 9B and LTX Video 2B/13B generation profiles (Profiles 2 and 4.5).
 - 📊 **Beszel Server Monitoring Hub & Agent** (`beszel.sh` / Option 32.7): Real-time hardware, CPU, NVIDIA GPU, and container telemetry web dashboard on port 8090.
+
+---
+
+## 📱 Spotlight: Congen v1.0.0 (KDE Connect Mobile Remote Suite)
+
+> [!IMPORTANT]
+> **Control your entire Linux workstation, custom scripts, and media workflows straight from your smartphone!** Located in [Congen/](Congen/README.md) and launchable directly via `mix-archive-manager --congen` or Option 28.2, **Congen** is an enterprise-grade terminal command orchestration suite and interactive CLI manager for KDE Connect (Plasma 6 & 5).
+
+```mermaid
+flowchart TD
+    subgraph MobileEndpoints["📱 Paired Mobile Endpoints"]
+        Android["Android Phone / Tablet\n(KDE Connect App)"]
+        iPhone["Apple iPhone / iPad\n(KDE Connect App)"]
+    end
+
+    subgraph CongenEngine["⚡ Congen v1.0.0 Engine"]
+        TUI["11 Interactive Menus\n(12 TrueColor Palettes)"]
+        AlertDaemon["Auditory Chime Daemon\n(.congen_alert_daemon.sh)"]
+        DocGenerator["Multi-Format Manuals\n(TXT / HTML5 / PDF)"]
+        SchedulerEngine["Dual-Backend Scheduler\n(at / systemd-run)"]
+        DesktopIntegration["Desktop Shortcut Manager\n(kioclient & kwriteconfig6)"]
+    end
+
+    subgraph DesktopTargets["💻 Linux Host System & Studio Workstation"]
+        KDECD["kdeconnectd Daemon\n(~/.config/kdeconnect/)"]
+        StudioScripts["Mix Manager Scripts & Audio DAWs"]
+        WorkstationApps["System Commands, AI Servers & Hotkeys"]
+    end
+
+    MobileEndpoints <-->|Encrypted Local Wi-Fi / TLS| KDECD
+    KDECD <--> CongenEngine
+    CongenEngine --> StudioScripts
+    CongenEngine --> WorkstationApps
+    AlertDaemon -.->|Plays .congen_alert.wav on Trigger| DesktopTargets
+```
+
+### 📱 Congen v1.0.0 Feature Highlights:
+- 🎛️ **11 Interactive Menus**: Create commands (`[1]`), view & remove (`[2]`), direct terminal execution (`[3]`), task scheduling (`[4]`), audit logging (`[5]`), import/export management (`[6]`), multi-format documentation (`[7]`), auditory alerts (`[8]`), keyboard shortcut generator (`[9]`), desktop shortcut manager (`[10]`), and theme switcher (`[11]`).
+- 🎨 **12 TrueColor Themes**: Choose between MPlanetarian Dreamworlds (default), Dreamworlds Ultra, Cyberpunk, Dracula, Nord, Matrix, Solarized, Tokyo Night, Monokai, Gruvbox, Emerald, and Classic ANSI.
+- 🔔 **Algorithmic Chime Alert Daemon**: Background daemon (`.congen_alert_daemon.sh`) monitors remote executions and plays an algorithmic two-tone chime (`.congen_alert.wav`, 1047 Hz → 1319 Hz) generated purely via Python standard library with zero binary media dependencies.
+- 🖥️ **Desktop Shortcut Manager (`[10]`)**: Discovers `.desktop` launchers, executes immediately via `kioclient exec`, binds global hotkeys via `kwriteconfig6` into `kglobalshortcutsrc`, and schedules future launches via `at` or `systemd-run`.
+- ⌨️ **Keyboard Shortcut Generator (`[9]`)**: Translates KDE global shortcuts into standalone executable scripts using `xdotool` (X11) or `ydotool` (Wayland), registering them as remote mobile triggers.
+- 📑 **Multi-Format Manual Generator (`[7]`)**: Generates structured Plain Text (`.txt`), responsive modern dark-mode HTML5 (`.html`), and print-ready PDF (`.pdf`) via an automated converter cascade (`wkhtmltopdf` → `chromium` → `google-chrome` → `weasyprint`).
+- 📦 **30+ Bundled Command Profiles (`CONGEN_IMPORT/`)**: Pre-configured profiles for Ollama, WAN2GP AI Video, Beszel, DeepSeek, Steam, Strawberry Player, Audacity, VLC, Audio Mute/Unmute, and LAN-only Internet Kill-Switch with multi-device deduplication.
+
+👉 **Explore the dedicated documentation:** [Congen/README.md](Congen/README.md)
 
 ---
 
