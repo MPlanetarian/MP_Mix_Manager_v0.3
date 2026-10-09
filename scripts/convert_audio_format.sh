@@ -27,51 +27,85 @@ for cfg in "$SCRIPT_DIR/config.env" "$PARENT_DIR/config.env" "$PWD/config.env" "
     fi
 done
 
-# Discover all FLAC directories
+# Parse command line flags if invoked non-interactively or from menu
+CLI_SCOPE=""
+CLI_FORMAT=""
+CLI_BITRATE=""
+CLI_BITDEPTH=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -i) CLI_SCOPE="1"; shift ;;
+        -c) CLI_SCOPE="2"; shift ;;
+        -w) CLI_SCOPE="3"; shift ;;
+        -f) CLI_SCOPE="4"; shift ;;
+        -o) CLI_FORMAT="$2"; shift 2 ;;
+        -b) CLI_BITRATE="$2"; shift 2 ;;
+        -d) CLI_BITDEPTH="$2"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+
+# Discover all configured mix archive root directories
+all_mix_archive_roots=()
+if [ -n "${MIX_ARCHIVE_DIR:-}" ] && [ -d "$MIX_ARCHIVE_DIR" ]; then
+    cand="$(cd "$MIX_ARCHIVE_DIR" && pwd)"
+    [[ ! " ${all_mix_archive_roots[*]} " =~ " ${cand} " ]] && all_mix_archive_roots+=("$cand")
+fi
+
+if [ -n "${EXTRA_MIX_ARCHIVE_DIRS:-}" ]; then
+    IFS=':;,' read -ra EXTRA_DIRS <<< "$EXTRA_MIX_ARCHIVE_DIRS"
+    for ed in "${EXTRA_DIRS[@]}"; do
+        ed="$(echo "$ed" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+        [ -z "$ed" ] && continue
+        if [ -d "$ed" ]; then
+            cand="$(cd "$ed" && pwd)"
+            [[ ! " ${all_mix_archive_roots[*]} " =~ " ${cand} " ]] && all_mix_archive_roots+=("$cand")
+        fi
+    done
+fi
+[ -d "$PWD" ] && cand="$(pwd)" && [[ ! " ${all_mix_archive_roots[*]} " =~ " ${cand} " ]] && all_mix_archive_roots+=("$cand")
+
+# Discover all FLAC directories across all archives
 all_flac_dirs=()
-if [ -n "${MIX_ARCHIVE_DIR:-}" ] && [ -d "$MIX_ARCHIVE_DIR/FLAC_CONVERTED_OUTPUTS" ]; then
-    all_flac_dirs+=("$(cd "$MIX_ARCHIVE_DIR/FLAC_CONVERTED_OUTPUTS" && pwd)")
-elif [ -n "${MIX_ARCHIVE_DIR:-}" ] && [ -d "$MIX_ARCHIVE_DIR" ]; then
-    all_flac_dirs+=("$(cd "$MIX_ARCHIVE_DIR" && pwd)")
-elif [ -d "${OUTPUT_DIR:-FLAC_CONVERTED_OUTPUTS}" ]; then
+if [ -d "${OUTPUT_DIR:-FLAC_CONVERTED_OUTPUTS}" ]; then
     all_flac_dirs+=("$(cd "${OUTPUT_DIR:-FLAC_CONVERTED_OUTPUTS}" && pwd)")
 fi
-
-if [ -n "${EXTRA_MIX_ARCHIVE_DIRS:-}" ]; then
-    IFS=':;,' read -ra EXTRA_DIRS <<< "$EXTRA_MIX_ARCHIVE_DIRS"
-    for ed in "${EXTRA_DIRS[@]}"; do
-        ed="$(echo "$ed" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-        [ -z "$ed" ] && continue
-        if [ -d "$ed/FLAC_CONVERTED_OUTPUTS" ]; then
-            cand="$(cd "$ed/FLAC_CONVERTED_OUTPUTS" && pwd)"
-            [[ ! " ${all_flac_dirs[*]} " =~ " ${cand} " ]] && all_flac_dirs+=("$cand")
-        elif [ -d "$ed" ]; then
-            cand="$(cd "$ed" && pwd)"
-            [[ ! " ${all_flac_dirs[*]} " =~ " ${cand} " ]] && all_flac_dirs+=("$cand")
-        fi
-    done
-fi
+for arch_d in "${all_mix_archive_roots[@]}"; do
+    if [ -d "$arch_d/FLAC_CONVERTED_OUTPUTS" ]; then
+        cand="$(cd "$arch_d/FLAC_CONVERTED_OUTPUTS" && pwd)"
+        [[ ! " ${all_flac_dirs[*]} " =~ " ${cand} " ]] && all_flac_dirs+=("$cand")
+    elif [ -d "$arch_d" ]; then
+        cand="$(cd "$arch_d" && pwd)"
+        [[ ! " ${all_flac_dirs[*]} " =~ " ${cand} " ]] && all_flac_dirs+=("$cand")
+    fi
+done
 [ ${#all_flac_dirs[@]} -eq 0 ] && [ -d "$PWD" ] && all_flac_dirs+=("$PWD")
 
-# Discover all WAV archive directories
+# Discover all WAV archive and unconverted directories across all archives
 all_wav_dirs=()
-if [ -n "${MIX_ARCHIVE_DIR:-}" ] && [ -d "$MIX_ARCHIVE_DIR/CONVERTED_WAV_FILES" ]; then
-    all_wav_dirs+=("$(cd "$MIX_ARCHIVE_DIR/CONVERTED_WAV_FILES" && pwd)")
-elif [ -d "${ARCHIVE_DIR:-CONVERTED_WAV_FILES}" ]; then
-    all_wav_dirs+=("$(cd "${ARCHIVE_DIR:-CONVERTED_WAV_FILES}" && pwd)")
-fi
-
-if [ -n "${EXTRA_MIX_ARCHIVE_DIRS:-}" ]; then
-    IFS=':;,' read -ra EXTRA_DIRS <<< "$EXTRA_MIX_ARCHIVE_DIRS"
-    for ed in "${EXTRA_DIRS[@]}"; do
-        ed="$(echo "$ed" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-        [ -z "$ed" ] && continue
-        if [ -d "$ed/CONVERTED_WAV_FILES" ]; then
-            cand="$(cd "$ed/CONVERTED_WAV_FILES" && pwd)"
-            [[ ! " ${all_wav_dirs[*]} " =~ " ${cand} " ]] && all_wav_dirs+=("$cand")
-        fi
-    done
-fi
+all_unconverted_wav_dirs=()
+for arch_d in "${all_mix_archive_roots[@]}"; do
+    # Archive converted WAV directories
+    if [ -d "$arch_d/CONVERTED_WAV_FILES" ]; then
+        cand="$(cd "$arch_d/CONVERTED_WAV_FILES" && pwd)"
+        [[ ! " ${all_wav_dirs[*]} " =~ " ${cand} " ]] && all_wav_dirs+=("$cand")
+    fi
+    if [ -d "$arch_d/WAV_CONVERTED_OUTPUTS" ]; then
+        cand="$(cd "$arch_d/WAV_CONVERTED_OUTPUTS" && pwd)"
+        [[ ! " ${all_wav_dirs[*]} " =~ " ${cand} " ]] && all_wav_dirs+=("$cand")
+    fi
+    # Archive root directory (where incoming/pending WAVs reside)
+    if [ -d "$arch_d" ]; then
+        cand="$(cd "$arch_d" && pwd)"
+        [[ ! " ${all_unconverted_wav_dirs[*]} " =~ " ${cand} " ]] && all_unconverted_wav_dirs+=("$cand")
+        [[ ! " ${all_wav_dirs[*]} " =~ " ${cand} " ]] && all_wav_dirs+=("$cand")
+    fi
+    if [ -d "$arch_d/UNCONVERTED_WAVS" ]; then
+        cand="$(cd "$arch_d/UNCONVERTED_WAVS" && pwd)"
+        [[ ! " ${all_unconverted_wav_dirs[*]} " =~ " ${cand} " ]] && all_unconverted_wav_dirs+=("$cand")
+    fi
+done
 
 # Find matching cover art
 find_cover_art() {
@@ -375,67 +409,115 @@ prompt_split_audio() {
     esac
 }
 
-echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
-echo -e "${BOLD}${MAGENTA}       UNIVERSAL AUDIO FORMAT & BIT DEPTH CONVERTER                   ${NC}"
-echo -e "${BOLD}${MAGENTA}======================================================================${NC}\n"
+FMT_NAME=""
+OPTS=""
+EXT=""
+SUB_DIR=""
 
-echo -e "${BOLD}Select Target Output Format:${NC}"
-echo -e "  ${BOLD}${BLUE}── [ MP3 FORMATS ] ───────────────────────────────────────────${NC}"
-echo -e "  ${BOLD}${CYAN} 1)${NC} MP3 320 kbps CBR (Highest Constant Bitrate MP3)"
-echo -e "  ${BOLD}${CYAN} 2)${NC} MP3 V0 VBR (~245 kbps Optimal Variable Bitrate)"
-echo -e "  ${BOLD}${CYAN} 3)${NC} MP3 256 kbps CBR"
-echo -e "  ${BOLD}${CYAN} 4)${NC} MP3 192 kbps CBR"
-echo -e "  ${BOLD}${BLUE}── [ OGG VORBIS & OPUS FORMATS ] ─────────────────────────────${NC}"
-echo -e "  ${BOLD}${CYAN} 5)${NC} Ogg Vorbis Quality 10 (~500 kbps Ultra Quality .ogg)"
-echo -e "  ${BOLD}${CYAN} 6)${NC} Ogg Vorbis Quality 8 (~256 kbps Standard .ogg)"
-echo -e "  ${BOLD}${CYAN} 7)${NC} Opus 160 kbps (High-Efficiency Broadcast / Streaming)"
-echo -e "  ${BOLD}${CYAN} 8)${NC} Opus 128 kbps"
-echo -e "  ${BOLD}${BLUE}── [ APPLE FORMATS (AAC & ALAC) ] ────────────────────────────${NC}"
-echo -e "  ${BOLD}${CYAN} 9)${NC} Apple AAC 320 kbps (.m4a)"
-echo -e "  ${BOLD}${CYAN}10)${NC} Apple AAC 256 kbps (iTunes / Apple Podcasts Standard .m4a)"
-echo -e "  ${BOLD}${CYAN}11)${NC} Apple ALAC Lossless (.m4a Apple Lossless Audio Codec)"
-echo -e "  ${BOLD}${BLUE}── [ WAV TO WAV (BIT DEPTH CONVERSION) ] ─────────────────────${NC}"
-echo -e "  ${BOLD}${CYAN}12)${NC} WAV 32-bit Float PCM (Master Studio Floating Point)"
-echo -e "  ${BOLD}${CYAN}13)${NC} WAV 24-bit Signed PCM (24-bit Studio Lossless WAV)"
-echo -e "  ${BOLD}${CYAN}14)${NC} WAV 16-bit Signed PCM (CD Standard 44.1 kHz, 16-bit)"
-echo -e "  ${BOLD}${CYAN}15)${NC} WAV 16-bit Signed PCM (Native Sample Rate, 16-bit)"
-echo -e "  ${BOLD}${BLUE}── [ FLAC LOSSLESS ] ─────────────────────────────────────────${NC}"
-echo -e "  ${BOLD}${CYAN}16)${NC} FLAC 24-bit Lossless"
-echo -e "  ${BOLD}${CYAN}17)${NC} FLAC 16-bit CD Standard Lossless"
-echo -e "  ${BOLD}${CYAN} 0)${NC} Cancel and Return"
-echo ""
+if [ -n "$CLI_FORMAT" ]; then
+    case "${CLI_FORMAT,,}" in
+        mp3)
+            case "${CLI_BITRATE:-320k}" in
+                256|256k) FMT_NAME="MP3 256k CBR"; OPTS="-c:a libmp3lame -b:a 256k"; EXT="mp3"; SUB_DIR="MP3_256K" ;;
+                192|192k) FMT_NAME="MP3 192k CBR"; OPTS="-c:a libmp3lame -b:a 192k"; EXT="mp3"; SUB_DIR="MP3_192K" ;;
+                v0|V0)    FMT_NAME="MP3 V0 VBR";   OPTS="-c:a libmp3lame -q:a 0";    EXT="mp3"; SUB_DIR="MP3_V0" ;;
+                *)        FMT_NAME="MP3 320k CBR"; OPTS="-c:a libmp3lame -b:a 320k"; EXT="mp3"; SUB_DIR="MP3_320K" ;;
+            esac
+            ;;
+        wav)
+            case "${CLI_BITDEPTH:-24}" in
+                32)      FMT_NAME="WAV 32-bit Float";   OPTS="-c:a pcm_f32le"; EXT="wav"; SUB_DIR="WAV_32BIT_FLOAT" ;;
+                16)      FMT_NAME="WAV 16-bit 44.1kHz"; OPTS="-c:a pcm_s16le -ar 44100"; EXT="wav"; SUB_DIR="WAV_16BIT_44K" ;;
+                *)       FMT_NAME="WAV 24-bit PCM";     OPTS="-c:a pcm_s24le"; EXT="wav"; SUB_DIR="WAV_24BIT" ;;
+            esac
+            ;;
+        flac)
+            case "${CLI_BITDEPTH:-24}" in
+                16)      FMT_NAME="FLAC 16-bit"; OPTS="-sample_fmt s16 -c:a flac -compression_level 8"; EXT="flac"; SUB_DIR="FLAC_16BIT" ;;
+                *)       FMT_NAME="FLAC 24-bit"; OPTS="-sample_fmt s32 -c:a flac -compression_level 8"; EXT="flac"; SUB_DIR="FLAC_24BIT" ;;
+            esac
+            ;;
+        ogg)
+            FMT_NAME="Ogg Vorbis Q8"; OPTS="-c:a libvorbis -q:a 8"; EXT="ogg"; SUB_DIR="OGG_Q8"
+            ;;
+        opus)
+            FMT_NAME="Opus 160k"; OPTS="-c:a libopus -b:a 160k"; EXT="opus"; SUB_DIR="OPUS_160K"
+            ;;
+        aac|m4a)
+            FMT_NAME="Apple AAC 320k"; OPTS="-c:a aac -b:a 320k"; EXT="m4a"; SUB_DIR="AAC_320K"
+            ;;
+        alac)
+            FMT_NAME="Apple ALAC Lossless"; OPTS="-c:a alac"; EXT="m4a"; SUB_DIR="ALAC_LOSSLESS"
+            ;;
+    esac
+fi
 
-read -r -p "Enter choice [1-17]: " fmt_choice
+if [ -z "$FMT_NAME" ]; then
+    echo -e "${BOLD}${MAGENTA}======================================================================${NC}"
+    echo -e "${BOLD}${MAGENTA}       UNIVERSAL AUDIO FORMAT & BIT DEPTH CONVERTER                   ${NC}"
+    echo -e "${BOLD}${MAGENTA}======================================================================${NC}\n"
 
-case "$fmt_choice" in
-    1)  FMT_NAME="MP3 320k CBR";        OPTS="-c:a libmp3lame -b:a 320k";                     EXT="mp3"; SUB_DIR="MP3_320K" ;;
-    2)  FMT_NAME="MP3 V0 VBR";          OPTS="-c:a libmp3lame -q:a 0";                        EXT="mp3"; SUB_DIR="MP3_V0" ;;
-    3)  FMT_NAME="MP3 256k CBR";        OPTS="-c:a libmp3lame -b:a 256k";                     EXT="mp3"; SUB_DIR="MP3_256K" ;;
-    4)  FMT_NAME="MP3 192k CBR";        OPTS="-c:a libmp3lame -b:a 192k";                     EXT="mp3"; SUB_DIR="MP3_192K" ;;
-    5)  FMT_NAME="Ogg Vorbis Q10";      OPTS="-c:a libvorbis -q:a 10";                        EXT="ogg"; SUB_DIR="OGG_Q10" ;;
-    6)  FMT_NAME="Ogg Vorbis Q8";       OPTS="-c:a libvorbis -q:a 8";                         EXT="ogg"; SUB_DIR="OGG_Q8" ;;
-    7)  FMT_NAME="Opus 160k";           OPTS="-c:a libopus -b:a 160k";                        EXT="opus"; SUB_DIR="OPUS_160K" ;;
-    8)  FMT_NAME="Opus 128k";           OPTS="-c:a libopus -b:a 128k";                        EXT="opus"; SUB_DIR="OPUS_128K" ;;
-    9)  FMT_NAME="Apple AAC 320k";      OPTS="-c:a aac -b:a 320k";                            EXT="m4a"; SUB_DIR="AAC_320K" ;;
-    10) FMT_NAME="Apple AAC 256k";      OPTS="-c:a aac -b:a 256k";                            EXT="m4a"; SUB_DIR="AAC_256K" ;;
-    11) FMT_NAME="Apple ALAC Lossless"; OPTS="-c:a alac";                                     EXT="m4a"; SUB_DIR="ALAC_LOSSLESS" ;;
-    12) FMT_NAME="WAV 32-bit Float";    OPTS="-c:a pcm_f32le";                                EXT="wav"; SUB_DIR="WAV_32BIT_FLOAT" ;;
-    13) FMT_NAME="WAV 24-bit PCM";      OPTS="-c:a pcm_s24le";                                EXT="wav"; SUB_DIR="WAV_24BIT" ;;
-    14) FMT_NAME="WAV 16-bit 44.1kHz";  OPTS="-c:a pcm_s16le -ar 44100";                      EXT="wav"; SUB_DIR="WAV_16BIT_44K" ;;
-    15) FMT_NAME="WAV 16-bit PCM";      OPTS="-c:a pcm_s16le";                                EXT="wav"; SUB_DIR="WAV_16BIT" ;;
-    16) FMT_NAME="FLAC 24-bit";         OPTS="-sample_fmt s32 -c:a flac -compression_level 8"; EXT="flac"; SUB_DIR="FLAC_24BIT" ;;
-    17) FMT_NAME="FLAC 16-bit";         OPTS="-sample_fmt s16 -c:a flac -compression_level 8"; EXT="flac"; SUB_DIR="FLAC_16BIT" ;;
-    0|q|Q) echo "Conversion cancelled."; exit 0 ;;
-    *) echo -e "${RED}Invalid choice!${NC}"; exit 1 ;;
-esac
+    echo -e "${BOLD}Select Target Output Format:${NC}"
+    echo -e "  ${BOLD}${BLUE}── [ MP3 FORMATS ] ───────────────────────────────────────────${NC}"
+    echo -e "  ${BOLD}${CYAN} 1)${NC} MP3 320 kbps CBR (Highest Constant Bitrate MP3)"
+    echo -e "  ${BOLD}${CYAN} 2)${NC} MP3 V0 VBR (~245 kbps Optimal Variable Bitrate)"
+    echo -e "  ${BOLD}${CYAN} 3)${NC} MP3 256 kbps CBR"
+    echo -e "  ${BOLD}${CYAN} 4)${NC} MP3 192 kbps CBR"
+    echo -e "  ${BOLD}${BLUE}── [ OGG VORBIS & OPUS FORMATS ] ─────────────────────────────${NC}"
+    echo -e "  ${BOLD}${CYAN} 5)${NC} Ogg Vorbis Quality 10 (~500 kbps Ultra Quality .ogg)"
+    echo -e "  ${BOLD}${CYAN} 6)${NC} Ogg Vorbis Quality 8 (~256 kbps Standard .ogg)"
+    echo -e "  ${BOLD}${CYAN} 7)${NC} Opus 160 kbps (High-Efficiency Broadcast / Streaming)"
+    echo -e "  ${BOLD}${CYAN} 8)${NC} Opus 128 kbps"
+    echo -e "  ${BOLD}${BLUE}── [ APPLE FORMATS (AAC & ALAC) ] ────────────────────────────${NC}"
+    echo -e "  ${BOLD}${CYAN} 9)${NC} Apple AAC 320 kbps (.m4a)"
+    echo -e "  ${BOLD}${CYAN}10)${NC} Apple AAC 256 kbps (iTunes / Apple Podcasts Standard .m4a)"
+    echo -e "  ${BOLD}${CYAN}11)${NC} Apple ALAC Lossless (.m4a Apple Lossless Audio Codec)"
+    echo -e "  ${BOLD}${BLUE}── [ WAV TO WAV (BIT DEPTH CONVERSION) ] ─────────────────────${NC}"
+    echo -e "  ${BOLD}${CYAN}12)${NC} WAV 32-bit Float PCM (Master Studio Floating Point)"
+    echo -e "  ${BOLD}${CYAN}13)${NC} WAV 24-bit Signed PCM (24-bit Studio Lossless WAV)"
+    echo -e "  ${BOLD}${CYAN}14)${NC} WAV 16-bit Signed PCM (CD Standard 44.1 kHz, 16-bit)"
+    echo -e "  ${BOLD}${CYAN}15)${NC} WAV 16-bit Signed PCM (Native Sample Rate, 16-bit)"
+    echo -e "  ${BOLD}${BLUE}── [ FLAC LOSSLESS ] ─────────────────────────────────────────${NC}"
+    echo -e "  ${BOLD}${CYAN}16)${NC} FLAC 24-bit Lossless"
+    echo -e "  ${BOLD}${CYAN}17)${NC} FLAC 16-bit CD Standard Lossless"
+    echo -e "  ${BOLD}${CYAN} 0)${NC} Cancel and Return"
+    echo ""
 
-echo -e "\n${BOLD}Select Input Scope:${NC}"
-echo -e "  ${BOLD}${CYAN}1)${NC} Single Audio File (Search & Pick or Enter Path)"
-echo -e "  ${BOLD}${CYAN}2)${NC} All WAV Files in Staging / Current Directory"
-echo -e "  ${BOLD}${CYAN}3)${NC} All Converted WAV Archive Files (CONVERTED_WAV_FILES)"
-echo -e "  ${BOLD}${CYAN}4)${NC} All FLAC Outputs (FLAC_CONVERTED_OUTPUTS)"
-echo ""
-read -r -p "Enter choice [1-4]: " scope_choice
+    read -r -p "Enter choice [1-17]: " fmt_choice
+
+    case "$fmt_choice" in
+        1)  FMT_NAME="MP3 320k CBR";        OPTS="-c:a libmp3lame -b:a 320k";                     EXT="mp3"; SUB_DIR="MP3_320K" ;;
+        2)  FMT_NAME="MP3 V0 VBR";          OPTS="-c:a libmp3lame -q:a 0";                        EXT="mp3"; SUB_DIR="MP3_V0" ;;
+        3)  FMT_NAME="MP3 256k CBR";        OPTS="-c:a libmp3lame -b:a 256k";                     EXT="mp3"; SUB_DIR="MP3_256K" ;;
+        4)  FMT_NAME="MP3 192k CBR";        OPTS="-c:a libmp3lame -b:a 192k";                     EXT="mp3"; SUB_DIR="MP3_192K" ;;
+        5)  FMT_NAME="Ogg Vorbis Q10";      OPTS="-c:a libvorbis -q:a 10";                        EXT="ogg"; SUB_DIR="OGG_Q10" ;;
+        6)  FMT_NAME="Ogg Vorbis Q8";       OPTS="-c:a libvorbis -q:a 8";                         EXT="ogg"; SUB_DIR="OGG_Q8" ;;
+        7)  FMT_NAME="Opus 160k";           OPTS="-c:a libopus -b:a 160k";                        EXT="opus"; SUB_DIR="OPUS_160K" ;;
+        8)  FMT_NAME="Opus 128k";           OPTS="-c:a libopus -b:a 128k";                        EXT="opus"; SUB_DIR="OPUS_128K" ;;
+        9)  FMT_NAME="Apple AAC 320k";      OPTS="-c:a aac -b:a 320k";                            EXT="m4a"; SUB_DIR="AAC_320K" ;;
+        10) FMT_NAME="Apple AAC 256k";      OPTS="-c:a aac -b:a 256k";                            EXT="m4a"; SUB_DIR="AAC_256K" ;;
+        11) FMT_NAME="Apple ALAC Lossless"; OPTS="-c:a alac";                                     EXT="m4a"; SUB_DIR="ALAC_LOSSLESS" ;;
+        12) FMT_NAME="WAV 32-bit Float";    OPTS="-c:a pcm_f32le";                                EXT="wav"; SUB_DIR="WAV_32BIT_FLOAT" ;;
+        13) FMT_NAME="WAV 24-bit PCM";      OPTS="-c:a pcm_s24le";                                EXT="wav"; SUB_DIR="WAV_24BIT" ;;
+        14) FMT_NAME="WAV 16-bit 44.1kHz";  OPTS="-c:a pcm_s16le -ar 44100";                      EXT="wav"; SUB_DIR="WAV_16BIT_44K" ;;
+        15) FMT_NAME="WAV 16-bit PCM";      OPTS="-c:a pcm_s16le";                                EXT="wav"; SUB_DIR="WAV_16BIT" ;;
+        16) FMT_NAME="FLAC 24-bit";         OPTS="-sample_fmt s32 -c:a flac -compression_level 8"; EXT="flac"; SUB_DIR="FLAC_24BIT" ;;
+        17) FMT_NAME="FLAC 16-bit";         OPTS="-sample_fmt s16 -c:a flac -compression_level 8"; EXT="flac"; SUB_DIR="FLAC_16BIT" ;;
+        0|q|Q) echo "Conversion cancelled."; exit 0 ;;
+        *) echo -e "${RED}Invalid choice!${NC}"; exit 1 ;;
+    esac
+fi
+
+scope_choice="${CLI_SCOPE:-}"
+if [ -z "$scope_choice" ]; then
+    echo -e "\n${BOLD}Select Input Scope:${NC}"
+    echo -e "  ${BOLD}${CYAN}1)${NC} Single Audio File (Search & Pick or Enter Path)"
+    echo -e "  ${BOLD}${CYAN}2)${NC} All WAV Files in Staging / Current Directory"
+    echo -e "  ${BOLD}${CYAN}3)${NC} All Converted WAV Archive Files (CONVERTED_WAV_FILES)"
+    echo -e "  ${BOLD}${CYAN}4)${NC} All FLAC Outputs (FLAC_CONVERTED_OUTPUTS)"
+    echo ""
+    read -r -p "Enter choice [1-4]: " scope_choice
+fi
 
 if [ "$EXT" = "mp3" ]; then
     DEFAULT_OUT_DIR="${MP3_OUTPUT_DIR:-MP3_CONVERTED_OUTPUTS}"
@@ -451,35 +533,97 @@ configure_conversion_metadata_and_cover
 
 case "$scope_choice" in
     1)
-        read -r -e -p "Enter path to audio file (or search keyword): " user_input
+        read -r -e -p "Enter path to audio file (or search keyword, Enter to browse): " user_input
         user_input=$(echo "$user_input" | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
         
         target_file=""
-        if [ -f "$user_input" ]; then
+        if [ -n "$user_input" ] && [ -f "$user_input" ]; then
             target_file="$user_input"
         else
-            # Search for keyword
             shopt -s nullglob nocaseglob
-            candidates=(*"$user_input"*.[wW][aA][vV] *"$user_input"*.[fF][lL][aA][cC] *"$user_input"*.[oO][gG][gG] *"$user_input"*.[mM][pP]3)
-            for fd in "${all_flac_dirs[@]}"; do
-                [ -d "$fd" ] && candidates+=("$fd"/*"$user_input"*.[fF][lL][aA][cC] "$fd"/*"$user_input"*.[wW][aA][vV] "$fd"/*"$user_input"*.[oO][gG][gG] "$fd"/*"$user_input"*.[mM][pP]3)
-            done
-            for wd in "${all_wav_dirs[@]}"; do
-                [ -d "$wd" ] && candidates+=("$wd"/*"$user_input"*.[wW][aA][vV] "$wd"/*"$user_input"*.[oO][gG][gG])
-            done
+            raw_candidates=()
+            if [ -n "$user_input" ]; then
+                raw_candidates+=(*"$user_input"*.[wW][aA][vV] *"$user_input"*.[fF][lL][aA][cC] *"$user_input"*.[oO][gG][gG] *"$user_input"*.[mM][pP]3)
+                for fd in "${all_flac_dirs[@]}"; do
+                    [ -d "$fd" ] && raw_candidates+=("$fd"/*"$user_input"*.[fF][lL][aA][cC] "$fd"/*"$user_input"*.[wW][aA][vV] "$fd"/*"$user_input"*.[oO][gG][gG] "$fd"/*"$user_input"*.[mM][pP]3)
+                done
+                for wd in "${all_wav_dirs[@]}"; do
+                    [ -d "$wd" ] && raw_candidates+=("$wd"/*"$user_input"*.[wW][aA][vV] "$wd"/*"$user_input"*.[oO][gG][gG])
+                done
+                for arch_d in "${all_mix_archive_roots[@]}"; do
+                    [ -d "$arch_d" ] && raw_candidates+=("$arch_d"/*"$user_input"*.[wW][aA][vV] "$arch_d"/*"$user_input"*.[oO][gG][gG] "$arch_d"/*"$user_input"*.[fF][lL][aA][cC])
+                done
+            else
+                for arch_d in "${all_mix_archive_roots[@]}"; do
+                    [ -d "$arch_d" ] || continue
+                    for cand_file in "$arch_d"/*.[wW][aA][vV] "$arch_d"/*.[oO][gG][gG]; do
+                        [ -f "$cand_file" ] && raw_candidates+=("$cand_file")
+                    done
+                    if [ -d "$arch_d/UNCONVERTED_WAVS" ]; then
+                        for cand_file in "$arch_d/UNCONVERTED_WAVS"/*.[wW][aA][vV]; do
+                            [ -f "$cand_file" ] && raw_candidates+=("$cand_file")
+                        done
+                    fi
+                done
+                for cand_file in ./*.[wW][aA][vV] ./*.[oO][gG][gG]; do
+                    [ -f "$cand_file" ] && raw_candidates+=("$cand_file")
+                done
+            fi
             shopt -u nullglob nocaseglob
+
+            candidates=()
+            declare -A seen_candidates=()
+            for cand in "${raw_candidates[@]}"; do
+                [ -f "$cand" ] || continue
+                real_c="$(cd "$(dirname "$cand")" 2>/dev/null && pwd -P)/$(basename "$cand")"
+                if [ -z "${seen_candidates[$real_c]:-}" ]; then
+                    seen_candidates[$real_c]=1
+                    candidates+=("$cand")
+                fi
+            done
+
             if [ ${#candidates[@]} -eq 0 ]; then
                 echo -e "${RED}No audio files found matching '$user_input' across configured archives!${NC}"
                 exit 1
             elif [ ${#candidates[@]} -eq 1 ]; then
                 target_file="${candidates[0]}"
+                echo -e "\n${GREEN}Found:${NC} $target_file"
             else
-                echo -e "\nMultiple matching files found:"
+                echo -e "\nMatching files found across archives:"
                 for i in "${!candidates[@]}"; do
-                    echo "  $((i+1))) ${candidates[$i]}"
+                    echo "  $((i+1))) [$(basename "$(dirname "${candidates[$i]}")")] $(basename "${candidates[$i]}")"
                 done
                 read -r -p "Select file [1-${#candidates[@]}]: " pick
-                target_file="${candidates[$((pick-1))]}"
+                if [[ "$pick" =~ ^[0-9]+$ ]] && [ "$pick" -ge 1 ] && [ "$pick" -le "${#candidates[@]}" ]; then
+                    target_file="${candidates[$((pick-1))]}"
+                else
+                    echo -e "${RED}Invalid selection!${NC}"
+                    exit 1
+                fi
+            fi
+        fi
+
+        # Route default output directory to the file's owning mix archive
+        target_dir="$(dirname "$target_file")"
+        target_real="$(cd "$target_dir" 2>/dev/null && pwd -P || echo "$target_dir")"
+        target_archive_dir=""
+        for arch_d in "${all_mix_archive_roots[@]}"; do
+            arch_real="$(cd "$arch_d" 2>/dev/null && pwd -P || echo "$arch_d")"
+            if [ "$target_real" = "$arch_real" ] || [[ "$target_real" == "$arch_real"/* ]]; then
+                target_archive_dir="$arch_d"
+                break
+            fi
+        done
+
+        if [ -n "$target_archive_dir" ] && [ -d "$target_archive_dir" ]; then
+            if [ "$EXT" = "mp3" ]; then
+                DEFAULT_OUT_DIR="$target_archive_dir/MP3_CONVERTED_OUTPUTS"
+            elif [ "$EXT" = "wav" ]; then
+                DEFAULT_OUT_DIR="$target_archive_dir/WAV_CONVERTED_OUTPUTS"
+            elif [ "$EXT" = "flac" ]; then
+                DEFAULT_OUT_DIR="$target_archive_dir/FLAC_CONVERTED_OUTPUTS"
+            else
+                DEFAULT_OUT_DIR="$target_archive_dir/CONVERTED_AUDIO_OUTPUTS/$SUB_DIR"
             fi
         fi
 

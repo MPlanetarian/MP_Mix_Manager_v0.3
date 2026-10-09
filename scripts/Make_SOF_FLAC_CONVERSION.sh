@@ -50,23 +50,38 @@ if [ -n "${MIX_ARCHIVE_DIR:-}" ] && [ -d "$MIX_ARCHIVE_DIR" ]; then
     fi
 fi
 
-# Discover all FLAC check directories for existing mix detection
-flac_check_dirs=()
-[ -d "$OUTPUT_DIR" ] && flac_check_dirs+=("$(cd "$OUTPUT_DIR" && pwd)")
+# Discover all configured mix archive root directories
+all_mix_archive_roots=()
+if [ -n "${MIX_ARCHIVE_DIR:-}" ] && [ -d "$MIX_ARCHIVE_DIR" ]; then
+    cand="$(cd "$MIX_ARCHIVE_DIR" && pwd)"
+    [[ ! " ${all_mix_archive_roots[*]} " =~ " ${cand} " ]] && all_mix_archive_roots+=("$cand")
+fi
+
 if [ -n "${EXTRA_MIX_ARCHIVE_DIRS:-}" ]; then
     IFS=':;,' read -ra EXTRA_DIRS <<< "$EXTRA_MIX_ARCHIVE_DIRS"
     for ed in "${EXTRA_DIRS[@]}"; do
         ed="$(echo "$ed" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
         [ -z "$ed" ] && continue
-        if [ -d "$ed/FLAC_CONVERTED_OUTPUTS" ]; then
-            cand="$(cd "$ed/FLAC_CONVERTED_OUTPUTS" && pwd)"
-            [[ ! " ${flac_check_dirs[*]} " =~ " ${cand} " ]] && flac_check_dirs+=("$cand")
-        elif [ -d "$ed" ]; then
+        if [ -d "$ed" ]; then
             cand="$(cd "$ed" && pwd)"
-            [[ ! " ${flac_check_dirs[*]} " =~ " ${cand} " ]] && flac_check_dirs+=("$cand")
+            [[ ! " ${all_mix_archive_roots[*]} " =~ " ${cand} " ]] && all_mix_archive_roots+=("$cand")
         fi
     done
 fi
+[ -d "$PWD" ] && cand="$(pwd)" && [[ ! " ${all_mix_archive_roots[*]} " =~ " ${cand} " ]] && all_mix_archive_roots+=("$cand")
+
+# Discover all FLAC check directories for existing mix detection
+flac_check_dirs=()
+[ -d "$OUTPUT_DIR" ] && flac_check_dirs+=("$(cd "$OUTPUT_DIR" && pwd)")
+for arch_d in "${all_mix_archive_roots[@]}"; do
+    if [ -d "$arch_d/FLAC_CONVERTED_OUTPUTS" ]; then
+        cand="$(cd "$arch_d/FLAC_CONVERTED_OUTPUTS" && pwd)"
+        [[ ! " ${flac_check_dirs[*]} " =~ " ${cand} " ]] && flac_check_dirs+=("$cand")
+    elif [ -d "$arch_d" ]; then
+        cand="$(cd "$arch_d" && pwd)"
+        [[ ! " ${flac_check_dirs[*]} " =~ " ${cand} " ]] && flac_check_dirs+=("$cand")
+    fi
+done
 
 # Cross-platform helper functions (Bash 3.2+ compatible)
 get_abs_path() {
@@ -609,7 +624,25 @@ declare -a group_keys=()
 if [ ${#TARGET_FILES[@]} -gt 0 ]; then
     search_list=("${TARGET_FILES[@]}")
 else
-    search_list=(./*.[wW][aA][vV] ./*.[oO][gG][gG])
+    search_list=()
+    shopt -s nullglob nocaseglob
+    # Scan all configured mix archive root folders for pending unconverted audio files
+    for arch_d in "${all_mix_archive_roots[@]}"; do
+        [ -d "$arch_d" ] || continue
+        for cand_file in "$arch_d"/*.[wW][aA][vV] "$arch_d"/*.[oO][gG][gG]; do
+            [ -f "$cand_file" ] && search_list+=("$cand_file")
+        done
+        if [ -d "$arch_d/UNCONVERTED_WAVS" ]; then
+            for cand_file in "$arch_d/UNCONVERTED_WAVS"/*.[wW][aA][vV] "$arch_d/UNCONVERTED_WAVS"/*.[oO][gG][gG]; do
+                [ -f "$cand_file" ] && search_list+=("$cand_file")
+            done
+        fi
+    done
+    # Current working directory fallback
+    for cand_file in ./*.[wW][aA][vV] ./*.[oO][gG][gG]; do
+        [ -f "$cand_file" ] && search_list+=("$cand_file")
+    done
+    shopt -u nullglob nocaseglob
 fi
 
 for file in "${search_list[@]}"; do
@@ -657,10 +690,23 @@ for g_hash in "${group_keys[@]}"; do
     fi
 done
 
+check_target_dir="$OUTPUT_DIR"
+if [ ${#group_keys[@]} -gt 0 ]; then
+    first_wav_list="$GROUP_TMP_DIR/group_${group_keys[0]}.wavs"
+    if [ -f "$first_wav_list" ]; then
+        first_w="$(head -n 1 "$first_wav_list" 2>/dev/null || true)"
+        if [ -n "$first_w" ]; then
+            check_target_dir="$(dirname "$first_w")"
+        fi
+    fi
+fi
+[ ! -d "$check_target_dir" ] && check_target_dir="$OUTPUT_DIR"
+[ ! -d "$check_target_dir" ] && check_target_dir="$PWD"
+
 if command -v python3 >/dev/null 2>&1; then
-    available_space_bytes=$(python3 -c "import shutil, sys; print(shutil.disk_usage(sys.argv[1]).free)" "$OUTPUT_DIR" 2>/dev/null || echo 0)
+    available_space_bytes=$(python3 -c "import shutil, sys; print(shutil.disk_usage(sys.argv[1]).free)" "$check_target_dir" 2>/dev/null || echo 0)
 else
-    available_space_bytes=$(df -k "$OUTPUT_DIR" 2>/dev/null | awk 'NR==2 {print $4 * 1024}')
+    available_space_bytes=$(df -k "$check_target_dir" 2>/dev/null | awk 'NR==2 {print $4 * 1024}')
 fi
 [ -z "$available_space_bytes" ] && available_space_bytes=0
 
@@ -1626,6 +1672,37 @@ for p in sorted(lines, key=key_func):
 " < "$wav_file_list" 2>/dev/null || LC_ALL=C sort "$wav_file_list")
     fi
     
+    # Determine owning archive directory for this session group
+    first_wav="${current_wavs[0]}"
+    group_wav_dir="$(dirname "$first_wav")"
+    group_wav_real="$(cd "$group_wav_dir" 2>/dev/null && pwd -P || echo "$group_wav_dir")"
+    target_archive_dir=""
+    for arch_d in "${all_mix_archive_roots[@]}"; do
+        arch_real="$(cd "$arch_d" 2>/dev/null && pwd -P || echo "$arch_d")"
+        if [ "$group_wav_real" = "$arch_real" ] || [[ "$group_wav_real" == "$arch_real"/* ]]; then
+            target_archive_dir="$arch_d"
+            break
+        fi
+    done
+
+    if [ -n "$target_archive_dir" ] && [ -d "$target_archive_dir" ]; then
+        case "$OUTPUT_FORMAT" in
+            mp3) group_out_dir="$target_archive_dir/MP3_CONVERTED_OUTPUTS" ;;
+            wav) group_out_dir="$target_archive_dir/WAV_CONVERTED_OUTPUTS" ;;
+            mp4) group_out_dir="$target_archive_dir/MP4_CONVERTED_OUTPUTS" ;;
+            ogg) group_out_dir="$target_archive_dir/OGG_CONVERTED_OUTPUTS" ;;
+            *)   group_out_dir="$target_archive_dir/FLAC_CONVERTED_OUTPUTS" ;;
+        esac
+        group_arch_dir="$target_archive_dir/CONVERTED_WAV_FILES"
+        group_spek_dir="$target_archive_dir/SPEK_OUTPUTS"
+    else
+        group_out_dir="$OUTPUT_DIR"
+        group_arch_dir="$ARCHIVE_DIR"
+        group_spek_dir="$SPEK_DIR"
+    fi
+
+    mkdir -p "$group_out_dir" "$group_arch_dir" "$group_spek_dir"
+
     # Format output filenames cleanly with Artist, Show Name, and Datestamp intact
     clean_base=$(echo "$base" | sed 's/__/_/g')
     if [[ "$clean_base" != *"MPlanetarian"* ]]; then
@@ -1635,10 +1712,10 @@ for p in sorted(lines, key=key_func):
     fi
 
     output_filename="${normalized_name}.${OUTPUT_EXT}"
-    output_path="${OUTPUT_DIR}/${output_filename}"
+    output_path="${group_out_dir}/${output_filename}"
     
     tracklist_filename="${normalized_name}.txt"
-    tracklist_path="${OUTPUT_DIR}/${tracklist_filename}"
+    tracklist_path="${group_out_dir}/${tracklist_filename}"
 
     if [ "$OUTPUT_FORMAT" != "flac" ] && [ -s "$output_path" ]; then
         echo "Processing Group [$counter/$total_groups]: Session ID '$base'"
@@ -1664,7 +1741,7 @@ for p in sorted(lines, key=key_func):
         # Move source WAVs to Archive if they exist
         for w in "${current_wavs[@]}"; do
             if [ -f "$w" ]; then
-                mv "$w" "$ARCHIVE_DIR/"
+                mv "$w" "$group_arch_dir/"
             fi
             successfully_processed_wavs+=("$w")
         done
@@ -1673,7 +1750,7 @@ for p in sorted(lines, key=key_func):
         continue
     fi
     
-    spek_image="${SPEK_DIR}/${normalized_name}_spectrogram.png"
+    spek_image="${group_spek_dir}/${normalized_name}_spectrogram.png"
     
     readable_title=$(echo "$base" | sed 's/_/ /g')
 
@@ -1730,6 +1807,18 @@ for p in sorted(lines, key=key_func):
     elif [ -f "$specific_cover" ]; then
         echo " -> Specific cover art found: $(basename "$specific_cover")"
         selected_cover="$specific_cover"
+    elif [ -f "${wav_dir}/FLAC_CONVERTED_OUTPUTS/Cover.png" ]; then
+        echo " -> Archive cover art found: ${wav_dir}/FLAC_CONVERTED_OUTPUTS/Cover.png"
+        selected_cover="${wav_dir}/FLAC_CONVERTED_OUTPUTS/Cover.png"
+    elif [ -f "${wav_dir}/Cover.png" ]; then
+        echo " -> Archive cover art found: ${wav_dir}/Cover.png"
+        selected_cover="${wav_dir}/Cover.png"
+    elif [ -n "$target_archive_dir" ] && [ -f "${target_archive_dir}/FLAC_CONVERTED_OUTPUTS/Cover.png" ]; then
+        echo " -> Archive cover art found: ${target_archive_dir}/FLAC_CONVERTED_OUTPUTS/Cover.png"
+        selected_cover="${target_archive_dir}/FLAC_CONVERTED_OUTPUTS/Cover.png"
+    elif [ -n "$target_archive_dir" ] && [ -f "${target_archive_dir}/Cover.png" ]; then
+        echo " -> Archive cover art found: ${target_archive_dir}/Cover.png"
+        selected_cover="${target_archive_dir}/Cover.png"
     else
         echo " -> Using default cover art fallback ($COVER_ART)."
     fi
@@ -1910,10 +1999,10 @@ for p in sorted(lines, key=key_func):
             ;;
     esac
 
-    echo " -> Moving successfully processed files to '$ARCHIVE_DIR'..."
+    echo " -> Moving successfully processed files to '$group_arch_dir'..."
     for w in "${current_wavs[@]}"; do
         if [ -f "$w" ]; then
-            mv "$w" "$ARCHIVE_DIR/"
+            mv "$w" "$group_arch_dir/"
         fi
         successfully_processed_wavs+=("$w")
     done
@@ -1935,10 +2024,14 @@ if [ ${#newly_exported_flacs[@]} -gt 0 ]; then
     echo "Generating M3U playlist: $PLAYLIST_NAME..."
     : > "$PLAYLIST_NAME"
     for f in "${newly_exported_flacs[@]}"; do
-        # Output the path relative to this script's directory
-        echo "${OUTPUT_LABEL}_CONVERTED_OUTPUTS/$(basename "$f")" >> "$PLAYLIST_NAME"
+        echo "$f" >> "$PLAYLIST_NAME"
     done
     echo "Playlist generated successfully at: $PLAYLIST_NAME"
+    for arch_d in "${all_mix_archive_roots[@]}"; do
+        if [ -d "$arch_d/PLAYLISTS_GENERATED" ]; then
+            cp "$PLAYLIST_NAME" "$arch_d/PLAYLISTS_GENERATED/" 2>/dev/null || true
+        fi
+    done
 fi
 
 echo "=================================================="

@@ -414,6 +414,7 @@ MP_Mix_Manager_v0.3/
 │   ├── dsh_mobile.sh            # DeepSeek Harness (dsh-mobile) web server & mobile access manager
 │   ├── wan2gp_flux_batch.py     # Flux Klein 9B batch generation
 │   ├── wan2gp_ltx_batch.py      # LTX Video 2B/13B batch generation
+│   ├── wan2gp_tts_batch.py      # Text-to-Speech (TTS) batch converter & player (.txt -> .wav)
 │   ├── clear-wan2gp-logs.sh     # AI generation log pruner
 │   └── remove_duplicate_images.py # Byte-for-byte duplicate image remover
 │
@@ -531,7 +532,7 @@ MP_Mix_Manager_v0.3/
 ### ─── [ SECTION 6: SYSTEM, NETWORK & HARDWARE MANAGEMENT ] ─────
 | # | Operation | Description |
 |---|---|---|
-| **59**| **Manage WAN2GP Server** | Controls WAN2GP AI video server (Profile 2 / 4.5, Flux Klein 9B batch, LTX Video 2B/13B). Accessible via KDE Connect shortcuts, desktop entries, and CLI (`--wan2gp-start-4.5` / `--wan2gp-stop` / `58 2` / `58 3`). |
+| **59**| **Manage WAN2GP Server** | Controls WAN2GP AI video server (Profile 2 / 4.5, Flux Klein 9B batch, LTX Video 2B/13B, Text-to-Speech (TTS) batch converter & audio player). Accessible via KDE Connect shortcuts, desktop entries, and CLI (`--wan2gp-start-4.5` / `--wan2gp-stop` / `--tts` / `58 2` / `58 3` / `58 25`). |
 | **60**| **Manage Beszel Monitoring Suite** | Controls Beszel server monitoring hub (Web Dashboard on port 8090) and hardware/NVIDIA GPU/Podman agent. Supports starting Hub, Agent, or both, live status, logs, browser dashboard dispatch, and CLI (`--beszel-start` / `--beszel-hub` / `--beszel-agent` / `--beszel-stop` / `59 1` / `59 2` / `59 3`). |
 | **61**| **Manage Ollama Server** | Controls Ollama LLM server (`ollama serve` inside distrobox container `ollama-container` on port 11434). Supports background daemon mode, interactive terminal window mode (live logs), server stop/restart, hardware acceleration status (NVIDIA RTX CUDA), local models listing (`qwen2.5`, `llama3.1`, `nemotron`, etc.), and interactive CLI chat. Accessible via CLI (`--ollama-serve`, `--ollama-start`, `--ollama-stop`, `--ollama-status`, `60 1`, `60 2`, `60 3`, `60 4`, `60 5`, `60 6`). |
 | **62**| **Manage DeepSeek Harness Server (`dsh-mobile`)** | Controls DeepSeek Harness web server (`pnpm dsh web` with `--trusted-host 192.168.1.11:3080 --trusted-host 192.168.1.11 --no-open` on port 3080). Supports launching in a dedicated terminal window or background daemon, one-click browser opening (`http://192.168.1.11:3080`), server stop/restart, process inspection, and live server logs (`/tmp/dsh-mobile.log`). Accessible via CLI (`--dsh-mobile`, `--dsh`, `--dsh-start`, `--dsh-bg`, `--dsh-web`, `--dsh-stop`, `--dsh-status`, `61 1`, `61 2`, `61 3`, `61 4`, `61 5`, `61 6`). |

@@ -4336,6 +4336,21 @@ run_duplicate_image_remover() {
 }
 
 
+run_wan2gp_tts_batch() {
+    local script="$SCRIPT_DIR/scripts/wan2gp_tts_batch.py"
+    [ ! -f "$script" ] && script="$SCRIPT_DIR/wan2gp_tts_batch.py"
+    [ ! -f "$script" ] && script="$HOME/wan2gp_tts_batch.py"
+    [ ! -f "$script" ] && script="$HOME/bin/wan2gp_tts_batch"
+
+    if [ -f "$script" ]; then
+        python3 "$script" "$@"
+    else
+        echo -e "${RED}Error: wan2gp_tts_batch.py not found at $script!${NC}"
+        press_enter
+    fi
+}
+
+
 manage_wan2gp() {
     while true; do
         clear
@@ -4368,7 +4383,8 @@ manage_wan2gp() {
             echo -e "  LTX Video Batch:  ${BOLD}${RED}○ STOPPED${NC}"
         fi
 
-        local ltx_ctrl_dir="/run/media/mplanetarian/DATA/WAN2GP_LTX_BATCH/CTRL_VIDEO"
+        local ltx_ctrl_dir="/run/media/mplanetarian/GAMES1/DATA_DRIVE_MOVED/WAN2GP_LTX_BATCH/CTRL_VIDEO"
+        [ ! -d "$ltx_ctrl_dir" ] && ltx_ctrl_dir="/run/media/mplanetarian/DATA/WAN2GP_LTX_BATCH/CTRL_VIDEO"
         if [ -d "$ltx_ctrl_dir" ]; then
             shopt -s nullglob nocaseglob
             local ltx_ctrl_vids=("$ltx_ctrl_dir"/*.mp4 "$ltx_ctrl_dir"/*.mov "$ltx_ctrl_dir"/*.avi "$ltx_ctrl_dir"/*.mkv "$ltx_ctrl_dir"/*.webm)
@@ -4382,6 +4398,16 @@ manage_wan2gp() {
         dup_pids=$(pgrep -f "remove_duplicate_images\.py" | tr '\n' ' ')
         if [ -n "$dup_pids" ]; then
             echo -e "  Duplicate Cleaner:${BOLD}${GREEN}● RUNNING${NC} (PID: ${dup_pids})"
+        fi
+
+        local tts_dir="/run/media/mplanetarian/GAMES1/DATA_DRIVE_MOVED/WAN2GP_TTSBATCH"
+        [ ! -d "$tts_dir" ] && tts_dir="/run/media/mplanetarian/DATA/WAN2GP_TTSBATCH"
+        if [ -d "$tts_dir" ]; then
+            shopt -s nullglob
+            local tts_txts=("$tts_dir"/*.txt)
+            local tts_wavs=("$tts_dir"/TTS_CONVERTED/*.wav)
+            shopt -u nullglob
+            echo -e "  TTS Batch:        ${BOLD}${CYAN}${#tts_txts[@]} .txt pending${NC} | ${BOLD}${GREEN}${#tts_wavs[@]} audio converted in TTS_CONVERTED${NC}"
         fi
         echo ""
         echo -e "${BOLD}Select a WAN2GP operation:${NC}"
@@ -4409,9 +4435,10 @@ manage_wan2gp() {
         echo -e "  ${BOLD}${CYAN}22)${NC} Run LTX-2 2.5 22B Batch Processor [${BOLD}${YELLOW}Deblur & Decompression LoRAs${NC}]"
         echo -e "  ${BOLD}${CYAN}23)${NC} Run LTX-2 2.5 22B Batch Processor [${BOLD}${GREEN}Clean Base / Video+Audio${NC}]"
         echo -e "  ${BOLD}${CYAN}24)${NC} Scan & Remove Byte-for-Byte Duplicate Images (${GREEN}remove_duplicate_images.py${NC})"
-        echo -e "  ${BOLD}${CYAN}25)${NC} Return to Main Menu"
+        echo -e "  ${BOLD}${CYAN}25)${NC} Text to Speech (TTS) Batch Converter & Audio Player (${GREEN}wan2gp_tts_batch.py${NC})"
+        echo -e "  ${BOLD}${CYAN}26)${NC} Return to Main Menu"
         echo ""
-        read -r -p "Enter choice [1-25]: " w_choice
+        read -r -p "Enter choice [1-26]: " w_choice
 
         case $w_choice in
             1)
@@ -4527,6 +4554,9 @@ manage_wan2gp() {
                 run_duplicate_image_remover
                 ;;
             25)
+                run_wan2gp_tts_batch
+                ;;
+            26)
                 return 0
                 ;;
             *)
@@ -11682,6 +11712,11 @@ elif [ "$1" = "--wan2gp-start" ] || [ "$1" = "--wan2gp" ]; then
 elif [ "$1" = "--wan2gp-stop" ] || { [ "$1" = "56" ] && [ "$2" = "3" ]; }; then
     echo -e "\n${YELLOW}Stopping WAN2GP...${NC}"
     run_sub_script "wan2gp.sh" stop
+    exit 0
+elif [ "$1" = "--tts" ] || [ "$1" = "--wan2gp-tts" ] || { [ "$1" = "56" ] && [ "$2" = "25" ]; }; then
+    shift
+    [ "${1:-}" = "25" ] && shift
+    run_wan2gp_tts_batch "$@"
     exit 0
 elif [ "$1" = "--split-flac" ] || [ "$1" = "--flac-split" ]; then
     shift

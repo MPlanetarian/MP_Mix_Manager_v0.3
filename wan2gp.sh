@@ -84,5 +84,21 @@ elif [ "$PROFILE" = "4.5" ]; then
 fi
 echo ""
 
+# Load config if present
+for _cfg in "$(dirname "$0")/config.env" "/var/home/mplanetarian/MP_Mix_Manager_v0.3/config.env" "$HOME/MP_Mix_Manager_v0.3/config.env"; do
+    if [ -f "$_cfg" ]; then
+        # shellcheck disable=SC1090
+        source "$_cfg" 2>/dev/null || true
+        break
+    fi
+done
+
+# Resolve output directory (defaults to GAMES1/DATA_DRIVE_MOVED/WAN2GP_OUTPUTS)
+WAN_OUTPUT_DIR="${WAN2GP_OUTPUTS:-/run/media/mplanetarian/GAMES1/DATA_DRIVE_MOVED/WAN2GP_OUTPUTS}"
+if [ ! -d "$WAN_OUTPUT_DIR" ] && [ -d "/home/mplanetarian/Documents/WAN2GP_OUTPUTS" ]; then
+    WAN_OUTPUT_DIR="/home/mplanetarian/Documents/WAN2GP_OUTPUTS"
+fi
+mkdir -p "$WAN_OUTPUT_DIR" 2>/dev/null || true
+
 # Run WAN2GP with selected profile (listening on 0.0.0.0 for LAN + localhost access)
-PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True CUDA_VISIBLE_DEVICES=0 python wgp.py --multiple-images --advanced --listen --profile "$PROFILE" --attention sage --output-dir "/home/mplanetarian/Documents/WAN2GP_OUTPUTS"
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True CUDA_VISIBLE_DEVICES=0 python wgp.py --multiple-images --advanced --listen --profile "$PROFILE" --attention sage --output-dir "$WAN_OUTPUT_DIR"

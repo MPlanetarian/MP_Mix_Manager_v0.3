@@ -41,11 +41,25 @@ BOLD = "\033[1m"
 RESET = "\033[0m"
 
 # Default directories
-DATA_DIR = Path("/run/media/mplanetarian/DATA")
-BATCH_DIR = DATA_DIR / "WAN2GP_FLUX_BATCH"
+PRIMARY_DATA_DIR = Path("/run/media/mplanetarian/GAMES1/DATA_DRIVE_MOVED")
+FALLBACK_DATA_DIR = Path("/run/media/mplanetarian/DATA")
+DATA_DIR = PRIMARY_DATA_DIR if PRIMARY_DATA_DIR.exists() else FALLBACK_DATA_DIR
+
+BATCH_DIR = Path(os.environ.get("WAN2GP_FLUX_BATCH_DIR", DATA_DIR / "WAN2GP_FLUX_BATCH"))
 CTRL_IMAGE_DIR = BATCH_DIR / "CTRL_IMAGE"
 PROCESSED_DIR = BATCH_DIR / "PROCESSED"
-OUTPUT_DIR = Path("/home/mplanetarian/Documents/WAN2GP_OUTPUTS")
+
+env_output = os.environ.get("WAN2GP_OUTPUTS")
+if env_output:
+    OUTPUT_DIR = Path(env_output)
+elif (DATA_DIR / "WAN2GP_OUTPUTS").exists():
+    OUTPUT_DIR = DATA_DIR / "WAN2GP_OUTPUTS"
+elif Path("/run/media/mplanetarian/GAMES1/DATA_DRIVE_MOVED/WAN2GP_OUTPUTS").exists():
+    OUTPUT_DIR = Path("/run/media/mplanetarian/GAMES1/DATA_DRIVE_MOVED/WAN2GP_OUTPUTS")
+elif Path("/home/mplanetarian/Documents/WAN2GP_OUTPUTS").exists():
+    OUTPUT_DIR = Path("/home/mplanetarian/Documents/WAN2GP_OUTPUTS")
+else:
+    OUTPUT_DIR = Path("/run/media/mplanetarian/GAMES1/DATA_DRIVE_MOVED/WAN2GP_OUTPUTS")
 
 # WAN2GP constants
 WAN_APP_ROOT = Path("/var/home/mplanetarian/pinokio/api/wan.git/app")
