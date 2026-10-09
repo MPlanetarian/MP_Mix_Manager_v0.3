@@ -7,8 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.3.5] - 2026-10-08
+## [0.3.5] - 2026-10-09
 
+- **MP Audio Player — DREAMWORLDS ULTRA AUDIO MODE & Layout Polish** (`MP_Audio_Player.py`):
+  - **Full 118-Column Grid Widening**: Extended the top banner box and playlist window to 117 characters (115 inner columns) aligning flush with the right boundary of the DJ Pitch Window (column 118), expanding mix title display from 51 up to 92 characters.
+  - **Branding & Playlist Header Updates**: Updated main banner title to `✦ MP AUDIO PLAYER — DREAMWORLDS ULTRA AUDIO MODE ✦` and playlist section title to `── MP MIX ARCHIVE PLAYLIST ──`.
+  - **Instant Tracklist Viewer (`T` / `t` / `--tracklist`)**: Pressing `T` opens the associated `.txt` tracklist for the selected or currently playing mix in a dedicated borderless console window (`scripts/view_tracklist_console.sh`) with fallback notifications when absent.
+  - **Universal Playlist Exporter (`E` / `w` / `--export-playlist`)**: Exports the entire archive catalog as a `.m3u` file only (`#EXTM3U` format with `#EXTINF`), prompting with native KDE `kdialog` / `zenity` file chooser dialogs, an inline terminal input fallback, or direct CLI execution.
 - **Core Performance Optimization & Telemetry Caching** (`Mix_Archive_Manager.sh`):
   - Added short TTL (5–30s) caching layers for main menu status and telemetry indicators (`show_stats`, `get_system_perf_stats`, `get_active_audio_interface_display`, `get_alarm_clock_status_display`, `get_planets_above_horizon`, and banner rendering).
   - Main menu redraw latency slashed from **~1.7 seconds down to <20ms**, delivering instantaneous arrow-key and submenu navigation responsiveness.

@@ -275,6 +275,277 @@ def open_in_file_manager(target_path: Union[str, Path, None]) -> bool:
     return False
 
 
+def find_tracklist_for_mix(mix_file: Union[str, Path, None]) -> Optional[str]:
+    """Finds associated .txt tracklist file for a given mix across archive candidate directories."""
+    if not mix_file:
+        return None
+    try:
+        mix_p = Path(mix_file).expanduser().resolve()
+    except Exception:
+        mix_p = Path(mix_file)
+    if not mix_p.exists():
+        return None
+
+    mix_dir = mix_p.parent
+    mix_stem = mix_p.stem
+
+    # 1. Exact match in same directory: <mix_stem>.txt
+    exact_txt = mix_dir / f"{mix_stem}.txt"
+    if exact_txt.is_file():
+        return str(exact_txt)
+
+    # 2. Check candidate directories
+    base_dir = get_base_dir()
+    candidate_dirs = [
+        mix_dir,
+        mix_dir / "FLAC_CONVERTED_OUTPUTS",
+        mix_dir.parent / "FLAC_CONVERTED_OUTPUTS",
+        base_dir / "FLAC_CONVERTED_OUTPUTS",
+        base_dir,
+        mix_dir.parent
+    ]
+    seen_dirs = set()
+    valid_dirs = []
+    for d in candidate_dirs:
+        try:
+            d_res = d.resolve()
+            if d_res.is_dir() and d_res not in seen_dirs:
+                seen_dirs.add(d_res)
+                valid_dirs.append(d_res)
+        except Exception:
+            pass
+
+    for d in valid_dirs:
+        c = d / f"{mix_stem}.txt"
+        if c.is_file():
+            return str(c)
+
+    # 3. Episode number match: e.g. 103, 074, 146
+    ep_match = re.search(r'[_\ -](\d{2,3})([_\ -]|$)', mix_stem)
+    if ep_match:
+        ep_num = ep_match.group(1)
+        for d in valid_dirs:
+            try:
+                for f in d.iterdir():
+                    if f.is_file() and f.suffix.lower() == ".txt" and ep_num in f.name:
+                        return str(f)
+            except Exception:
+                pass
+
+    # 4. Date match: YYYY-MM-DD
+    date_match = re.search(r'(\d{4}-\d{2}-\d{2})', mix_stem)
+    if date_match:
+        date_str = date_match.group(1)
+        for d in valid_dirs:
+            try:
+                for f in d.iterdir():
+                    if f.is_file() and f.suffix.lower() == ".txt" and date_str in f.name:
+                        return str(f)
+            except Exception:
+                pass
+
+    # 5. Fuzzy match using clean keywords from stem
+    clean_kw = re.sub(r'MPlanetarian|Stream|of|Frequency|Part|WMI|Mix', '', mix_stem, flags=re.I)
+    clean_kw = re.sub(r'[_\ -]+', ' ', clean_kw).strip()
+    words = [w for w in clean_kw.split() if len(w) >= 4]
+    if words:
+        for d in valid_dirs:
+            try:
+                for f in d.iterdir():
+                    if f.is_file() and f.suffix.lower() == ".txt" and any(w.lower() in f.name.lower() for w in words):
+                        return str(f)
+            except Exception:
+                pass
+
+    # 6. Fallback: call Mix_Archive_Manager.sh find_mix_tracklist if available
+    try:
+        sh_script = base_dir / "Mix_Archive_Manager.sh"
+        if sh_script.is_file():
+            cmd = f'source "{sh_script}" 2>/dev/null; find_mix_tracklist "{str(mix_p)}" 2>/dev/null'
+            res = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True, timeout=1.5)
+            out_p = res.stdout.strip()
+            if out_p and os.path.isfile(out_p):
+                return out_p
+    except Exception:
+        pass
+
+    return None
+
+
+def open_tracklist_window(target_tracklist: Union[str, Path, None]) -> bool:
+    """Opens a mix tracklist .txt file in the OS default console/viewer with borderless presentation."""
+    if not target_tracklist:
+        return False
+    try:
+        tl_p = Path(target_tracklist).expanduser().resolve()
+    except Exception:
+        tl_p = Path(target_tracklist)
+    if not tl_p.is_file():
+        return False
+
+    base_dir = get_base_dir()
+    viewer_sh = base_dir / "scripts" / "view_tracklist_console.sh"
+    if not viewer_sh.is_file():
+        viewer_sh = base_dir / "view_tracklist_console.sh"
+
+    target_str = str(tl_p)
+    viewer_str = str(viewer_sh)
+    tl_title = "Mix Tracklist Viewer"
+
+    # Custom viewer override
+    custom_viewer = os.environ.get("TRACKLIST_VIEWER")
+    if custom_viewer and custom_viewer not in ("console", "auto") and shutil.which(custom_viewer):
+        try:
+            subprocess.Popen([custom_viewer, target_str], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            return True
+        except Exception:
+            pass
+
+    # Linux & BSD: Launch borderless Konsole or terminal
+    if sys.platform.startswith(("linux", "freebsd")):
+        if shutil.which("konsole") and os.path.isfile(viewer_str):
+            try:
+                cmd = [
+                    "konsole", "--hide-menubar", "--hide-tabbar", "--separate",
+                    "--qwindowtitle", tl_title,
+                    "-p", f"tabtitle={tl_title}",
+                    "-p", "TerminalMargin=0",
+                    "--geometry", "95x35",
+                    "-e", "bash", viewer_str, target_str
+                ]
+                subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+                def _apply_xprop():
+                    time.sleep(0.15)
+                    if shutil.which("xprop"):
+                        subprocess.run(["xprop", "-name", tl_title, "-f", "_MOTIF_WM_HINTS", "32c", "-set", "_MOTIF_WM_HINTS", "0x2, 0x0, 0x0, 0x0, 0x0"], capture_output=True)
+                threading.Thread(target=_apply_xprop, daemon=True).start()
+                return True
+            except Exception:
+                pass
+
+        for term_bin in ["gnome-terminal", "xfce4-terminal", "alacritty", "foot", "xterm"]:
+            if shutil.which(term_bin) and os.path.isfile(viewer_str):
+                try:
+                    if term_bin == "gnome-terminal":
+                        subprocess.Popen([term_bin, f"--title={tl_title}", "--hide-menubar", "--", "bash", viewer_str, target_str], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                    elif term_bin == "xfce4-terminal":
+                        subprocess.Popen([term_bin, f"--title={tl_title}", "--hide-menubar", "--hide-borders", "-e", f"bash '{viewer_str}' '{target_str}'"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                    elif term_bin == "alacritty":
+                        subprocess.Popen([term_bin, "--title", tl_title, "-e", "bash", viewer_str, target_str], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                    elif term_bin == "foot":
+                        subprocess.Popen([term_bin, "-T", tl_title, "bash", viewer_str, target_str], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                    elif term_bin == "xterm":
+                        subprocess.Popen([term_bin, "-title", tl_title, "-bd", "0", "-geometry", "95x35", "-e", "bash", viewer_str, target_str], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                    return True
+                except Exception:
+                    pass
+
+        if shutil.which("xdg-open"):
+            try:
+                subprocess.Popen(["xdg-open", target_str], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                return True
+            except Exception:
+                pass
+
+    # macOS
+    elif sys.platform == "darwin":
+        if os.path.isfile(viewer_str):
+            try:
+                esc_v = viewer_str.replace('"', '\\"')
+                esc_t = target_str.replace('"', '\\"')
+                cmd = f'tell application "Terminal" to do script "bash \\"{esc_v}\\" \\"{esc_t}\\""'
+                subprocess.Popen(["osascript", "-e", cmd], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                return True
+            except Exception:
+                pass
+        try:
+            subprocess.Popen(["open", target_str], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            return True
+        except Exception:
+            pass
+
+    # Windows
+    elif sys.platform == "win32":
+        try:
+            os.startfile(target_str)
+            return True
+        except Exception:
+            pass
+
+    return False
+
+
+def export_playlist_m3u(mixes: List[Dict[str, Any]], target_path: Union[str, Path, None]) -> Tuple[bool, str]:
+    """Exports playlist of mixes strictly as a .m3u file to any destination path."""
+    if not target_path:
+        return False, "Destination path cannot be empty"
+    try:
+        t_str = str(target_path).strip()
+        t_path = Path(t_str).expanduser()
+    except Exception as e:
+        return False, f"Invalid path: {e}"
+
+    # Force .m3u extension only
+    if t_path.suffix.lower() != ".m3u":
+        t_path = t_path.with_suffix(".m3u")
+
+    parent = t_path.parent
+    if not parent.exists():
+        try:
+            parent.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            return False, f"Failed to create directory '{parent}': {e}"
+
+    try:
+        with open(t_path, "w", encoding="utf-8") as f:
+            f.write("#EXTM3U\n")
+            for m in mixes:
+                title = m.get("name", Path(m.get("path", "")).stem)
+                f.write(f"#EXTINF:-1,{title}\n")
+                f.write(f"{m.get('path')}\n")
+        return True, str(t_path.resolve())
+    except Exception as e:
+        return False, str(e)
+
+
+def choose_export_m3u_gui() -> Optional[str]:
+    """Displays native file picker dialog (kdialog / zenity) to choose save location for .m3u."""
+    if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        return None
+
+    default_dir = os.path.expanduser("~/Desktop")
+    if not os.path.isdir(default_dir):
+        default_dir = os.path.expanduser("~")
+    default_target = os.path.join(default_dir, "MP_Archive_Playlist.m3u")
+
+    if shutil.which("kdialog"):
+        try:
+            res = subprocess.run(
+                ["kdialog", "--title", "Export MP Mix Archive Playlist (.m3u)", "--getsavefilename", default_target, "*.m3u | M3U Playlist (*.m3u)"],
+                capture_output=True, text=True, timeout=120
+            )
+            if res.returncode == 0 and res.stdout.strip():
+                return res.stdout.strip()
+            return ""  # Cancelled by user
+        except Exception:
+            pass
+
+    if shutil.which("zenity"):
+        try:
+            res = subprocess.run(
+                ["zenity", "--file-selection", "--save", "--confirm-overwrite", f"--filename={default_target}", "--file-filter=M3U Playlist (*.m3u) | *.m3u"],
+                capture_output=True, text=True, timeout=120
+            )
+            if res.returncode == 0 and res.stdout.strip():
+                return res.stdout.strip()
+            return ""  # Cancelled by user
+        except Exception:
+            pass
+
+    return None
+
+
 # ==============================================================================
 # ARCHIVE MIX SCANNER
 # ==============================================================================
@@ -1327,7 +1598,7 @@ class EqualizerVisualizer:
         return lines
 
     def render_vertical_pitch_fader(self, pitch_pct: int, total_lines: int = 10) -> List[str]:
-        """Renders vertical DJ turntable pitch fader with up/down moving knob and center detent."""
+        """Renders vertical DJ turntable pitch fader with up/down moving knob, center detent, and clean window border (26 cols)."""
         p = max(-20, min(20, int(pitch_pct)))
         fader_rows = max(3, total_lines - 2)
         norm = (p - (-20)) / 40.0
@@ -1337,7 +1608,8 @@ class EqualizerVisualizer:
         border_col = COLOR_HOT_PURPLE
         div_col = COLOR_INDIGO_BLUE
         lines = []
-        lines.append(f"{border_col}╭── DJ PITCH ──╮{NC}")
+        # Total width 26 columns: '╭── DJ PITCH ────────────╮'
+        lines.append(f"{border_col}╭── DJ PITCH ────────────╮{NC}")
 
         for r in range(fader_rows):
             is_knob = (r == knob_row)
@@ -1345,24 +1617,25 @@ class EqualizerVisualizer:
 
             if is_knob and is_center:
                 knob_cell = f"{COLOR_TRAFFIC_GREEN}[▓█0█▓]{NC}"
-                tag = f" {BOLD}{COLOR_TRAFFIC_GREEN}◄  0.0% [CENTER]{NC}"
-                lines.append(f"{border_col}│{NC} {knob_cell} {border_col}│{NC}{tag}")
+                tag = f"{BOLD}{COLOR_TRAFFIC_GREEN}◄  0.0% [CENTER]{NC}"
+                lines.append(f"{border_col}│{NC} {knob_cell}  {tag} {border_col}│{NC}")
             elif is_knob:
                 knob_col = COLOR_TRAFFIC_AMBER if p > 0 else COLOR_INDIGO_BLUE
                 knob_cell = f"{knob_col}[▓███▓]{NC}"
                 factor = 1.0 + (p / 100.0)
-                tag = f" {BOLD}{knob_col}◄ {p:+d}% ({factor:.2f}x){NC}"
-                lines.append(f"{border_col}│{NC} {knob_cell} {border_col}│{NC}{tag}")
+                tag_plain = f"◄ {p:+d}% ({factor:.2f}x)"
+                tag = f"{BOLD}{knob_col}{tag_plain:<13}{NC}"
+                lines.append(f"{border_col}│{NC} {knob_cell}  {tag} {border_col}│{NC}")
             elif is_center:
-                lines.append(f"{div_col}├─── 0 ───┤{NC} {DIM}{COLOR_LILAC}  CENTER (0%){NC}")
+                lines.append(f"{border_col}│{NC} {div_col}─── 0 ───{NC}  {DIM}{COLOR_LILAC}CENTER (0%){NC}   {border_col}│{NC}")
             elif r == 0:
-                lines.append(f"{border_col}│{NC}   {COLOR_TRAFFIC_AMBER}▲{NC}   {border_col}│{NC} {DIM}+20% MAX{NC}")
+                lines.append(f"{border_col}│{NC}    {COLOR_TRAFFIC_AMBER}▲{NC}     {DIM}+20% MAX{NC}      {border_col}│{NC}")
             elif r == fader_rows - 1:
-                lines.append(f"{border_col}│{NC}   {COLOR_INDIGO_BLUE}▼{NC}   {border_col}│{NC} {DIM}-20% MIN{NC}")
+                lines.append(f"{border_col}│{NC}    {COLOR_INDIGO_BLUE}▼{NC}     {DIM}-20% MIN{NC}      {border_col}│{NC}")
             else:
-                lines.append(f"{border_col}│{NC}   {div_col}│{NC}   {border_col}│{NC}")
+                lines.append(f"{border_col}│{NC}    {div_col}│{NC}                    {border_col}│{NC}")
 
-        lines.append(f"{border_col}╰───────────╯{NC}")
+        lines.append(f"{border_col}╰────────────────────────╯{NC}")
         return lines
 
     def render_horizontal_pitch_bar(self, pitch_pct: int, width: int = 36) -> str:
@@ -1426,7 +1699,9 @@ class EqualizerVisualizer:
             fader_lines = self.render_vertical_pitch_fader(pitch_pct, total_lines=len(eq_lines))
             combined = []
             for eq_l, fd_l in zip(eq_lines, fader_lines):
-                combined.append(f"{eq_l}  {fd_l}")
+                clean_eq = re.sub(r'\x1b\[[0-9;]*m', '', eq_l)
+                pad = " " * max(0, 91 - len(clean_eq))
+                combined.append(f"{eq_l}{pad}  {fd_l}")
             return combined
 
         return eq_lines
@@ -1449,6 +1724,8 @@ class TerminalPlayerUI:
         self.playlist_view_active = True
         self.search_mode = False
         self.search_query = ""
+        self.export_mode = False
+        self.export_path = ""
         self.selected_row = 0
         self.scroll_offset = 0
         self._initial_row_synced = False
@@ -1586,6 +1863,68 @@ class TerminalPlayerUI:
             self.notification_msg = f"Failed to open File Manager for: {name}"
             self.notification_time = time.time() + 3.0
 
+    def _view_selected_tracklist(self):
+        filtered = self.scanner.get_mixes(self.search_query)
+        target_path = None
+        target_name = None
+        if filtered and 0 <= self.selected_row < len(filtered):
+            target_path = filtered[self.selected_row].get("path")
+            target_name = filtered[self.selected_row].get("name")
+        if not target_path or not os.path.exists(target_path):
+            status = self._get_status()
+            target_path = status.get("path")
+            target_name = status.get("title")
+        if not target_path or not os.path.exists(target_path):
+            latest = self.scanner.get_latest_mix()
+            if latest:
+                target_path = latest.get("path")
+                target_name = latest.get("name")
+
+        if not target_path:
+            self.notification_msg = "No mix selected to view tracklist."
+            self.notification_time = time.time() + 3.0
+            return
+
+        tl_path = find_tracklist_for_mix(target_path)
+        if tl_path and os.path.isfile(tl_path):
+            ok = open_tracklist_window(tl_path)
+            if ok:
+                self.notification_msg = f"Opened Tracklist: {os.path.basename(tl_path)}"
+            else:
+                self.notification_msg = f"Failed to open tracklist: {os.path.basename(tl_path)}"
+        else:
+            name = target_name or os.path.basename(target_path)
+            self.notification_msg = f"No tracklist found for: {name}"
+        self.notification_time = time.time() + 3.5
+
+    def _export_playlist(self):
+        filtered = self.scanner.get_mixes(self.search_query)
+        if not filtered:
+            self.notification_msg = "No mixes in playlist to export."
+            self.notification_time = time.time() + 3.0
+            return
+
+        chosen = choose_export_m3u_gui()
+        if chosen == "":
+            self.notification_msg = "Export cancelled."
+            self.notification_time = time.time() + 2.5
+            return
+        elif chosen:
+            ok, res = export_playlist_m3u(filtered, chosen)
+            if ok:
+                self.notification_msg = f"Exported {len(filtered)} mixes to: {os.path.basename(res)}"
+            else:
+                self.notification_msg = f"Export failed: {res}"
+            self.notification_time = time.time() + 4.0
+            return
+
+        # Fallback to interactive terminal prompt mode
+        self.export_mode = True
+        default_dir = os.path.expanduser("~/Desktop")
+        if not os.path.isdir(default_dir):
+            default_dir = os.path.expanduser("~")
+        self.export_path = os.path.join(default_dir, "MP_Archive_Playlist.m3u")
+
     def run(self):
         fd = sys.stdin.fileno() if sys.stdin.isatty() else None
         old_settings = None
@@ -1651,6 +1990,39 @@ class TerminalPlayerUI:
     def _process_key(self, data: bytes):
         if not data:
             return
+
+        # 0. Export Path Input Mode Handling
+        if getattr(self, "export_mode", False):
+            if data in (b"\r", b"\n"):
+                self.export_mode = False
+                filtered = self.scanner.get_mixes(self.search_query)
+                target = self.export_path.strip()
+                if not target:
+                    target = os.path.expanduser("~/Desktop/MP_Archive_Playlist.m3u")
+                ok, res = export_playlist_m3u(filtered, target)
+                if ok:
+                    self.notification_msg = f"Exported {len(filtered)} mixes to: {os.path.basename(res)}"
+                else:
+                    self.notification_msg = f"Export failed: {res}"
+                self.notification_time = time.time() + 4.0
+                return
+            elif data == b"\x1b":
+                self.export_mode = False
+                self.export_path = ""
+                self.notification_msg = "Export cancelled"
+                self.notification_time = time.time() + 2.5
+                return
+            elif data in (b"\x7f", b"\x08"):
+                self.export_path = self.export_path[:-1]
+                return
+            else:
+                try:
+                    text = data.decode("utf-8", errors="ignore")
+                    if text.isprintable():
+                        self.export_path += text
+                except Exception:
+                    pass
+                return
 
         # 1. Search Mode Handling
         if self.search_mode:
@@ -1743,26 +2115,34 @@ class TerminalPlayerUI:
             self._send_cmd("repeat")
 
         # 6. EQ & Themes
-        elif data in (b"e", b"E"):
+        elif data == b"e":
             self.visualizer.cycle_style()
-        elif data in (b"c", b"C", b"t", b"T"):
+        elif data in (b"c", b"C"):
             self.visualizer.cycle_theme()
 
-        # 7. Search Filter
+        # 7. View Tracklist (T / t)
+        elif data in (b"t", b"T"):
+            self._view_selected_tracklist()
+
+        # 8. Export Playlist (.m3u only) (E / w / W)
+        elif data in (b"E", b"w", b"W"):
+            self._export_playlist()
+
+        # 9. Search Filter
         elif data == b"/":
             self.search_mode = True
             self.search_query = ""
 
-        # 8. Open Selected Mix in File Manager (F / f)
+        # 10. Open Selected Mix in File Manager (F / f)
         elif data in (b"f", b"F"):
             self._open_selected_in_file_manager()
 
-        # 9. Stop & Exit
+        # 11. Stop & Exit
         elif data in (b"x", b"X"):
             self._send_cmd("stop")
             self.running = False
 
-        # 10. Return to previous menu / Exit UI
+        # 12. Return to previous menu / Exit UI
         elif data in (b"q", b"Q", b"b", b"B", b"\x1b", b"\x03"):
             self.running = False
 
@@ -1779,16 +2159,27 @@ class TerminalPlayerUI:
         self._sync_initial_selection(status)
         lines = []
 
-        # 1. Header Banner (Dreamworlds Ultra Edition)
-        lines.append(f"  {BOLD}{COLOR_HOT_PURPLE}╭──────────────────────────────────────────────────────────────────────────╮{NC}")
-        lines.append(f"  {BOLD}{COLOR_HOT_PURPLE}│      ✦ MP AUDIO PLAYER — DREAMWORLDS ULTRA AUDIO SUITE ✦                 │{NC}")
-        lines.append(f"  {BOLD}{COLOR_LILAC}│      Dreamworlds Productions  •  Hot Purple & Traffic Light Edition      │{NC}")
-        lines.append(f"  {BOLD}{COLOR_HOT_PURPLE}╰──────────────────────────────────────────────────────────────────────────╯{NC}")
+        # Widen Tracklist and Banner Box to match DJ Pitch Window right edge (column 118)
+        # When term_width >= 122: inner_w = 115 (total box width 117 from col 2 to 118)
+        if term_width >= 122:
+            inner_w = 115
+        else:
+            inner_w = max(74, term_width - 6)
+        name_len = max(30, inner_w - 23)
+
+        # 1. Header Banner (Dreamworlds Ultra Audio Mode)
+        banner_title = "✦ MP AUDIO PLAYER — DREAMWORLDS ULTRA AUDIO MODE ✦"
+        banner_sub = "Dreamworlds Productions  •  Hot Purple & Traffic Light Edition"
+        lines.append(f"  {BOLD}{COLOR_HOT_PURPLE}╭{'─'*inner_w}╮{NC}")
+        lines.append(f"  {BOLD}{COLOR_HOT_PURPLE}│{banner_title.center(inner_w)}│{NC}")
+        lines.append(f"  {BOLD}{COLOR_LILAC}│{banner_sub.center(inner_w)}│{NC}")
+        lines.append(f"  {BOLD}{COLOR_HOT_PURPLE}╰{'─'*inner_w}╯{NC}")
 
         # 2. Track & Format Details Card
         track_name = status.get("title", "Unknown Mix")
-        if len(track_name) > 58:
-            track_name = track_name[:55] + "..."
+        max_title_len = max(58, inner_w - 20)
+        if len(track_name) > max_title_len:
+            track_name = track_name[:max_title_len - 3] + "..."
         fmt = status.get("channels", 2)
         ch_str = "Stereo" if fmt == 2 else "Mono"
         sr = status.get("sample_rate", 44100)
@@ -1809,7 +2200,7 @@ class TerminalPlayerUI:
         dur_s = status.get("duration_fmt", "00:00")
         pct = float(status.get("progress_pct", 0.0))
 
-        bar_width = max(20, min(42, term_width - 34))
+        bar_width = max(20, min(54, inner_w - 42))
         filled_w = int((pct / 100.0) * bar_width)
         bar_str = "━" * filled_w + "●" + "─" * max(0, bar_width - filled_w - 1)
         lines.append(f"  {COLOR_ELECTRIC_CYAN}{pos_s}{NC}  {COLOR_HOT_PURPLE}{bar_str}{NC}  {COLOR_ELECTRIC_CYAN}{dur_s}{NC}  ({pct:.1f}%)")
@@ -1836,14 +2227,17 @@ class TerminalPlayerUI:
         mixes = self.scanner.get_mixes(self.search_query)
         total_mixes = len(mixes)
 
-        search_header = f"  {BOLD}{CYAN}Filter / Search: [{self.search_query}█]{NC}" if self.search_mode else f"  {BOLD}Search Filter: '{self.search_query}' (Press '/' to search)" if self.search_query else ""
-        if search_header:
-            lines.append(search_header)
+        if getattr(self, "export_mode", False):
+            lines.append(f"  {BOLD}{COLOR_TRAFFIC_AMBER}Export Playlist (.m3u) Path: [{self.export_path}█]  (Enter: Save, Esc: Cancel){NC}")
+        elif self.search_mode:
+            lines.append(f"  {BOLD}{CYAN}Filter / Search: [{self.search_query}█]{NC}")
+        elif self.search_query:
+            lines.append(f"  {BOLD}Search Filter: '{self.search_query}' (Press '/' to search)")
         elif time.time() < self.notification_time and self.notification_msg:
             lines.append(f"  {BOLD}{COLOR_TRAFFIC_GREEN}📂 {self.notification_msg}{NC}")
 
-        title_txt = f"── MIX ARCHIVE PLAYLIST ({total_mixes} Mixes Available) "
-        dashes_cnt = max(4, 74 - len(title_txt))
+        title_txt = f"── MP MIX ARCHIVE PLAYLIST ({total_mixes} Mixes Available) "
+        dashes_cnt = max(4, inner_w - len(title_txt))
         lines.append(f"  {BOLD}{MAGENTA}┌{title_txt}{'─'*dashes_cnt}┐{NC}")
 
         overhead_lines = len(lines) + 4
@@ -1860,22 +2254,22 @@ class TerminalPlayerUI:
             is_sel = (idx == self.selected_row)
 
             m_name = mix["name"]
-            if len(m_name) > 51:
-                m_name = m_name[:48] + "..."
+            if len(m_name) > name_len:
+                m_name = m_name[:name_len - 3] + "..."
 
             prefix = "▶ " if is_active else "  "
             sz_str = f"{mix['size_mb']:.0f}MB"
 
             if is_sel:
-                line_str = f"  │ \033[7m{prefix}[{idx+1:4d}] {m_name:<51} {mix['ext']} {sz_str:>6s}\033[0m │"
+                line_str = f"  │ \033[7m{prefix}[{idx+1:4d}] {m_name:<{name_len}} {mix['ext']} {sz_str:>6s}\033[0m │"
             elif is_active:
-                line_str = f"  │ {BOLD}{GREEN}{prefix}[{idx+1:4d}] {m_name:<51} {mix['ext']} {sz_str:>6s}{NC} │"
+                line_str = f"  │ {BOLD}{GREEN}{prefix}[{idx+1:4d}] {m_name:<{name_len}} {mix['ext']} {sz_str:>6s}{NC} │"
             else:
-                line_str = f"  │ {prefix}[{idx+1:4d}] {m_name:<51} {mix['ext']} {sz_str:>6s} │"
+                line_str = f"  │ {prefix}[{idx+1:4d}] {m_name:<{name_len}} {mix['ext']} {sz_str:>6s} │"
             lines.append(line_str)
 
-        foot_txt = "── ↑/↓: Scroll  •  Enter: Play Selection  •  F: File Manager  •  /: Search Mixes "
-        dashes_foot = max(4, 74 - len(foot_txt))
+        foot_txt = "── ↑/↓: Scroll  •  Enter: Play Selection  •  T: View Tracklist  •  E: Export  •  F: File Manager  •  /: Search Mixes "
+        dashes_foot = max(4, inner_w - len(foot_txt))
         lines.append(f"  {BOLD}{MAGENTA}└{foot_txt}{'─'*dashes_foot}┘{NC}")
 
         # 6. Status and Hotkey Footer
@@ -1888,10 +2282,10 @@ class TerminalPlayerUI:
         p_badge = f"{p_col}{p_val:+d}% ({p_spd:.2f}x){NC}"
 
         lines.append(f"  🔊 Vol: {BOLD}{COLOR_ELECTRIC_CYAN}{vol_str}{NC}  │  🎚 DJ Pitch: {BOLD}{p_badge}  │  🔀 Shuffle: {shuf_badge}  │  🔁 Repeat: {rep_badge}  │  🎨 Theme: {BOLD}{COLOR_HOT_PURPLE}Dreamworlds Ultra{NC}")
-        if term_width >= 96:
-            lines.append(f"  {DIM}[Space] Play/Pause  [+/-] Pitch ±1% (±20% max)  [0] Pitch Reset  [v/V] Vol  [n/p] Next/Prev  [F] File Mgr  [←/→] Seek  [e] EQ  [b/q] Exit{NC}")
+        if term_width >= 115:
+            lines.append(f"  {DIM}[Space] Play/Pause  [+/-] Pitch ±1% (±20% max)  [0] Pitch Reset  [v/V] Vol  [n/p] Next/Prev  [T] Tracklist  [E] Export  [F] File Mgr  [e] EQ  [b/q] Exit{NC}")
         else:
-            lines.append(f"  {DIM}[Space] Play  [+/-] Pitch ±1%  [0] Reset  [v/V] Vol  [n/p] Skip  [F] File Mgr  [←/→] Seek  [e] EQ  [b/q] Exit{NC}")
+            lines.append(f"  {DIM}[Space] Play  [+/-] Pitch ±1%  [0] Reset  [v/V] Vol  [n/p] Skip  [T] Tracklist  [E] Export  [F] File Mgr  [e] EQ  [b/q] Exit{NC}")
 
         frame_str = "\r\n".join(f"{line}\033[K" for line in lines)
         sys.stdout.write(f"\033[H{frame_str}\r\n\033[J")
@@ -1925,6 +2319,8 @@ def main():
     parser.add_argument("--get-latest-mix", action="store_true", help="Print path of newest mix in archive and exit")
     parser.add_argument("--list-mixes", action="store_true", help="Print all available mixes in archive")
     parser.add_argument("--open-file-manager", "-f", action="store_true", help="Open currently playing mix or archive in file manager")
+    parser.add_argument("--tracklist", "-t", action="store_true", help="Open tracklist for current track or latest mix in dedicated tracklist viewer")
+    parser.add_argument("--export-playlist", "-e", nargs="?", const="default", help="Export playlist to any location as a .m3u file only")
     parser.add_argument("--cmd", type=str, help="Send arbitrary IPC command (e.g. toggle, next, prev)")
 
     args, _ = parser.parse_known_args()
@@ -1967,6 +2363,50 @@ def main():
             sys.exit(0)
         else:
             print("✖ Failed to open file manager", file=sys.stderr)
+            sys.exit(1)
+
+    # Open mix tracklist
+    if args.tracklist:
+        target_path = None
+        if daemon_running:
+            st = send_ipc_command("status")
+            if st and "data" in st and st["data"].get("path"):
+                target_path = st["data"]["path"]
+        if not target_path or not os.path.exists(target_path):
+            scanner = MixArchiveScanner(base_dir)
+            latest = scanner.get_latest_mix()
+            if latest:
+                target_path = latest["path"]
+        if target_path:
+            tl = find_tracklist_for_mix(target_path)
+            if tl and os.path.isfile(tl):
+                ok = open_tracklist_window(tl)
+                if ok:
+                    print(f"✔ Opened tracklist: {tl}")
+                    sys.exit(0)
+                else:
+                    print(f"✖ Failed to launch tracklist window for: {tl}", file=sys.stderr)
+                    sys.exit(1)
+            else:
+                print(f"✖ No tracklist file found for: {os.path.basename(target_path)}", file=sys.stderr)
+                sys.exit(1)
+        else:
+            print("✖ No mix available to find tracklist", file=sys.stderr)
+            sys.exit(1)
+
+    # Export playlist as .m3u
+    if args.export_playlist is not None:
+        scanner = MixArchiveScanner(base_dir)
+        mixes = scanner.get_mixes()
+        dest = args.export_playlist
+        if dest == "default" or not dest:
+            dest = os.path.expanduser("~/Desktop/MP_Archive_Playlist.m3u")
+        ok, res = export_playlist_m3u(mixes, dest)
+        if ok:
+            print(f"✔ Exported {len(mixes)} mixes to .m3u playlist: {res}")
+            sys.exit(0)
+        else:
+            print(f"✖ Failed to export playlist: {res}", file=sys.stderr)
             sys.exit(1)
 
     # Generic IPC command dispatcher

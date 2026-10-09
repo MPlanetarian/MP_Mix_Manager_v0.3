@@ -60,7 +60,7 @@ An enterprise-grade workstation orchestration console and media management suite
 | **🗣️ AI Video & Audio** | **[WAN2GP TTS Batch Suite](scripts/wan2gp_tts_batch.py)** | Integrated Text-to-Speech batch converter transforming `.txt` scripts into uncompressed `.wav` audio using British/international Neural (Edge-TTS) and offline (eSpeak-NG) voices, accompanying Flux Klein 9B and LTX Video 2B/13B video generators. |
 | **🎙️ AI Voice Autonomy** | **[MP Harmony AI Voice Agent](scripts/manage_harmony_agent.sh)** | Autonomous engineering agent running on port 11435 with background setsid detachment, zero-lag port readiness wait, model tag sanitization, and an interactive **Voice Chat CLI** (`local-voice-talk` via `mix-archive-manager --harmony-voice` or Option 32.4). |
 | **🎛️ Audio Mastering & Storage** | **Multi-Archive Routing** | Ingest and batch-convert across multiple physical drives (`MIX_ARCHIVE_DIR` & `EXTRA_MIX_ARCHIVE_DIRS`), with origin-aware output routing that deposits converted FLACs and spectrograms back to their respective origin drives. |
-| **🎧 Terminal Audiophile Player** | **[MP Audio Player](MP_Audio_Player.py)** | "Dreamworlds Productions • Studio Audio Playback" branding, resolved TUI stair-stepping rendering artifacts, pixel-aligned visualizer frames, unbuffered zero-latency controls (`Space`, seek, volume, `t`), and flexible string path handling. |
+| **🎧 Terminal Audiophile Player** | **[MP Audio Player](MP_Audio_Player.py)** | "DREAMWORLDS ULTRA AUDIO MODE" expanded 118-column panoramic layout, widened tracklist & banner boxes aligned flush to the DJ pitch window, instant tracklist viewer (`T` key & `--tracklist`), and universal playlist exporter (`E` key & `--export-playlist`) strictly saving to `.m3u` files via native GUI dialog or CLI. |
 | **📱 Social Media Outreach** | **[YouTube Shorts Generator](generate_youtube_short_promo.py)** | 1080x1920 60fps vertical promo videos with animated waveform overlays for TikTok, Instagram Reels, and YouTube Shorts. |
 | **📑 Master Tracklists** | **HTML Auto-Open & Paths** | Generates master tracklists with rich file path metadata and auto-opens in default web browser. |
 
@@ -99,22 +99,31 @@ flowchart TD
 flowchart LR
     A["🎵 High-Res Audio Archive (FLAC / WAV / MP3 / OGG)"] --> B["🎛️ MP Audio Player (Option 11)"]
     B --> C["📊 Real-Time Animated Spectrum Visualizer & Stereo Meters"]
-    B --> D["⌨️ Unbuffered Instant Keystrokes (Space, Arrows, t, s, r)"]
-    B --> E["📜 Live Synchronized Tracklist Console View"]
-    B --> F["📱 MPRIS / Metadata Broadcast for Remote Daemons"]
+    B --> D["🎚️ DJ Pitch Control (-20% to +20% Fader Window)"]
+    B --> E["📜 Live Tracklist Window (Press T / --tracklist)"]
+    B --> F["💾 Export Playlist (.m3u Only via E / --export-playlist)"]
+    B --> G["📱 MPRIS / Metadata Broadcast for Remote Daemons"]
 ```
 
 ### 🎛️ Audio Player Highlights:
-- ✨ **Dreamworlds Productions • Studio Audio Playback**: Dedicated studio branding banner, real-time playback clocks, volume level gauges, and technical audio stream properties.
-- 📐 **Pixel-Aligned Box Frame Architecture**: Fully resolved TUI stair-stepping rendering artifacts with clean vertical borders and synchronized multi-box terminal layout.
-- 📊 **Animated TrueColor Spectrum Visualizer**: Dynamic multi-band frequency visualizer and stereo level meters rendered live inside your terminal using Dreamworlds gradients.
+- 🌌 **DREAMWORLDS ULTRA AUDIO MODE**: High-resolution studio playback console with real-time audio telemetry, bit-depth/sample-rate metrics, stereo level meters, and dedicated DJ pitch fader window.
+- 📐 **Full-Width 118-Column Panoramic Grid**: The top Banner box and the central **MP MIX ARCHIVE PLAYLIST** box are widened dynamically to 117 characters (inner width 115) aligning flush with the right boundary of the DJ Pitch Window (column 118) for a seamless console visualizer layout.
+- 📜 **Instant Tracklist Viewer (`T` / `t` / `--tracklist`)**: Press `T` during playback or browsing to automatically locate and launch the matching mix tracklist (`.txt`) in a dedicated borderless console window (`scripts/view_tracklist_console.sh` with Konsole/Alacritty/Kitty/XFCE/xterm support).
+- 💾 **Universal Playlist Exporter (`E` / `w` / `--export-playlist`)**: Export the entire 1,000+ mix archive playlist to any directory strictly as a standard `.m3u` file (`#EXTM3U` format with `#EXTINF` track descriptions). Seamlessly launches native KDE `kdialog` or GNOME `zenity` file-save dialogs, with automatic terminal prompt and CLI fallbacks.
+- 🎚️ **DJ Pitch & Tempo Engine**: Real-time tempo adjustment from -20% to +20% via `[` / `]` with single-key reset via `\` and instant live visualizer pitch fader readout.
+- 📊 **Animated TrueColor Spectrum Visualizer**: Dynamic multi-band frequency visualizer and stereo level meters rendered live inside your terminal using Dreamworlds TrueColor gradients.
 - ⌨️ **Unbuffered Zero-Lag Keyboard Controls**:
   - `Space`: Instant pause / play toggle.
   - `Left` / `Right` arrows: Precision seek backward / forward (5s / 30s).
   - `Up` / `Down` arrows: Volume control (0%–100%).
+  - `[` / `]`: Adjust DJ pitch (-20% to +20%).
+  - `\`: Reset pitch to 0.00%.
+  - `T` / `t`: Open tracklist for currently selected or playing mix in dedicated window.
+  - `E` / `w` / `W`: Export entire mix playlist to `.m3u` file.
   - `n` / `p`: Next / Previous track in mix catalog.
-  - `F`: Open currently selected / playing mix in a new desktop file manager window (Dolphin / Nautilus / Explorer / Finder).
-  - `t`: Open live synchronized tracklist in dedicated console.
+  - `c` / `C`: Cycle TrueColor visualizer theme palette.
+  - `e`: Toggle EQ visualizer style (Stereo, Mirror, Fire, Rainbow, Waves, Classic, etc.).
+  - `F`: Open currently selected / playing mix in desktop file manager (Dolphin / Nautilus / Explorer / Finder).
   - `s` / `r`: Shuffle / Repeat mode toggles.
   - `q` / `Esc`: Return cleanly to master manager menu.
 - 🔍 **Integrated Archive Catalog Browser & Flexible Path Ingestion**: Pass specific mix audio paths directly via CLI or browse the entire catalog by mix episode, artist, title, or date with instant enter-to-play dispatch.
@@ -527,7 +536,7 @@ chmod +x manager_freebsd.sh install.sh
 ### ─── [ SECTION 2: STUDIO AUDIO, PLAYBACK, METADATA & VIDEO ] ──
 | # | Operation | Description & Sub-Features |
 |---|---|---|
-| **11**| **Play Mix/Audio File (MP Audio Player)** | Built-in terminal audiophile player (`MP_Audio_Player.py`): "Dreamworlds Productions • Studio Audio Playback" branding, pixel-aligned visualizer box frames, animated TrueColor spectrum visualizer, stereo level meters, unbuffered keyboard control (Space, Seek, Volume, Tracklist `t`), direct CLI path ingestion, and lossless 32-bit/24-bit/16-bit FLAC/WAV/MP3/OGG playback. |
+| **11**| **Play Mix/Audio File (MP Audio Player)** | Built-in terminal audiophile player (`MP_Audio_Player.py`): "DREAMWORLDS ULTRA AUDIO MODE" expanded 118-column layout, widened tracklist & banner boxes aligned to the DJ pitch window, dedicated tracklist viewer (`T` / `-t`), universal playlist exporter (`E` / `-e` strictly saving as `.m3u` files), animated TrueColor spectrum visualizer, stereo level meters, DJ pitch fader (-20% to +20%), unbuffered keyboard controls, and bit-perfect lossless 32-bit/24-bit/16-bit FLAC/WAV/MP3/OGG playback. |
 | **12**| **Tracklist Management, Scanning & Metadata Suite** | Complete metadata suite (`manage_tracklist_suite`): browse/search archive tracklists, view in borderless console, export to styled HTML and vector PDF (`generate_tracklist_docs.py`), Traktor XML history extractor (`Check_Find_Tracklists.sh`), master HTML index generator with browser auto-open (`Generate_Master_Tracklist.sh`), MusicBrainz Picard tagger, YouTube/SoundCloud chapter exporter (`export_chapters.py`), and AcoustID audio fingerprint identifier (`identify_mix_tracks.py`). |
 | **13**| **Audio Players & Retro Playback Suite** | Universal player launcher (`manage_audio_players`): cliamp retro terminal player, Audacious, VLC, Haruna, Kodi, Strawberry, foobar2000 (macOS & Windows), Winamp (Windows), Apple Music (macOS), Apple Podcasts, Audacity, and MIDI hardware device inspector. |
 | **14**| **Configure Mix Archive Storage Locations** | Interactive setup wizard for primary mix storage folder (`MIX_ARCHIVE_DIR`) and additional secondary archive drives (`EXTRA_MIX_ARCHIVE_DIRS`). |
@@ -573,6 +582,8 @@ mix-archive-manager update            # Check for updates and pull latest git re
 
 # Audio Playback & Web Companion
 mix-archive-manager p                 # Launch MP Audio Player terminal visualizer
+python3 MP_Audio_Player.py -t         # View tracklist for playing mix in dedicated window
+python3 MP_Audio_Player.py -e out.m3u # Export entire archive playlist as .m3u file
 mix-archive-manager specs             # Inspect technical audio specifications of playing mix
 mix-archive-manager top5              # Listen to Top 5 Pre-Selected Tracks
 ./mix_web_companion.sh                # Launch DJ Booth Mobile Web Companion on port 8888
