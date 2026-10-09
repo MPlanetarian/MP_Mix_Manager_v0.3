@@ -8,6 +8,9 @@ TNAME=lanonly
 NEED_ROOT=1
 
 if [[ ${EUID} -ne 0 ]]; then
+  if grep -q "NoNewPrivs:[[:space:]]*1" /proc/self/status 2>/dev/null && command -v systemd-run >/dev/null 2>&1; then
+    exec systemd-run --user --pipe "$0" "$@"
+  fi
   exec sudo -- "$0" "$@"
 fi
 

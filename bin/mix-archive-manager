@@ -82,6 +82,20 @@ elif [ "${1:-}" = "top5" ] || [ "${1:-}" = "--top5" ] || [ "${1:-}" = "top-5" ] 
     elif [ -f "$CODEBASE_DIR/scripts/top_5_tracks_manager.py" ]; then
         exec python3 "$CODEBASE_DIR/scripts/top_5_tracks_manager.py" "$@"
     fi
+elif [ "${1:-}" = "block-internet" ] || [ "${1:-}" = "--block-internet" ]; then
+    shift
+    if command -v systemd-run >/dev/null 2>&1; then
+        exec systemd-run --user --pipe block-internet "$@"
+    else
+        exec sudo block-internet "$@"
+    fi
+elif [ "${1:-}" = "unblock-internet" ] || [ "${1:-}" = "--unblock-internet" ]; then
+    shift
+    if command -v systemd-run >/dev/null 2>&1; then
+        exec systemd-run --user --pipe unblock-internet "$@"
+    else
+        exec sudo unblock-internet "$@"
+    fi
 fi
 
 

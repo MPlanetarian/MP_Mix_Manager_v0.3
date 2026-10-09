@@ -4117,9 +4117,23 @@ block_internet() {
     echo -e "\n${BOLD}${RED}=== BLOCK INTERNET ACCESS (LAN ONLY) ===${NC}"
     local script="$HOME/Documents/BASH_SCRIPTS/block-internet"
     [ ! -f "$script" ] && script="$HOME/bin/block-internet"
-    if [ -f "$script" ]; then
+    [ ! -f "$script" ] && script="$SCRIPT_DIR/bin/block-internet"
+    [ ! -f "$script" ] && script="$SCRIPT_DIR/block-internet"
+    if command -v systemd-run >/dev/null 2>&1; then
+        echo -e "${YELLOW}Running via systemd-run...${NC}\n"
+        if command -v block-internet >/dev/null 2>&1; then
+            systemd-run --user --pipe block-internet
+        elif [ -f "$script" ]; then
+            systemd-run --user --pipe "$script"
+        else
+            echo -e "${RED}Error: block-internet script not found!${NC}"
+        fi
+    elif [ -f "$script" ]; then
         echo -e "${YELLOW}Running $script...${NC}\n"
         sudo bash "$script"
+    elif command -v block-internet >/dev/null 2>&1; then
+        echo -e "${YELLOW}Running block-internet...${NC}\n"
+        sudo block-internet
     else
         echo -e "${RED}Error: block-internet script not found at $script!${NC}"
     fi
@@ -4130,9 +4144,23 @@ unblock_internet() {
     echo -e "\n${BOLD}${GREEN}=== RESTORE / UNBLOCK INTERNET ACCESS ===${NC}"
     local script="$HOME/Documents/BASH_SCRIPTS/unblock-internet"
     [ ! -f "$script" ] && script="$HOME/bin/unblock-internet"
-    if [ -f "$script" ]; then
+    [ ! -f "$script" ] && script="$SCRIPT_DIR/bin/unblock-internet"
+    [ ! -f "$script" ] && script="$SCRIPT_DIR/unblock-internet"
+    if command -v systemd-run >/dev/null 2>&1; then
+        echo -e "${YELLOW}Running via systemd-run...${NC}\n"
+        if command -v unblock-internet >/dev/null 2>&1; then
+            systemd-run --user --pipe unblock-internet
+        elif [ -f "$script" ]; then
+            systemd-run --user --pipe "$script"
+        else
+            echo -e "${RED}Error: unblock-internet script not found!${NC}"
+        fi
+    elif [ -f "$script" ]; then
         echo -e "${YELLOW}Running $script...${NC}\n"
         sudo bash "$script"
+    elif command -v unblock-internet >/dev/null 2>&1; then
+        echo -e "${YELLOW}Running unblock-internet...${NC}\n"
+        sudo unblock-internet
     else
         echo -e "${RED}Error: unblock-internet script not found at $script!${NC}"
     fi
@@ -13424,6 +13452,12 @@ while true; do
             ;;
         congen|kdeconnect|congen-launch)
             manage_congen
+            ;;
+        block-internet|--block-internet|block_internet)
+            block_internet
+            ;;
+        unblock-internet|--unblock-internet|unblock_internet)
+            unblock_internet
             ;;
         0|[Ss]|shortcuts|desktop-shortcuts|ds|kioclient|run-shortcuts|desktop_shortcuts)
             manage_desktop_shortcuts
