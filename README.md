@@ -30,7 +30,7 @@ An enterprise-grade workstation orchestration console and media management suite
 - [🎬 YouTube Shorts 1080x1920 Promotional Video Generator](#-spotlight-youtube-shorts-1080x1920-promotional-video-generator)
 - [🎥 Screencast YouTube Video Generator with NVENC & Image Transitions](#-spotlight-screencast-youtube-video-generator-with-nvenc--image-transitions)
 - [🤖 Next-Gen AI Orchestration Suite](#-spotlight-next-gen-ai-orchestration-suite)
-- [📱 Congen v1.0.0 (KDE Connect Mobile Remote Suite)](#-spotlight-congen-v100-kde-connect-mobile-remote-suite)
+- [📱 Congen v1.0.0 by Dreamworlds Productions (MPlanetarian)](#-spotlight-congen-v100-by-dreamworlds-productions-mplanetarian)
 - [✂️ Auto-Split DJ Mixes & Multi-Part Spek Spectrograms](#️-spotlight-auto-split-dj-mixes--multi-part-spek-spectrograms)
 - [⏰ MPlanetarians Alarm Clock (Wake Up Edition)](#-spotlight-mplanetarians-alarm-clock-wake-up-edition)
 - [⚡ Traktor History Harmonic Playlist & Stage Setup](#-spotlight-traktor-history-harmonic-playlist--stage-setup)
@@ -223,10 +223,10 @@ flowchart TD
 
 ---
 
-## 📱 Spotlight: Congen v1.0.0 (KDE Connect Mobile Remote Suite)
+## 📱 Spotlight: Congen v1.0.0 by Dreamworlds Productions (MPlanetarian)
 
 > [!IMPORTANT]
-> **Control your entire Linux workstation, custom scripts, and media workflows straight from your smartphone!** Located in [Congen/](Congen/README.md) and launchable directly via `mix-archive-manager --congen` or Option 28.2, **Congen** is an enterprise-grade terminal command orchestration suite and interactive CLI manager for KDE Connect (Plasma 6 & 5).
+> **Control your entire Linux workstation, custom scripts, and media workflows straight from your smartphone!** Located in [Congen/](Congen/README.md) and launchable directly via `mix-archive-manager --congen` or Option 28.2, **Congen v1.0.0 by Dreamworlds Productions (MPlanetarian)** is an enterprise-grade terminal command orchestration suite and interactive CLI manager for KDE Connect (Plasma 6 & 5).
 
 ```mermaid
 flowchart TD

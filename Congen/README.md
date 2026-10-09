@@ -1,4 +1,6 @@
-# CONGEN (KDE Connect Commands Generator)
+# Congen v1.0.0 by Dreamworlds Productions (MPlanetarian)
+
+> 📅 **Last Updated:** October 9, 2026 • **Latest Release:** `v1.0.0 Stable` • **Platform:** Linux (KDE Plasma 6 & 5)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20KDE%20Plasma%206%20%26%205-1D99F3.svg)](https://kde.org/plasma-desktop/)
