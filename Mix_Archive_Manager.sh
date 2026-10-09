@@ -12331,27 +12331,71 @@ _run_desktop_shortcut_manual() {
         echo ""
         echo -e "${BOLD}${YELLOW}▶  Launching: ${GREEN}${_sel_name}${NC}"
         echo -e "   ${DIM}File: ${_sel_file}${NC}"
-        echo -e "   ${DIM}Command: kioclient exec \"${_sel_file}\"${NC}"
-        echo ""
 
-        # Check kioclient is available
-        local _kioclient
-        if command -v kioclient >/dev/null 2>&1; then
-            _kioclient="kioclient"
-        elif command -v kioclient5 >/dev/null 2>&1; then
-            _kioclient="kioclient5"
+        # Determine launcher method via cascading preference:
+        # 1. gio launch (modern GNOME/freedesktop standard, handles full paths cleanly)
+        # 2. gtk-launch (standard Freedesktop/GTK desktop runner)
+        # 3. kioclient / kioclient6 / kioclient5 (KDE Plasma native launcher)
+        # 4. Direct Exec parsing fallback
+        local _launcher_type=""
+        local _launcher_bin=""
+
+        if command -v gio >/dev/null 2>&1; then
+            _launcher_type="gio"
+            _launcher_bin="gio"
+        elif command -v gtk-launch >/dev/null 2>&1; then
+            _launcher_type="gtk-launch"
+            _launcher_bin="gtk-launch"
+        elif command -v kioclient >/dev/null 2>&1; then
+            _launcher_type="kioclient"
+            _launcher_bin="kioclient"
         elif command -v kioclient6 >/dev/null 2>&1; then
-            _kioclient="kioclient6"
+            _launcher_type="kioclient"
+            _launcher_bin="kioclient6"
+        elif command -v kioclient5 >/dev/null 2>&1; then
+            _launcher_type="kioclient"
+            _launcher_bin="kioclient5"
         else
-            echo -e "${RED}Error: kioclient is not installed. Cannot launch desktop shortcut.${NC}"
-            echo -e "${DIM}Install it via: sudo dnf install kio-extras  OR  sudo apt install kio${NC}"
-            press_enter
-            continue
+            _launcher_type="direct"
         fi
 
-        # Launch the shortcut in background (detached)
-        "$_kioclient" exec "$_sel_file" >/dev/null 2>&1 &
-        disown
+        case "$_launcher_type" in
+            gio)
+                echo -e "   ${DIM}Command: gio launch \"${_sel_file}\"${NC}"
+                echo ""
+                gio launch "$_sel_file" >/dev/null 2>&1 &
+                disown
+                ;;
+            gtk-launch)
+                local _desktop_base
+                _desktop_base="$(basename "$_sel_file" .desktop)"
+                echo -e "   ${DIM}Command: gtk-launch \"${_desktop_base}\"${NC}"
+                echo ""
+                gtk-launch "$_desktop_base" >/dev/null 2>&1 &
+                disown
+                ;;
+            kioclient)
+                echo -e "   ${DIM}Command: ${_launcher_bin} exec \"${_sel_file}\"${NC}"
+                echo ""
+                "$_launcher_bin" exec "$_sel_file" >/dev/null 2>&1 &
+                disown
+                ;;
+            direct)
+                local _exec_cmd
+                _exec_cmd="$(grep -m1 '^Exec=' "$_sel_file" | cut -d= -f2- | sed -E 's/%[uUfFiIck]//g' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+                if [ -n "$_exec_cmd" ]; then
+                    echo -e "   ${DIM}Command: ${_exec_cmd}${NC}"
+                    echo ""
+                    nohup bash -c "$_exec_cmd" >/dev/null 2>&1 &
+                    disown
+                else
+                    echo -e "${RED}Error: Neither gio, gtk-launch, nor kioclient is installed, and could not parse Exec line.${NC}"
+                    echo -e "${DIM}Install a desktop launcher via: sudo dnf install glib2 kioclient  OR  sudo apt install libglib2.0-bin kio${NC}"
+                    press_enter
+                    continue
+                fi
+                ;;
+        esac
 
         echo -e "${GREEN}✔  Shortcut launched successfully!${NC}"
         echo -e "${DIM}The application is opening. When you are done, return here to launch another.${NC}"
