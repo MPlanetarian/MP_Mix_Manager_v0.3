@@ -1,5 +1,8 @@
 # MP Mix Archive Manager (`v0.3.5`)
 
+> 📅 **Last Updated:** October 9, 2026 • **Latest Release:** `v0.3.5 Stable`
+
+[![Last Updated](https://img.shields.io/badge/Last%20Updated-October%209%2C%202026-brightgreen.svg)]()
 [![Version](https://img.shields.io/badge/Version-0.3.5%20Stable-f72585.svg)](VERSION)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows%20%7C%20FreeBSD-00e5ff.svg)](README.md)
 [![macOS](https://img.shields.io/badge/macOS-Sonoma%20%7C%20Sequoia%20%7C%20Apple%20Silicon%20M1--M4%20%26%20Intel-silver.svg)]()
