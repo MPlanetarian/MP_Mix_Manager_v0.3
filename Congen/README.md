@@ -250,6 +250,57 @@ ln -s "$(pwd)/Congen" ~/.local/bin/congen
 
 ---
 
+## 🤖 Headless CLI & Automation Suite
+
+Congen includes a comprehensive non-interactive scripting interface. All operations can be invoked directly from scripts, cron jobs, CI/CD pipelines, or desktop keybindings without opening the interactive TUI:
+
+```bash
+# Display help and version
+congen --help
+congen --version
+
+# List installed commands in formatted table or machine-readable JSON
+congen list
+congen list --json
+
+# Run any command directly by index number or case-insensitive name
+congen run 1
+congen run "Lock Screen"
+
+# Atomically add/register a command (generates runner wrapper if passed raw shell syntax)
+congen add "Lock Workstation" "loginctl lock-session" "Locks the active user session"
+congen add "Mute Audio" "/home/user/scripts/mute.sh" "Mutes PipeWire audio" "Pixel 8"
+
+# Safely remove command from KDE Connect INI/@ByteArray JSON and catalog manual
+congen remove "Lock Workstation"
+congen remove 12
+
+# Telemetry, daemon, and paired devices status report
+congen status
+
+# Ping KDE Connect daemon & active remote devices
+congen ping
+
+# View themes or switch active palette directly
+congen theme
+congen theme dreamworlds_ultra
+
+# Query or control audio execution alerts daemon
+congen alert status
+congen alert enable
+congen alert disable
+congen alert test
+```
+
+### ⚡ Performance & Safety Highlights
+
+* **Sub-20ms Menu Redraws & Batch Processing:** Eliminates N+1 Python subprocess bottlenecks by batch-parsing all device configurations and manual catalogs in a single pass.
+* **Global Telemetry TTL Cache:** 6-second in-memory telemetry cache prevents redundant network interfaces and systemd status queries on high-frequency UI navigation.
+* **Atomic Config Writes:** All modifications to KDE Connect `config` files are written to process-isolated temp files and committed atomically via `os.replace` with automated `.bak` backups.
+* **Interactive Live Filter & Search:** Full-text filtering (`[s]` or `[/]`) across command names, scripts, target devices, and summaries in both the view and execution menus.
+
+---
+
 ## 📂 Project Architecture
 
 ```text
