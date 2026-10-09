@@ -410,7 +410,7 @@ run_interactive_submenu() {
             [ ${#disp_title} -gt 40 ] && disp_title="${disp_title:0:37}..."
             echo -e "  ${BOLD}${MAGENTA}╭── ♫ MP AUDIO PLAYER ─────────────────────────────────────────────────────╮${NC}"
             printf "  ${BOLD}${MAGENTA}│${NC} %b  ${BOLD}${YELLOW}%-40s${NC}  ${CYAN}%s/%s${NC} ${DIM}(%2s%%)${NC} ${BOLD}${MAGENTA}│\n" "$st_sym" "$disp_title" "$MP_PLAYER_POS_FMT" "$MP_PLAYER_DUR_FMT" "${MP_PLAYER_PROGRESS_PCT%.*}"
-            printf "  ${BOLD}${MAGENTA}│${NC}   ${DIM}EQ:${NC} %b  ${DIM}Controls: [Space] Toggle [</>] Track [+/-] Vol [p] UI       ${NC} ${BOLD}${MAGENTA}│\n" "${CYAN}${MP_PLAYER_MINI_EQ:-        }${NC}"
+            printf "  ${BOLD}${MAGENTA}│${NC}   ${DIM}EQ:${NC} %b  ${DIM}Controls: [Space] Toggle [n] Next [</>] Track [p] UI [f] FM       ${NC} ${BOLD}${MAGENTA}│\n" "${CYAN}${MP_PLAYER_MINI_EQ:-        }${NC}"
             echo -e "  ${BOLD}${MAGENTA}╰──────────────────────────────────────────────────────────────────────────╯${NC}"
         fi
         for opt_entry in "${_opts_ref[@]}"; do
@@ -486,7 +486,7 @@ run_interactive_submenu() {
             local line1_txt
             printf -v line1_txt "  ${BOLD}${MAGENTA}│${NC} %b  ${BOLD}${YELLOW}%-40s${NC}  ${CYAN}%s/%s${NC} ${DIM}(%2s%%)${NC} ${BOLD}${MAGENTA}│\033[K${NC}\n" "$st_sym" "$disp_title" "$MP_PLAYER_POS_FMT" "$MP_PLAYER_DUR_FMT" "${MP_PLAYER_PROGRESS_PCT%.*}"
             player_banner+="$line1_txt"
-            local line2_ctrl="[Space] Toggle  [</>] Track  [+/-] Vol: ${MP_PLAYER_VOLUME}%  [p] Player UI"
+            local line2_ctrl="[Space] Toggle  [n] Next  [</>] Track  [p] UI  [f] FM"
             local eq_disp="${CYAN}${MP_PLAYER_MINI_EQ:-        }${NC}"
             local line2_txt
             printf -v line2_txt "  ${BOLD}${MAGENTA}│${NC}   ${DIM}EQ:${NC} %b  ${DIM}Controls: %-46b${NC} ${BOLD}${MAGENTA}│\033[K${NC}\n" "$eq_disp" "$line2_ctrl"
@@ -600,27 +600,32 @@ run_interactive_submenu() {
             SPACE)
                 local mp_py="$SCRIPT_DIR/MP_Audio_Player.py"
                 [ ! -f "$mp_py" ] && mp_py="$SCRIPT_DIR/scripts/MP_Audio_Player.py"
-                [ -f "$mp_py" ] && python3 "$mp_py" --toggle >/dev/null 2>&1
+                [ -f "$mp_py" ] && python3 "$mp_py" --toggle >/dev/null 2>&1 &
                 ;;
-            CHAR:\>|CHAR:\])
+            CHAR:n|CHAR:N|CHAR:\>|CHAR:\])
                 local mp_py="$SCRIPT_DIR/MP_Audio_Player.py"
                 [ ! -f "$mp_py" ] && mp_py="$SCRIPT_DIR/scripts/MP_Audio_Player.py"
-                [ -f "$mp_py" ] && python3 "$mp_py" --next >/dev/null 2>&1
+                [ -f "$mp_py" ] && python3 "$mp_py" --next >/dev/null 2>&1 &
                 ;;
             CHAR:\<|CHAR:\[)
                 local mp_py="$SCRIPT_DIR/MP_Audio_Player.py"
                 [ ! -f "$mp_py" ] && mp_py="$SCRIPT_DIR/scripts/MP_Audio_Player.py"
-                [ -f "$mp_py" ] && python3 "$mp_py" --prev >/dev/null 2>&1
+                [ -f "$mp_py" ] && python3 "$mp_py" --prev >/dev/null 2>&1 &
                 ;;
             CHAR:+|CHAR:=)
                 local mp_py="$SCRIPT_DIR/MP_Audio_Player.py"
                 [ ! -f "$mp_py" ] && mp_py="$SCRIPT_DIR/scripts/MP_Audio_Player.py"
-                [ -f "$mp_py" ] && python3 "$mp_py" --pitch-up >/dev/null 2>&1
+                [ -f "$mp_py" ] && python3 "$mp_py" --pitch-up >/dev/null 2>&1 &
                 ;;
             CHAR:-|CHAR:_)
                 local mp_py="$SCRIPT_DIR/MP_Audio_Player.py"
                 [ ! -f "$mp_py" ] && mp_py="$SCRIPT_DIR/scripts/MP_Audio_Player.py"
-                [ -f "$mp_py" ] && python3 "$mp_py" --pitch-down >/dev/null 2>&1
+                [ -f "$mp_py" ] && python3 "$mp_py" --pitch-down >/dev/null 2>&1 &
+                ;;
+            CHAR:0)
+                local mp_py="$SCRIPT_DIR/MP_Audio_Player.py"
+                [ ! -f "$mp_py" ] && mp_py="$SCRIPT_DIR/scripts/MP_Audio_Player.py"
+                [ -f "$mp_py" ] && python3 "$mp_py" --pitch-reset >/dev/null 2>&1 &
                 ;;
             UP)
                 local hops=0
@@ -720,6 +725,22 @@ run_interactive_submenu() {
                         manage_mp_audio_player
                         clear
                         printf '\033[?25l'
+                        continue
+                    fi
+                fi
+                if [ -z "$typed_buffer" ] && ([ "$ch" = "f" ] || [ "$ch" = "F" ]) && [ "${MP_PLAYER_ACTIVE:-0}" -eq 1 ]; then
+                    local has_exact_f=0
+                    for opt_entry in "${_opts_ref[@]}"; do
+                        IFS='|' read -r o_key _ _ <<< "$opt_entry"
+                        if [ "$o_key" = "f" ] || [ "$o_key" = "F" ]; then
+                            has_exact_f=1
+                            break
+                        fi
+                    done
+                    if [ "$has_exact_f" -eq 0 ]; then
+                        local mp_py="$SCRIPT_DIR/MP_Audio_Player.py"
+                        [ ! -f "$mp_py" ] && mp_py="$SCRIPT_DIR/scripts/MP_Audio_Player.py"
+                        [ -f "$mp_py" ] && python3 "$mp_py" --open-file-manager >/dev/null 2>&1 &
                         continue
                     fi
                 fi

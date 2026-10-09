@@ -12,6 +12,7 @@ Features:
   - Full remote control from CLI or anywhere in Mix_Archive_Manager.sh (Space: Play/Pause, Next/Prev, Vol, Seek).
 """
 
+from __future__ import annotations
 import os
 import sys
 import time
@@ -26,23 +27,41 @@ import argparse
 import threading
 import subprocess
 from pathlib import Path
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Any, Tuple, Union
 
-try:
-    import numpy as np
-except ImportError:
-    print("Error: numpy is required for MP_Audio_Player.py", file=sys.stderr)
-    sys.exit(1)
+# Lazy audio library imports to keep CLI and IPC operations instant (<0.02s)
+np = None
+sf = None
+sd = None
 
-try:
-    import soundfile as sf
-except ImportError:
-    sf = None
 
-try:
-    import sounddevice as sd
-except ImportError:
-    sd = None
+def _ensure_numpy():
+    global np
+    if np is None:
+        try:
+            import numpy as _np
+            np = _np
+        except ImportError:
+            print("Error: numpy is required for MP_Audio_Player.py", file=sys.stderr)
+            sys.exit(1)
+    return np
+
+
+def _ensure_audio_backends():
+    global np, sf, sd
+    _ensure_numpy()
+    if sf is None:
+        try:
+            import soundfile as _sf
+            sf = _sf
+        except ImportError:
+            pass
+    if sd is None:
+        try:
+            import sounddevice as _sd
+            sd = _sd
+        except ImportError:
+            pass
 
 # Terminal Raw Input helpers
 try:
@@ -135,6 +154,125 @@ def format_seconds(seconds: float) -> str:
     if hours > 0:
         return f"{hours:02d}:{minutes:02d}:{secs:02d}"
     return f"{minutes:02d}:{secs:02d}"
+
+
+def open_in_file_manager(target_path: Union[str, Path, None]) -> bool:
+    """Open the mix file or directory in a new desktop file manager window automatically.
+    If target_path is a file, selects/highlights it in the file manager if supported.
+    """
+    if not target_path:
+        return False
+    try:
+        p = Path(target_path).expanduser().resolve()
+    except Exception:
+        p = Path(target_path).resolve()
+
+    if not p.exists():
+        if p.parent.exists():
+            p = p.parent
+        else:
+            return False
+
+    is_file = p.is_file()
+    folder_dir = str(p.parent if is_file else p)
+    target_str = str(p)
+
+    # 1. macOS (Finder reveal)
+    if sys.platform == "darwin":
+        cmd = ["open", "-R", target_str] if is_file else ["open", folder_dir]
+        try:
+            subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            return True
+        except Exception:
+            return False
+
+    # 2. Windows Native
+    if sys.platform == "win32":
+        cmd = ["explorer.exe", f"/select,{target_str}"] if is_file else ["explorer.exe", folder_dir]
+        try:
+            subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return True
+        except Exception:
+            return False
+
+    # 3. WSL Check
+    if Path("/proc/version").exists():
+        try:
+            with open("/proc/version", "r", encoding="utf-8", errors="ignore") as f:
+                if "microsoft" in f.read().lower():
+                    if shutil.which("wslpath") and shutil.which("explorer.exe"):
+                        w_path = subprocess.run(["wslpath", "-w", target_str if is_file else folder_dir], capture_output=True, text=True).stdout.strip()
+                        if w_path:
+                            cmd = ["explorer.exe", f"/select,{w_path}"] if is_file else ["explorer.exe", w_path]
+                            subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                            return True
+                    if shutil.which("wslview"):
+                        subprocess.Popen(["wslview", folder_dir], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                        return True
+        except Exception:
+            pass
+
+    # 4. Linux Desktop File Managers (Open in new window, select file if supported)
+    # Check Dolphin first (KDE Plasma)
+    if shutil.which("dolphin"):
+        cmd = ["dolphin", "--new-window", "--select", target_str] if is_file else ["dolphin", "--new-window", folder_dir]
+        try:
+            subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            return True
+        except Exception:
+            pass
+
+    # Nautilus (GNOME)
+    if shutil.which("nautilus"):
+        cmd = ["nautilus", "--select", target_str] if is_file else ["nautilus", "--new-window", folder_dir]
+        try:
+            subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            return True
+        except Exception:
+            pass
+
+    # Nemo (Cinnamon)
+    if shutil.which("nemo"):
+        cmd = ["nemo", "--no-desktop", target_str] if is_file else ["nemo", folder_dir]
+        try:
+            subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            return True
+        except Exception:
+            pass
+
+    # Thunar (XFCE)
+    if shutil.which("thunar"):
+        try:
+            subprocess.Popen(["thunar", folder_dir], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            return True
+        except Exception:
+            pass
+
+    # PCManFM / PCManFM-Qt (LXDE / LXQt)
+    for fm in ("pcmanfm-qt", "pcmanfm"):
+        if shutil.which(fm):
+            try:
+                subprocess.Popen([fm, folder_dir], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                return True
+            except Exception:
+                pass
+
+    # 5. Freedesktop generic fallbacks (Always pass folder_dir to avoid opening audio file in media player)
+    if shutil.which("gio"):
+        try:
+            subprocess.Popen(["gio", "open", folder_dir], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            return True
+        except Exception:
+            pass
+
+    if shutil.which("xdg-open"):
+        try:
+            subprocess.Popen(["xdg-open", folder_dir], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            return True
+        except Exception:
+            pass
+
+    return False
 
 
 # ==============================================================================
@@ -248,6 +386,7 @@ class AudioResampler:
     """High-fidelity real-time audio resampler for DJ turntable pitch and speed control."""
 
     def __init__(self):
+        _ensure_numpy()
         self.buffer = np.zeros((0, 2), dtype=np.float32)
         self.in_pos = 0.0
 
@@ -306,6 +445,7 @@ class AudioEngine:
     """High-performance audio streaming engine with FFT spectrum extraction and DJ pitch control."""
 
     def __init__(self, playlist: List[Dict[str, Any]]):
+        _ensure_audio_backends()
         self.playlist = playlist
         self.current_index = 0
         self.current_track: Optional[Dict[str, Any]] = playlist[0] if playlist else None
@@ -417,10 +557,21 @@ class AudioEngine:
                 self.state = "playing"
             else:
                 self.state = "paused"
+            self._sync_state_file()
             return True
         except Exception:
             self.state = "stopped"
             return False
+
+    def _sync_state_file(self):
+        try:
+            st = self.get_status_dict()
+            tmp_file = STATE_FILE.with_suffix(".tmp")
+            with open(tmp_file, "w", encoding="utf-8") as f:
+                json.dump(st, f, default=float)
+            tmp_file.replace(STATE_FILE)
+        except Exception:
+            pass
 
     def _audio_callback(self, outdata, frames, time_info, status):
         sf_ref = self.sf_file
@@ -576,11 +727,16 @@ class AudioEngine:
     def next_track(self):
         if not self.playlist:
             return
-        if self.shuffle:
-            new_idx = random.randint(0, len(self.playlist) - 1)
-        else:
-            new_idx = (self.current_index + 1) % len(self.playlist)
-        self.load_track(new_idx, start_playing=True)
+        attempts = min(10, len(self.playlist))
+        for step in range(1, attempts + 1):
+            if self.shuffle and len(self.playlist) > 1:
+                new_idx = random.randint(0, len(self.playlist) - 1)
+                while new_idx == self.current_index:
+                    new_idx = random.randint(0, len(self.playlist) - 1)
+            else:
+                new_idx = (self.current_index + step) % len(self.playlist)
+            if self.load_track(new_idx, start_playing=True):
+                return
 
     def prev_track(self):
         if not self.playlist:
@@ -588,11 +744,16 @@ class AudioEngine:
         if self.position_sec > 5.0:
             self.seek(0)
             return
-        if self.shuffle:
-            new_idx = random.randint(0, len(self.playlist) - 1)
-        else:
-            new_idx = (self.current_index - 1 + len(self.playlist)) % len(self.playlist)
-        self.load_track(new_idx, start_playing=True)
+        attempts = min(10, len(self.playlist))
+        for step in range(1, attempts + 1):
+            if self.shuffle and len(self.playlist) > 1:
+                new_idx = random.randint(0, len(self.playlist) - 1)
+                while new_idx == self.current_index:
+                    new_idx = random.randint(0, len(self.playlist) - 1)
+            else:
+                new_idx = (self.current_index - step + len(self.playlist)) % len(self.playlist)
+            if self.load_track(new_idx, start_playing=True):
+                return
 
     def seek(self, target_sec: float):
         if self.duration_sec > 0:
@@ -767,9 +928,9 @@ class PlayerIPCServer:
                 conn.close()
                 os._exit(0)
             elif cmd == "next":
-                self.engine.next_track()
+                threading.Thread(target=self.engine.next_track, daemon=True).start()
             elif cmd == "prev":
-                self.engine.prev_track()
+                threading.Thread(target=self.engine.prev_track, daemon=True).start()
             elif cmd == "seek":
                 delta = float(req.get("seconds", 10.0))
                 self.engine.seek_relative(delta)
@@ -806,12 +967,20 @@ class PlayerIPCServer:
                 self.engine.cycle_repeat()
             elif cmd == "select_index":
                 idx = int(req.get("index", 0))
-                self.engine.load_track(idx, start_playing=True)
+                threading.Thread(target=self.engine.load_track, args=(idx, True), daemon=True).start()
             elif cmd == "get_playlist":
                 res["playlist"] = [
                     {"index": i, "name": t["name"], "path": t["path"], "ext": t["ext"]}
                     for i, t in enumerate(self.engine.playlist[:100])
                 ]
+            elif cmd in ("open_file_manager", "reveal"):
+                target_file = req.get("file")
+                if not target_file:
+                    target_file = self.engine.current_track.get("path") if self.engine.current_track else None
+                if not target_file:
+                    target_file = str(get_base_dir())
+                ok = open_in_file_manager(target_file)
+                res["success"] = ok
 
             conn.sendall(json.dumps(res, default=float).encode('utf-8'))
         except Exception as e:
@@ -848,7 +1017,7 @@ def send_ipc_command(cmd: str, **kwargs) -> Optional[Dict[str, Any]]:
     for attempt in range(3):
         try:
             sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            sock.settimeout(0.6)
+            sock.settimeout(2.0)
             sock.connect(str(SOCKET_PATH))
             payload = {"cmd": cmd}
             payload.update(kwargs)
@@ -919,6 +1088,7 @@ class EqualizerVisualizer:
     ]
 
     def __init__(self):
+        _ensure_numpy()
         self.style_idx = 0
         self.theme_idx = 0
 
@@ -1282,6 +1452,8 @@ class TerminalPlayerUI:
         self.selected_row = 0
         self.scroll_offset = 0
         self._initial_row_synced = False
+        self.notification_msg = ""
+        self.notification_time = 0.0
 
         self.cached_status = {
             "title": "Loading...",
@@ -1316,16 +1488,18 @@ class TerminalPlayerUI:
         return self.cached_status
 
     def _sync_initial_selection(self, status: Dict[str, Any]):
-        if self._initial_row_synced:
-            return
         cur_path = status.get("path")
-        if cur_path:
-            mixes = self.scanner.get_mixes(self.search_query)
-            for idx, m in enumerate(mixes):
-                if m["path"] == cur_path:
-                    self.selected_row = idx
-                    self._initial_row_synced = True
-                    return
+        if not cur_path:
+            return
+        if not getattr(self, "_initial_row_synced", False) or cur_path != getattr(self, "_last_synced_path", None):
+            self._last_synced_path = cur_path
+            self._initial_row_synced = True
+            if not self.search_mode and not self.search_query:
+                mixes = self.scanner.get_mixes(self.search_query)
+                for idx, m in enumerate(mixes):
+                    if m["path"] == cur_path:
+                        self.selected_row = idx
+                        break
 
     def _send_cmd(self, cmd: str, **kwargs):
         if self.is_remote:
@@ -1382,6 +1556,35 @@ class TerminalPlayerUI:
                 self.engine.stop_playback()
             elif cmd == "select_index":
                 self.engine.load_track(kwargs.get("index", 0), start_playing=True)
+            elif cmd == "open_file_manager":
+                target_file = kwargs.get("file")
+                if not target_file and self.engine and self.engine.current_track:
+                    target_file = self.engine.current_track.get("path")
+                open_in_file_manager(target_file or get_base_dir())
+
+    def _open_selected_in_file_manager(self):
+        filtered = self.scanner.get_mixes(self.search_query)
+        target_path = None
+        if filtered and 0 <= self.selected_row < len(filtered):
+            target_path = filtered[self.selected_row].get("path")
+        if not target_path or not os.path.exists(target_path):
+            status = self._get_status()
+            target_path = status.get("path")
+        if not target_path or not os.path.exists(target_path):
+            latest = self.scanner.get_latest_mix()
+            if latest:
+                target_path = latest.get("path")
+        if not target_path:
+            target_path = str(get_base_dir())
+
+        ok = open_in_file_manager(target_path)
+        name = os.path.basename(target_path) if os.path.isfile(target_path) else os.path.basename(str(target_path).rstrip("/"))
+        if ok:
+            self.notification_msg = f"Opened in File Manager: {name}"
+            self.notification_time = time.time() + 3.0
+        else:
+            self.notification_msg = f"Failed to open File Manager for: {name}"
+            self.notification_time = time.time() + 3.0
 
     def run(self):
         fd = sys.stdin.fileno() if sys.stdin.isatty() else None
@@ -1550,12 +1753,16 @@ class TerminalPlayerUI:
             self.search_mode = True
             self.search_query = ""
 
-        # 8. Stop & Exit
+        # 8. Open Selected Mix in File Manager (F / f)
+        elif data in (b"f", b"F"):
+            self._open_selected_in_file_manager()
+
+        # 9. Stop & Exit
         elif data in (b"x", b"X"):
             self._send_cmd("stop")
             self.running = False
 
-        # 9. Return to previous menu / Exit UI
+        # 10. Return to previous menu / Exit UI
         elif data in (b"q", b"Q", b"b", b"B", b"\x1b", b"\x03"):
             self.running = False
 
@@ -1632,6 +1839,8 @@ class TerminalPlayerUI:
         search_header = f"  {BOLD}{CYAN}Filter / Search: [{self.search_query}█]{NC}" if self.search_mode else f"  {BOLD}Search Filter: '{self.search_query}' (Press '/' to search)" if self.search_query else ""
         if search_header:
             lines.append(search_header)
+        elif time.time() < self.notification_time and self.notification_msg:
+            lines.append(f"  {BOLD}{COLOR_TRAFFIC_GREEN}📂 {self.notification_msg}{NC}")
 
         title_txt = f"── MIX ARCHIVE PLAYLIST ({total_mixes} Mixes Available) "
         dashes_cnt = max(4, 74 - len(title_txt))
@@ -1665,7 +1874,7 @@ class TerminalPlayerUI:
                 line_str = f"  │ {prefix}[{idx+1:4d}] {m_name:<51} {mix['ext']} {sz_str:>6s} │"
             lines.append(line_str)
 
-        foot_txt = "── ↑/↓: Scroll  •  Enter: Play Selection  •  /: Search Mixes "
+        foot_txt = "── ↑/↓: Scroll  •  Enter: Play Selection  •  F: File Manager  •  /: Search Mixes "
         dashes_foot = max(4, 74 - len(foot_txt))
         lines.append(f"  {BOLD}{MAGENTA}└{foot_txt}{'─'*dashes_foot}┘{NC}")
 
@@ -1680,9 +1889,9 @@ class TerminalPlayerUI:
 
         lines.append(f"  🔊 Vol: {BOLD}{COLOR_ELECTRIC_CYAN}{vol_str}{NC}  │  🎚 DJ Pitch: {BOLD}{p_badge}  │  🔀 Shuffle: {shuf_badge}  │  🔁 Repeat: {rep_badge}  │  🎨 Theme: {BOLD}{COLOR_HOT_PURPLE}Dreamworlds Ultra{NC}")
         if term_width >= 96:
-            lines.append(f"  {DIM}[Space] Play/Pause  [+/-] Pitch ±1% (±20% max)  [0] Pitch Reset  [v/V] Vol  [n/p] Next/Prev  [←/→] Seek  [e] EQ  [b/q] Exit{NC}")
+            lines.append(f"  {DIM}[Space] Play/Pause  [+/-] Pitch ±1% (±20% max)  [0] Pitch Reset  [v/V] Vol  [n/p] Next/Prev  [F] File Mgr  [←/→] Seek  [e] EQ  [b/q] Exit{NC}")
         else:
-            lines.append(f"  {DIM}[Space] Play  [+/-] Pitch ±1%  [0] Reset  [v/V] Vol  [n/p] Skip  [←/→] Seek  [e] EQ  [b/q] Exit{NC}")
+            lines.append(f"  {DIM}[Space] Play  [+/-] Pitch ±1%  [0] Reset  [v/V] Vol  [n/p] Skip  [F] File Mgr  [←/→] Seek  [e] EQ  [b/q] Exit{NC}")
 
         frame_str = "\r\n".join(f"{line}\033[K" for line in lines)
         sys.stdout.write(f"\033[H{frame_str}\r\n\033[J")
@@ -1715,6 +1924,7 @@ def main():
     parser.add_argument("--play-latest", action="store_true", help="Automatically play the newest mix from archive")
     parser.add_argument("--get-latest-mix", action="store_true", help="Print path of newest mix in archive and exit")
     parser.add_argument("--list-mixes", action="store_true", help="Print all available mixes in archive")
+    parser.add_argument("--open-file-manager", "-f", action="store_true", help="Open currently playing mix or archive in file manager")
     parser.add_argument("--cmd", type=str, help="Send arbitrary IPC command (e.g. toggle, next, prev)")
 
     args, _ = parser.parse_known_args()
@@ -1736,6 +1946,28 @@ def main():
         sys.exit(0)
 
     daemon_running = is_player_daemon_running()
+
+    # Open mix in file manager
+    if args.open_file_manager:
+        target_path = None
+        if daemon_running:
+            st = send_ipc_command("status")
+            if st and "data" in st and st["data"].get("path"):
+                target_path = st["data"]["path"]
+        if not target_path or not os.path.exists(target_path):
+            scanner = MixArchiveScanner(base_dir)
+            latest = scanner.get_latest_mix()
+            if latest:
+                target_path = latest["path"]
+        if not target_path:
+            target_path = str(base_dir)
+        ok = open_in_file_manager(target_path)
+        if ok:
+            print(f"✔ Opened in file manager: {target_path}")
+            sys.exit(0)
+        else:
+            print("✖ Failed to open file manager", file=sys.stderr)
+            sys.exit(1)
 
     # Generic IPC command dispatcher
     if args.cmd:

@@ -113,6 +113,7 @@ flowchart LR
   - `Left` / `Right` arrows: Precision seek backward / forward (5s / 30s).
   - `Up` / `Down` arrows: Volume control (0%–100%).
   - `n` / `p`: Next / Previous track in mix catalog.
+  - `F`: Open currently selected / playing mix in a new desktop file manager window (Dolphin / Nautilus / Explorer / Finder).
   - `t`: Open live synchronized tracklist in dedicated console.
   - `s` / `r`: Shuffle / Repeat mode toggles.
   - `q` / `Esc`: Return cleanly to master manager menu.

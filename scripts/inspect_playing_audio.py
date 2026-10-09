@@ -72,6 +72,20 @@ def format_bytes(num_bytes):
         return f"{num_bytes} bytes"
 
 def detect_playing_audio_file():
+    # 0. Check MP Audio Player state file or socket
+    try:
+        mp_cfg = os.path.expanduser("~/.config/mix-manager")
+        st_file = os.path.join(mp_cfg, "mp_player_state.json")
+        if os.path.isfile(st_file):
+            with open(st_file, "r", encoding="utf-8", errors="ignore") as f:
+                st_data = json.load(f)
+            if isinstance(st_data, dict) and st_data.get("running") and st_data.get("path"):
+                p = st_data.get("path")
+                if os.path.isfile(p):
+                    return p, "MP Audio Player"
+    except Exception:
+        pass
+
     # 1. Check cliamp track status file or proc
     cliamp_path = "/tmp/cliamp_current_track.txt"
     if os.path.isfile(cliamp_path):
@@ -169,6 +183,25 @@ def get_live_player_stats():
         "progress_pct": 0.0,
         "player": "None"
     }
+
+    # 0. Check MP Audio Player state
+    try:
+        mp_cfg = os.path.expanduser("~/.config/mix-manager")
+        st_file = os.path.join(mp_cfg, "mp_player_state.json")
+        if os.path.isfile(st_file):
+            with open(st_file, "r", encoding="utf-8", errors="ignore") as f:
+                st_data = json.load(f)
+            if isinstance(st_data, dict) and st_data.get("running"):
+                stats["status"] = str(st_data.get("state", "STOPPED")).upper()
+                stats["position_sec"] = float(st_data.get("position_sec", 0.0))
+                stats["duration_sec"] = float(st_data.get("duration_sec", 0.0))
+                stats["position_str"] = str(st_data.get("position_fmt", "00:00"))
+                stats["duration_str"] = str(st_data.get("duration_fmt", "00:00"))
+                stats["progress_pct"] = float(st_data.get("progress_pct", 0.0))
+                stats["player"] = "MP Audio Player"
+                return stats
+    except Exception:
+        pass
 
     # 1. Check cliamp status
     st_file = "/tmp/cliamp_status.txt"
