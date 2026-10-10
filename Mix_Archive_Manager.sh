@@ -814,19 +814,23 @@ MANAGER_START_EPOCH="$(date +%s)"
 printf '\033]0;%s\007' "Mix Archive Manager" 2>/dev/null || true
 # Resolve symlinks so SCRIPT_DIR correctly points to codebase directory
 _RESOLVED_SRC="${BASH_SOURCE[0]}"
+_RESOLVED_SRC="${_RESOLVED_SRC//\\//}"
+command -v cygpath >/dev/null 2>&1 && _RESOLVED_SRC="$(cygpath -u "$_RESOLVED_SRC" 2>/dev/null || echo "$_RESOLVED_SRC")"
 while [ -h "$_RESOLVED_SRC" ]; do
     _RESOLVED_DIR="$(cd -P "$(dirname "$_RESOLVED_SRC")" >/dev/null 2>&1 && pwd)"
     _RESOLVED_SRC="$(readlink "$_RESOLVED_SRC")"
+    _RESOLVED_SRC="${_RESOLVED_SRC//\\//}"
+    command -v cygpath >/dev/null 2>&1 && _RESOLVED_SRC="$(cygpath -u "$_RESOLVED_SRC" 2>/dev/null || echo "$_RESOLVED_SRC")"
     [[ $_RESOLVED_SRC != /* ]] && _RESOLVED_SRC="$_RESOLVED_DIR/$_RESOLVED_SRC"
 done
 SCRIPT_DIR="$(cd -P "$(dirname "$_RESOLVED_SRC")" >/dev/null 2>&1 && pwd)"
 if [ ! -d "$SCRIPT_DIR/scripts" ]; then
     for _c in \
+        "$PWD" \
+        "$HOME/Downloads/MP_Mix_Manager_v0.3" \
+        "/c/Users/${USER:-Mathe}/Downloads/MP_Mix_Manager_v0.3" \
         "/var/home/mplanetarian/MP_Mix_Manager_v0.3" \
         "$HOME/MP_Mix_Manager_v0.3" \
-        "/var/home/mplanetarian/MP_Mix_Manager_v0.3" \
-        "$HOME/MP_Mix_Manager_v0.3" \
-        "/var/home/mplanetarian/MP_Mix_Manager_v0.1" \
         "$HOME/MP_Mix_Manager_v0.1"; do
         if [ -d "$_c/scripts" ]; then
             SCRIPT_DIR="$_c"
@@ -835,6 +839,28 @@ if [ ! -d "$SCRIPT_DIR/scripts" ]; then
     done
 fi
 unset _RESOLVED_SRC _RESOLVED_DIR _c
+
+# Ensure Windows Python and WinGet binaries take precedence over Microsoft Store dummy stubs
+if [[ "$(uname -s)" =~ (MINGW|MSYS|CYGWIN) ]]; then
+    for _py_cand in \
+        "/c/Users/${USER:-Mathe}/AppData/Local/Programs/Python/Python312" \
+        "/c/Users/${USER:-Mathe}/AppData/Local/Programs/Python/Python312/Scripts" \
+        "/c/Program Files/Python312" \
+        "/c/Program Files/Python312/Scripts" \
+        "/c/Users/${USER:-Mathe}/AppData/Local/Microsoft/WinGet/Links"; do
+        [ -d "$_py_cand" ] && export PATH="$_py_cand:$PATH"
+    done
+    if ! command -v python3 >/dev/null 2>&1 || ! python3 -c 'import sys' >/dev/null 2>&1; then
+        if command -v python >/dev/null 2>&1 && python -c 'import sys' >/dev/null 2>&1; then
+            python3() { python "$@"; }
+            export -f python3 2>/dev/null || true
+        elif command -v py >/dev/null 2>&1 && py -3 -c 'import sys' >/dev/null 2>&1; then
+            python3() { py -3 "$@"; }
+            export -f python3 2>/dev/null || true
+        fi
+    fi
+fi
+
 export PATH="$SCRIPT_DIR/bin:$SCRIPT_DIR:$HOME/.local/bin:$HOME/bin:/usr/local/bin:/usr/local/sbin:/opt/homebrew/bin:$PATH"
 
 # OS Platform Detection (Linux, macOS, Windows 10/11, FreeBSD)
@@ -5026,7 +5052,11 @@ manage_system_maintenance() {
                     ;;
             esac
         elif [ "$OS_TYPE" = "windows" ] || [ "$OS_TYPE" = "wsl" ]; then
-            echo -e "  Windows Edition:             ${GREEN}$(cmd.exe /c "ver" 2>/dev/null | tr -d '\r\n' || echo "Windows 10/11")${NC}"
+            local win_disp="Windows 10/11"
+            if [[ "$(uname -s)" =~ MINGW.*NT-([0-9.]+) ]]; then
+                win_disp="Windows NT ${BASH_REMATCH[1]}"
+            fi
+            echo -e "  Windows Edition:             ${GREEN}${win_disp}${NC}"
             echo ""
             echo -e "${BOLD}Select a maintenance operation:${NC}"
             echo -e "  ${BOLD}${CYAN}1)${NC} Check Drive Space Statistics (${GREEN}Get_All_Drive_Space.sh${NC}) [Mounted & Unmounted]"
@@ -11530,10 +11560,12 @@ get_os_badge() {
         echo -e "${BOLD}${CYAN}🍏 macOS:${NC} ${mac_ver} ($(uname -m))"
     elif [ "$OS_TYPE" = "windows" ] || [ "$OS_TYPE" = "wsl" ]; then
         local win_ver=""
-        if command -v cmd.exe >/dev/null 2>&1; then
-            win_ver=$(cmd.exe /c ver 2>/dev/null | tr -d '\r\n' | sed 's/.*\[Version \([^]]*\)\].*/\1/')
+        if [[ "$(uname -s)" =~ MINGW.*NT-([0-9.]+) ]] || [[ "$(uname -s)" =~ CYGWIN.*NT-([0-9.]+) ]] || [[ "$(uname -s)" =~ MSYS.*NT-([0-9.]+) ]]; then
+            win_ver="${BASH_REMATCH[1]}"
+        elif [ -n "${WSL_DISTRO_NAME:-}" ]; then
+            win_ver="$(uname -r 2>/dev/null)"
         fi
-        [ -z "$win_ver" ] && win_ver="$(uname -r)"
+        [ -z "$win_ver" ] && win_ver="$(uname -r 2>/dev/null || echo '10/11')"
         if [ "$OS_TYPE" = "wsl" ]; then
             echo -e "${BOLD}${CYAN}🪟 Windows (WSL2):${NC} ${win_ver}"
         else

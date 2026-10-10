@@ -27,15 +27,23 @@ printf "${GREEN} MP Mix Archive Manager  v0.3${RESET}\n\n"
 
 # Resolve script path and locate backend
 _RESOLVED_SRC="${BASH_SOURCE[0]}"
+_RESOLVED_SRC="${_RESOLVED_SRC//\\//}"
+command -v cygpath >/dev/null 2>&1 && _RESOLVED_SRC="$(cygpath -u "$_RESOLVED_SRC" 2>/dev/null || echo "$_RESOLVED_SRC")"
 while [ -h "$_RESOLVED_SRC" ]; do
     _RESOLVED_DIR="$(cd -P "$(dirname "$_RESOLVED_SRC")" >/dev/null 2>&1 && pwd)"
     _RESOLVED_SRC="$(readlink "$_RESOLVED_SRC")"
+    _RESOLVED_SRC="${_RESOLVED_SRC//\\//}"
+    command -v cygpath >/dev/null 2>&1 && _RESOLVED_SRC="$(cygpath -u "$_RESOLVED_SRC" 2>/dev/null || echo "$_RESOLVED_SRC")"
     [[ $_RESOLVED_SRC != /* ]] && _RESOLVED_SRC="$_RESOLVED_DIR/$_RESOLVED_SRC"
 done
 SCRIPT_DIR="$(cd -P "$(dirname "$_RESOLVED_SRC")" >/dev/null 2>&1 && pwd)"
 
 if [ ! -f "$SCRIPT_DIR/Mix_Archive_Manager.sh" ]; then
     for _c in \
+        "$PWD" \
+        "$HOME/Downloads/MP_Mix_Manager_v0.3" \
+        "/c/Users/${USER:-Mathe}/Downloads/MP_Mix_Manager_v0.3" \
+        "$HOME/MP_Mix_Manager_v0.3" \
         "$HOME/MP_Mix_Manager_v0.1"; do
         if [ -f "$_c/Mix_Archive_Manager.sh" ]; then
             SCRIPT_DIR="$_c"

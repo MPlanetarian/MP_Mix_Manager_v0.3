@@ -8,21 +8,7 @@ setlocal enabledelayedexpansion
 set "SCRIPT_DIR=%~dp0"
 cd /d "%SCRIPT_DIR%"
 
-rem 1. Check for python.exe on PATH
-where python.exe >nul 2>nul
-if %ERRORLEVEL% equ 0 (
-    python.exe "%SCRIPT_DIR%scripts\traktor_monitor.py" %*
-    goto :eof
-)
-
-rem 2. Check for py.exe (Python Launcher for Windows)
-where py.exe >nul 2>nul
-if %ERRORLEVEL% equ 0 (
-    py.exe -3 "%SCRIPT_DIR%scripts\traktor_monitor.py" %*
-    goto :eof
-)
-
-rem 3. Check for standard LocalAppData and ProgramFiles Python locations
+rem 1. Check for standard LocalAppData and ProgramFiles Python locations first
 for %%P in (
     "%LOCALAPPDATA%\Programs\Python\Python312\python.exe"
     "%LOCALAPPDATA%\Programs\Python\Python311\python.exe"
@@ -40,10 +26,26 @@ for %%P in (
     )
 )
 
+rem 2. Check for py.exe (Python Launcher for Windows)
+where py.exe >nul 2>nul
+if %ERRORLEVEL% equ 0 (
+    py.exe -3 "%SCRIPT_DIR%scripts\traktor_monitor.py" %*
+    goto :eof
+)
+
+rem 3. Check for python.exe on PATH (excluding WindowsApps fake stub)
+for /f "delims=" %%p in ('where python.exe 2^>nul') do (
+    echo "%%p" | findstr /i "WindowsApps" >nul
+    if errorlevel 1 (
+        "%%p" "%SCRIPT_DIR%scripts\traktor_monitor.py" %*
+        goto :eof
+    )
+)
+
 echo ==============================================================================
 echo [ERROR] Python 3 was not found on this Windows system!
 echo.
-echo Please install Python 3 from the Microsoft Store or https://www.python.org/
-echo Make sure to check "Add python.exe to PATH" during setup.
+echo Please install Python 3 from https://www.python.org/ or run:
+echo   winget install Python.Python.3.12
 echo ==============================================================================
 pause
