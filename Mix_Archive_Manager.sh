@@ -171,6 +171,7 @@ play_sound_effect() {
 
 show_dreamworlds_ascii_banner() {
     local animate="${1:-false}"
+    [ "$OS_TYPE" = "windows" ] && animate="false"
     if [ "$CURRENT_THEME" = "dreamworlds" ] || [ "$CURRENT_THEME" = "dreamworlds_ultra" ]; then
         local anim_script="$SCRIPT_DIR/scripts/render_ascii_animation.py"
         [ ! -f "$anim_script" ] && anim_script="$SCRIPT_DIR/render_ascii_animation.py"
@@ -13130,8 +13131,10 @@ while true; do
             fi
         fi
         if [ "$CURRENT_THEME" = "dreamworlds" ] || [ "$CURRENT_THEME" = "dreamworlds_ultra" ]; then
-            show_dreamworlds_ascii_banner true
-            sleep 0.2
+            if [ "$OS_TYPE" != "windows" ]; then
+                show_dreamworlds_ascii_banner true
+                sleep 0.2
+            fi
         fi
     fi
 

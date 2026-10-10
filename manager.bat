@@ -5,6 +5,9 @@ rem Launches Mix_Archive_Manager.sh using Git Bash, MSYS2, or WSL
 rem ==============================================================================
 setlocal enabledelayedexpansion
 
+rem Enable ANSI Virtual Terminal Processing for Windows Console Host
+reg add "HKCU\Console" /v VirtualTerminalLevel /t REG_DWORD /d 1 /f >nul 2>nul
+
 set "SCRIPT_DIR=%~dp0"
 cd /d "%SCRIPT_DIR%"
 set "SCRIPT_DIR_UNIX=%SCRIPT_DIR:\=/%"

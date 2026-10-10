@@ -16,8 +16,33 @@ Colors:
 - Sweet Aqua (#00f5ff)
 """
 
+import os
 import sys
 import time
+
+# Enable Virtual Terminal Processing on Windows 10 & 11 so ANSI escape codes render properly
+if sys.platform == "win32" or os.name == "nt":
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        for h_id in (-11, -12):
+            h = kernel32.GetStdHandle(h_id)
+            if h and h != -1:
+                mode = ctypes.c_ulong()
+                if kernel32.GetConsoleMode(h, ctypes.byref(mode)):
+                    kernel32.SetConsoleMode(h, mode.value | 0x0004 | 0x0008)
+        conout = kernel32.CreateFileW("CONOUT$", 0x40000000 | 0x80000000, 2, None, 3, 0, None)
+        if conout and conout != -1:
+            mode = ctypes.c_ulong()
+            if kernel32.GetConsoleMode(conout, ctypes.byref(mode)):
+                kernel32.SetConsoleMode(conout, mode.value | 0x0004 | 0x0008)
+            kernel32.CloseHandle(conout)
+    except Exception:
+        pass
+    try:
+        os.system('')
+    except Exception:
+        pass
 
 PALETTE = [
     (247, 37, 133),  # Sweet Neon Hot Pink (#f72585)
